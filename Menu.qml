@@ -761,7 +761,7 @@ Window {
                 anchors.left: parent.left
                 anchors.leftMargin: 18
                 anchors.verticalCenter: parent.verticalCenter
-                text: root.activeMenu === "root" ? "Omarchy Menu" : MenuModel.pathFor(root.items, root.activeMenu)
+                text: root.activeMenu === "root" ? "RavenSpot" : MenuModel.pathFor(root.items, root.activeMenu)
                 color: root.fgDim
                 font.pixelSize: 13
                 font.family: root.textFont
