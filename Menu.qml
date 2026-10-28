@@ -17,7 +17,7 @@ Window {
     // Katman-shell: KWin layer-shell v5 destekler; klavye odağı Exclusive ile gelir.
     LayerShell.Window.scope: "ravenspot"
     LayerShell.Window.layer: LayerShell.Window.Layer.LayerOverlay
-    LayerShell.Window.keyboardInteractivity: LayerShell.Window.KeyboardInteractivity.KeyboardInteractivityExclusive
+    LayerShell.Window.keyboardInteractivity: LayerShell.Window.KeyboardInteractivity.KeyboardInteractivityOnDemand
     LayerShell.Window.activateOnShow: true
     LayerShell.Window.anchors: LayerShell.Window.Anchors.AnchorTop | LayerShell.Window.Anchors.AnchorBottom | LayerShell.Window.Anchors.AnchorLeft | LayerShell.Window.Anchors.AnchorRight
 
@@ -42,6 +42,8 @@ Window {
     property int sysVolume: 50
     property bool sysMuted: false
 
+    property int themeVersion: 1
+
     function syncTheme() {
         var t = Shell.currentTheme()
         if (!t) return
@@ -54,7 +56,8 @@ Window {
         root.selFg = t.selFg
         root.cpuColor = t.cpuColor
         root.gpuColor = t.gpuColor
-        root.textFont = t.font || "FantasqueSansM Nerd Font"
+        root.textFont = t.font || "Inter"
+        root.themeVersion += 1
     }
 
     // ── Durum ─────────────────────────────────────────────
@@ -662,7 +665,14 @@ Window {
         root.filterText = ""
         searchInput.text = ""
         root.selectedIndex = 0
-        // Kartı ortala (sürükleme pozisyonunu sıfırla)
+
+        // Ses seviyesini anında çek (%50 flash olmasını önler)
+        var ainfo = Shell.getInitialAudioInfo()
+        if (ainfo) {
+            root.sysVolume = ainfo.volume
+            root.sysMuted = ainfo.muted
+        }
+
         root.opened = true
         if (!root.loaded) loadItems()
         else { evaluateGuards() }
@@ -774,6 +784,20 @@ Window {
         clip: true
         opacity: root.opened ? 1.0 : 0.0
         scale: root.opened ? 1.0 : 0.94
+
+        // Pencere içine tıklamak pencereyi kapatmasın; sağ tık ise bir önceki sayfaya döndürsün
+        MouseArea {
+            anchors.fill: parent
+            acceptedButtons: Qt.LeftButton | Qt.RightButton
+            propagateComposedEvents: true
+            onClicked: function(mouse) {
+                if (mouse.button === Qt.RightButton) {
+                    Shell.playCreamy()
+                    goBack()
+                    mouse.accepted = true
+                }
+            }
+        }
         Behavior on opacity { enabled: !reopenAnim.running; NumberAnimation { duration: 140; easing.type: Easing.OutCubic } }
         Behavior on scale { enabled: !reopenAnim.running; NumberAnimation { duration: 160; easing.type: Easing.OutBack } }
         Behavior on height { NumberAnimation { duration: 130; easing.type: Easing.OutCubic } }
@@ -864,7 +888,7 @@ Window {
                 height: 20
                 z: 5
 
-                // Sol: CPU Göstergesi (büyütüldü: 14px / net okunur)
+                // Sol: CPU Göstergesi (kusursuz dikey merkezleme ve taban hizalama)
                 Row {
                     anchors.left: parent.left
                     anchors.verticalCenter: parent.verticalCenter
@@ -876,6 +900,7 @@ Window {
                         font.pixelSize: 14
                         font.family: root.iconFont
                         font.weight: Font.Bold
+                        anchors.verticalCenter: parent.verticalCenter
                     }
                     Text {
                         text: root.cpuPercent + "%"
@@ -883,6 +908,7 @@ Window {
                         font.pixelSize: 14
                         font.family: root.textFont
                         font.weight: Font.DemiBold
+                        anchors.verticalCenter: parent.verticalCenter
                     }
                 }
 
@@ -999,7 +1025,7 @@ Window {
                     }
                 }
 
-                // Sağ: GPU Göstergesi (büyütüldü: 14px / net okunur)
+                // Sağ: GPU Göstergesi (kusursuz dikey merkezleme ve taban hizalama)
                 Row {
                     anchors.right: parent.right
                     anchors.verticalCenter: parent.verticalCenter
@@ -1011,6 +1037,7 @@ Window {
                         font.pixelSize: 14
                         font.family: root.iconFont
                         font.weight: Font.Bold
+                        anchors.verticalCenter: parent.verticalCenter
                     }
                     Text {
                         text: root.gpuPercent + "%"
@@ -1018,6 +1045,7 @@ Window {
                         font.pixelSize: 14
                         font.family: root.textFont
                         font.weight: Font.DemiBold
+                        anchors.verticalCenter: parent.verticalCenter
                     }
                 }
             }
@@ -1123,7 +1151,7 @@ Window {
                     anchors.left: glyph.left
                     anchors.leftMargin: 9
                     anchors.verticalCenter: parent.verticalCenter
-                    source: model.iconName ? ("image://themeicon/" + model.iconName) : ""
+                    source: model.iconName ? ("image://themeicon/" + model.iconName + "?v=" + root.themeVersion) : ""
                     sourceSize: Qt.size(26, 26)
                     visible: !!model.iconName
                     smooth: true
@@ -1148,7 +1176,7 @@ Window {
                     anchors.left: glyph.left
                     anchors.leftMargin: 9
                     anchors.verticalCenter: parent.verticalCenter
-                    source: model.appIcon ? ("image://appicon/" + model.appIcon) : ""
+                    source: model.appIcon ? ("image://appicon/" + model.appIcon + "?v=" + root.themeVersion) : ""
                     sourceSize: Qt.size(26, 26)
                     visible: !!model.appIcon
                     smooth: true
@@ -1318,6 +1346,11 @@ Window {
 
     Component.onCompleted: {
         syncTheme()
+        var ainfo = Shell.getInitialAudioInfo()
+        if (ainfo) {
+            root.sysVolume = ainfo.volume
+            root.sysMuted = ainfo.muted
+        }
         openMenu("root")
     }
 }
