@@ -600,6 +600,70 @@ class Shell(QObject):
         self.statsUpdated.emit(cpu_pct, gpu_pct, vol_pct, is_muted)
 
     @Slot(result="QVariantMap")
+    def getSysMonitorInfo(self):
+        import glob
+        # RAM
+        tot_ram, used_ram, ram_pct = 0, 0, 0
+        try:
+            with open("/proc/meminfo") as f:
+                mem = {}
+                for line in f:
+                    parts = line.split(":")
+                    if len(parts) == 2:
+                        mem[parts[0].strip()] = int(parts[1].strip().split()[0])
+            tot_ram = mem.get("MemTotal", 0) / 1024 / 1024
+            avail_ram = mem.get("MemAvailable", 0) / 1024 / 1024
+            used_ram = tot_ram - avail_ram
+            ram_pct = int((used_ram / tot_ram) * 100) if tot_ram > 0 else 0
+        except Exception:
+            pass
+
+        # Disk
+        disk_tot, disk_used, disk_pct = 0, 0, 0
+        try:
+            statvfs = os.statvfs("/")
+            disk_tot = (statvfs.f_blocks * statvfs.f_frsize) / (1024**3)
+            disk_avail = (statvfs.f_bavail * statvfs.f_frsize) / (1024**3)
+            disk_used = disk_tot - disk_avail
+            disk_pct = int((disk_used / disk_tot) * 100) if disk_tot > 0 else 0
+        except Exception:
+            pass
+
+        # Uptime
+        up_text = ""
+        try:
+            with open("/proc/uptime") as f:
+                up_sec = int(float(f.readline().split()[0]))
+            up_hrs = up_sec // 3600
+            up_mins = (up_sec % 3600) // 60
+            up_text = f"{up_hrs}s {up_mins}d"
+        except Exception:
+            pass
+
+        # CPU Temp
+        temp_c = 0
+        try:
+            for t in ["/sys/class/hwmon/hwmon4/temp6_input", "/sys/class/hwmon/hwmon3/temp1_input", "/sys/class/thermal/thermal_zone0/temp"]:
+                if os.path.exists(t):
+                    with open(t) as f:
+                        val = int(f.read().strip())
+                        if val > 1000: val = int(val / 1000)
+                        if 20 <= val <= 105:
+                            temp_c = val
+                            break
+        except Exception:
+            pass
+
+        return {
+            "ram_text": f"{used_ram:.1f}/{tot_ram:.0f}G",
+            "ram_pct": ram_pct,
+            "disk_text": f"{disk_used:.0f}/{disk_tot:.0f}G",
+            "disk_pct": disk_pct,
+            "temp": f"{temp_c}°C" if temp_c else "--",
+            "uptime": up_text or "--"
+        }
+
+    @Slot(result="QVariantMap")
     def getInitialAudioInfo(self):
         vol_pct = 50
         is_muted = False

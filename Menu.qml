@@ -41,6 +41,8 @@ Window {
     property int gpuPercent: 0
     property int sysVolume: 50
     property bool sysMuted: false
+    property var sysMonitor: ({ "ram_text": "--", "ram_pct": 0, "disk_text": "--", "disk_pct": 0, "temp": "--", "uptime": "--" })
+    property int footerHeight: 30
 
     property int themeVersion: 1
 
@@ -699,6 +701,7 @@ Window {
             root.gpuPercent = gpu
             root.sysVolume = vol
             root.sysMuted = muted
+            root.sysMonitor = Shell.getSysMonitorInfo()
         }
         function onThemeChanged() {
             root.syncTheme()
@@ -774,7 +777,7 @@ Window {
     Rectangle {
         id: card
         width: root.cardWidth
-        height: Math.min(headerHeight + 1 + displayModel.count * rowHeight + 12, 700)
+        height: Math.min(headerHeight + 1 + displayModel.count * rowHeight + 12 + footerHeight, 720)
         x: (Screen.width - width) / 2
         y: (Screen.height - height) / 2
         color: root.bgColor
@@ -1097,8 +1100,8 @@ Window {
             anchors.right: parent.right
             anchors.rightMargin: scrollTrack.visible ? 10 : 6
             anchors.leftMargin: 6
-            anchors.bottom: parent.bottom
-            anchors.bottomMargin: 6
+            anchors.bottom: footerMonitorBar.top
+            anchors.bottomMargin: 4
             clip: true
             model: displayModel
             boundsBehavior: Flickable.DragAndOvershootBounds
@@ -1342,6 +1345,111 @@ Window {
                 }
             }
         }
+
+        // ── Alt Sistem Monitör Paneli (RAM, Disk, Sıcaklık, Uptime) ──
+        Rectangle {
+            id: footerMonitorBar
+            width: parent.width
+            height: root.footerHeight
+            anchors.bottom: parent.bottom
+            color: "#18000000"
+
+            Rectangle {
+                width: parent.width
+                height: 1
+                anchors.top: parent.top
+                color: Qt.rgba(root.bgBorder.r, root.bgBorder.g, root.bgBorder.b, 0.20)
+            }
+
+            Row {
+                anchors.centerIn: parent
+                spacing: 22
+
+                // RAM
+                Row {
+                    spacing: 6
+                    anchors.verticalCenter: parent.verticalCenter
+                    Text {
+                        text: "󰘚 RAM"
+                        color: root.bgBorder
+                        font.pixelSize: 11
+                        font.family: root.iconFont
+                        font.weight: Font.Bold
+                        anchors.verticalCenter: parent.verticalCenter
+                    }
+                    Text {
+                        text: (root.sysMonitor ? root.sysMonitor.ram_text : "--") + " (" + (root.sysMonitor ? root.sysMonitor.ram_pct : 0) + "%)"
+                        color: root.fgDim
+                        font.pixelSize: 11
+                        font.family: root.textFont
+                        anchors.verticalCenter: parent.verticalCenter
+                    }
+                }
+
+                // Disk (Root /)
+                Row {
+                    spacing: 6
+                    anchors.verticalCenter: parent.verticalCenter
+                    Text {
+                        text: "󰋊 Disk"
+                        color: root.bgBorder
+                        font.pixelSize: 11
+                        font.family: root.iconFont
+                        font.weight: Font.Bold
+                        anchors.verticalCenter: parent.verticalCenter
+                    }
+                    Text {
+                        text: (root.sysMonitor ? root.sysMonitor.disk_text : "--") + " (" + (root.sysMonitor ? root.sysMonitor.disk_pct : 0) + "%)"
+                        color: root.fgDim
+                        font.pixelSize: 11
+                        font.family: root.textFont
+                        anchors.verticalCenter: parent.verticalCenter
+                    }
+                }
+
+                // Sıcaklık
+                Row {
+                    spacing: 6
+                    anchors.verticalCenter: parent.verticalCenter
+                    Text {
+                        text: " Isı"
+                        color: root.cpuColor
+                        font.pixelSize: 11
+                        font.family: root.iconFont
+                        font.weight: Font.Bold
+                        anchors.verticalCenter: parent.verticalCenter
+                    }
+                    Text {
+                        text: root.sysMonitor ? root.sysMonitor.temp : "--"
+                        color: root.fgDim
+                        font.pixelSize: 11
+                        font.family: root.textFont
+                        anchors.verticalCenter: parent.verticalCenter
+                    }
+                }
+
+                // Uptime
+                Row {
+                    spacing: 6
+                    anchors.verticalCenter: parent.verticalCenter
+                    Text {
+                        text: "󰔚 Süre"
+                        color: root.gpuColor
+                        font.pixelSize: 11
+                        font.family: root.iconFont
+                        font.weight: Font.Bold
+                        anchors.verticalCenter: parent.verticalCenter
+                    }
+                    Text {
+                        text: root.sysMonitor ? root.sysMonitor.uptime : "--"
+                        color: root.fgDim
+                        font.pixelSize: 11
+                        font.family: root.textFont
+                        anchors.verticalCenter: parent.verticalCenter
+                    }
+                }
+            }
+        }
     }
 
     Component.onCompleted: {
@@ -1351,6 +1459,7 @@ Window {
             root.sysVolume = ainfo.volume
             root.sysMuted = ainfo.muted
         }
+        root.sysMonitor = Shell.getSysMonitorInfo()
         openMenu("root")
     }
 }
