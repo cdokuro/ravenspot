@@ -676,21 +676,24 @@ class Shell(QObject):
             pass
         return ""
 
-    @Slot(QObject, str, result=bool)
-    def setWindowScreen(self, qquick_window, screen_name):
+    @Slot(QObject)
+    def centerWindowOnActiveScreen(self, qquick_window):
+        out_name = self.getActiveOutputName()
+        target_screen = None
         for s in QGuiApplication.screens():
-            if s.name() == screen_name:
-                if qquick_window.screen() != s:
-                    qquick_window.hide()
-                    qquick_window.setScreen(s)
-                    qquick_window.setWidth(s.geometry().width())
-                    qquick_window.setHeight(s.geometry().height())
-                    qquick_window.show()
-                else:
-                    qquick_window.setWidth(s.geometry().width())
-                    qquick_window.setHeight(s.geometry().height())
-                return True
-        return False
+            if s.name() == out_name:
+                target_screen = s
+                break
+        if not target_screen:
+            target_screen = QGuiApplication.primaryScreen()
+        if target_screen and qquick_window:
+            geom = target_screen.geometry()
+            qquick_window.setScreen(target_screen)
+            w = qquick_window.width() if qquick_window.width() > 0 else 728
+            h = qquick_window.height() if qquick_window.height() > 0 else 548
+            x = geom.x() + (geom.width() - w) // 2
+            y = geom.y() + (geom.height() - h) // 2
+            qquick_window.setPosition(x, y)
 
     @Slot(result="QVariantMap")
     def getInitialAudioInfo(self):

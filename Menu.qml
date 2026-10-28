@@ -3,31 +3,21 @@ import QtQuick
 import QtQuick.Window
 import QtQuick.Controls
 import QtQuick.Effects
-import org.kde.layershell as LayerShell
 import "MenuModel.js" as MenuModel
 
 Window {
     id: root
     visible: true
-    screen: Qt.application.screens.length > 0 ? Qt.application.screens[0] : null
-    width: screen ? screen.width : 2560
-    height: screen ? screen.height : 1440
+    width: card.width + 48
+    height: card.height + 48
     color: "transparent"
-    flags: Qt.FramelessWindowHint | Qt.Tool
+    flags: Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.Tool
 
-    onScreenChanged: {
-        if (screen) {
-            width = screen.width
-            height = screen.height
+    onActiveChanged: {
+        if (!active && root.opened) {
+            closeMenu()
         }
     }
-
-    // Katman-shell: KWin layer-shell v5 destekler; klavye odağı Exclusive ile gelir.
-    LayerShell.Window.scope: "ravenspot"
-    LayerShell.Window.layer: LayerShell.Window.Layer.LayerOverlay
-    LayerShell.Window.keyboardInteractivity: LayerShell.Window.KeyboardInteractivity.KeyboardInteractivityOnDemand
-    LayerShell.Window.activateOnShow: true
-    LayerShell.Window.anchors: LayerShell.Window.Anchors.AnchorTop | LayerShell.Window.Anchors.AnchorBottom | LayerShell.Window.Anchors.AnchorLeft | LayerShell.Window.Anchors.AnchorRight
 
     // ── Tema ──────────────────────────────────────────────
     property color bgColor: "#cc0b0c10"
@@ -68,13 +58,6 @@ Window {
         root.gpuColor = t.gpuColor
         root.textFont = t.font || "Inter"
         root.themeVersion += 1
-    }
-
-    function syncActiveScreen() {
-        var outName = Shell.getActiveOutputName()
-        if (outName && root.screen && root.screen.name !== outName) {
-            Shell.setWindowScreen(root, outName)
-        }
     }
 
     // ── Durum ─────────────────────────────────────────────
@@ -677,7 +660,7 @@ Window {
     }
 
     function openMenu(initialMenu) {
-        syncActiveScreen()
+        Shell.centerWindowOnActiveScreen(root)
         root.activeMenu = root.item(initialMenu) ? initialMenu : "root"
         root.navStack = []
         root.filterText = ""
@@ -696,9 +679,10 @@ Window {
         else { evaluateGuards() }
         rebuildDisplay()
         startProvider(root.activeMenu)
-        card.x = (root.width - card.width) / 2
-        card.y = (root.height - card.height) / 2
-        Qt.callLater(function(){ searchInput.forceActiveFocus() })
+        Qt.callLater(function(){
+            root.requestActivate()
+            searchInput.forceActiveFocus()
+        })
     }
 
     function closeMenu() {
@@ -725,7 +709,6 @@ Window {
     }
 
     function handleHotkeyTrigger() {
-        syncActiveScreen()
         if (!root.opened) {
             openMenu("root")
             return
@@ -756,18 +739,6 @@ Window {
 
     // ── UI ─────────────────────────────────────────────────
     readonly property string dbgScroll: "trackH=" + scrollTrack.height + " thumbH=" + thumb.height + " thumbY=" + thumb.y + " contentY=" + resultList.contentY + " maxCY=" + (resultList.contentHeight - resultList.height) + " visible=" + scrollTrack.visible
-    Rectangle {
-        id: scrim
-        anchors.fill: parent
-        color: root.scrimColor
-        opacity: root.opened ? 1.0 : 0.0
-        Behavior on opacity { NumberAnimation { duration: 140; easing.type: Easing.OutCubic } }
-        MouseArea {
-            anchors.fill: parent
-            onClicked: closeMenu()
-        }
-    }
-
     // ── Neon LED parlaması: tek ince parlak şerit + dışa doğru sönen hale ──
     // glowSource görünmezdir; MultiEffect onu çizer (kendi halkası + bulanık hale).
     Rectangle {
@@ -796,8 +767,7 @@ Window {
         objectName: "card"
         width: root.cardWidth
         height: Math.min(headerHeight + 1 + displayModel.count * rowHeight + 12 + footerHeight, 720)
-        x: (root.width - width) / 2
-        y: (root.height - height) / 2
+        anchors.centerIn: parent
         color: root.bgColor
         border.color: root.bgBorder
         border.width: 1
@@ -823,91 +793,32 @@ Window {
         Behavior on scale { enabled: !reopenAnim.running; NumberAnimation { duration: 160; easing.type: Easing.OutBack } }
         Behavior on height { NumberAnimation { duration: 130; easing.type: Easing.OutCubic } }
 
-        // Kartı sürükle: Standart pencere davranışı — Yalnızca Alt veya Meta tuşuna basılı tutulduğunda sürüklenir
+        // Kartı sürükle: Alt veya Meta tuşuna basılı tutulduğunda KWin pencereyi doğrudan pürüzsüz taşır
+        MouseArea {
+            id: windowDragArea
+            anchors.fill: parent
+            z: -1
+            acceptedButtons: Qt.LeftButton
+            onPressed: function(mouse) {
+                if (mouse.modifiers & (Qt.AltModifier | Qt.MetaModifier)) {
+                    root.startSystemMove()
+                }
+            }
+        }
         DragHandler {
             id: cardDragAlt
-            target: card
+            target: null
             acceptedButtons: Qt.LeftButton
             acceptedModifiers: Qt.AltModifier
+            onActiveChanged: if (active) root.startSystemMove()
         }
         DragHandler {
             id: cardDragMeta
-            target: card
+            target: null
             acceptedButtons: Qt.LeftButton
             acceptedModifiers: Qt.MetaModifier
+            onActiveChanged: if (active) root.startSystemMove()
         }
-
-        property bool isTransitioning: false
-
-        function checkScreenTransition() {
-            if (isTransitioning) return
-            if (!(cardDragAlt.active || cardDragMeta.active)) return
-            if (!root.screen) return
-            var curS = root.screen
-
-            // Sağ ekrana geçiş (DP-1 -> DP-2)
-            if (card.x + card.width >= root.width - 5) {
-                for (var i = 0; i < Qt.application.screens.length; i++) {
-                    var sRight = Qt.application.screens[i]
-                    if (sRight.name !== curS.name && sRight.virtualX >= curS.virtualX + curS.width - 20) {
-                        isTransitioning = true
-                        Shell.setWindowScreen(root, sRight.name)
-                        card.x = 30
-                        card.y = Math.min(root.height - card.height - 30, Math.max(30, card.y))
-                        isTransitioning = false
-                        return
-                    }
-                }
-            }
-
-            // Sol ekrana geçiş (DP-2 -> DP-1)
-            if (card.x <= 5) {
-                for (var j = 0; j < Qt.application.screens.length; j++) {
-                    var sLeft = Qt.application.screens[j]
-                    if (sLeft.name !== curS.name && sLeft.virtualX + sLeft.width <= curS.virtualX + 20) {
-                        isTransitioning = true
-                        Shell.setWindowScreen(root, sLeft.name)
-                        card.x = root.width - card.width - 30
-                        card.y = Math.min(root.height - card.height - 30, Math.max(30, card.y))
-                        isTransitioning = false
-                        return
-                    }
-                }
-            }
-
-            // Aşağı ekrana geçiş
-            if (card.y + card.height >= root.height - 5) {
-                for (var b = 0; b < Qt.application.screens.length; b++) {
-                    var sBottom = Qt.application.screens[b]
-                    if (sBottom.name !== curS.name && sBottom.virtualY >= curS.virtualY + curS.height - 20) {
-                        isTransitioning = true
-                        Shell.setWindowScreen(root, sBottom.name)
-                        card.y = 30
-                        card.x = Math.min(root.width - card.width - 30, Math.max(30, card.x))
-                        isTransitioning = false
-                        return
-                    }
-                }
-            }
-
-            // Yukarı ekrana geçiş
-            if (card.y <= 5) {
-                for (var t = 0; t < Qt.application.screens.length; t++) {
-                    var sTop = Qt.application.screens[t]
-                    if (sTop.name !== curS.name && sTop.virtualY + sTop.height <= curS.virtualY + 20) {
-                        isTransitioning = true
-                        Shell.setWindowScreen(root, sTop.name)
-                        card.y = root.height - card.height - 30
-                        card.x = Math.min(root.width - card.width - 30, Math.max(30, card.x))
-                        isTransitioning = false
-                        return
-                    }
-                }
-            }
-        }
-
-        onXChanged: checkScreenTransition()
-        onYChanged: checkScreenTransition()
 
         onHeightChanged: {
             // Keep card at its dragged position or reasonable visible range
@@ -1537,7 +1448,6 @@ Window {
     }
 
     Component.onCompleted: {
-        syncActiveScreen()
         syncTheme()
         var ainfo = Shell.getInitialAudioInfo()
         if (ainfo) {
