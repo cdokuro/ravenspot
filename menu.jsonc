@@ -1,0 +1,83 @@
+{
+  // Omarchy menu definition — KDE/CachyOS port.
+  // Şema Omarchy 4'ün omarchy-menu.jsonc'siyle aynıdır.
+  // Ek alan: "iconName" — candy-icons (freedesktop) ikon temasından renkli ikon.
+  //   iconName varsa QML renkli tema ikonunu gösterir; yoksa icon (Nerd Font glifi) kullanılır.
+
+  // ─── Kök menü ────────────────────────────────────────────────
+  "apps": { "icon": "󰀻", "iconName": "applications-all", "label": "Apps", "aliases": ["app", "applications", "uygulamalar"] },
+  "shell": { "icon": "", "iconName": "utilities-terminal", "label": "Shell", "aliases": ["terminal", "konsole", "bash", "fish", "shell"], "action": "konsole" },
+  "files": { "icon": "󰉋", "iconName": "system-file-manager", "label": "Files", "action": "dolphin" },
+  "browser": { "icon": "󰖟", "iconName": "web-browser", "label": "Browser", "action": "xdg-open https://www.mozilla.org/" },
+  "discover": { "icon": "󰀻", "iconName": "plasmadiscover", "label": "Discover", "aliases": ["discover", "store", "mağaza", "yazılım", "market"], "action": "plasma-discover" },
+  "cachyupdate": { "icon": "󰚰", "iconName": "cachy-update-blue", "label": "Cachy Update", "aliases": ["cachy", "update", "güncelle", "cachyos", "pacman"], "action": "konsole -e arch-update" },
+  "appearance": { "icon": "󰏘", "iconName": "cs-themes", "label": "Appearance", "aliases": ["style", "theme"] },
+  "trigger": { "icon": "󱓞", "iconName": "gnome-screenshot", "label": "Trigger" },
+  "nashi": { "icon": "󰴹", "iconName": "nashi", "label": "Nashi", "aliases": ["nashi", "çark", "wheel", "converter", "radial"] },
+  "setup": { "icon": "", "iconName": "gnome-settings", "label": "Setup", "aliases": ["settings", "config"] },
+  "system": { "icon": "", "iconName": "system-shutdown", "label": "System", "aliases": ["power-menu", "power"] },
+  "help": { "icon": "", "iconName": "help-browser", "label": "Help", "aliases": ["help", "yardım", "kılavuz", "info"] },
+
+  // ─── Apps Kategorileri ─────────────────────────────────────────
+  "apps.games": { "icon": "󰊴", "iconName": "applications-games", "label": "Games", "aliases": ["games", "oyunlar"], "provider": "apps-games" },
+  "apps.internet": { "icon": "󰖟", "iconName": "applications-internet", "label": "Internet", "aliases": ["internet", "web", "tarayıcı"], "provider": "apps-internet" },
+  "apps.development": { "icon": "󰅩", "iconName": "applications-development", "label": "Development", "aliases": ["dev", "geliştirme", "kod"], "provider": "apps-development" },
+  "apps.multimedia": { "icon": "󰕼", "iconName": "applications-multimedia", "label": "Multimedia", "aliases": ["media", "müzik", "video", "ses"], "provider": "apps-multimedia" },
+  "apps.graphics": { "icon": "󰏘", "iconName": "applications-graphics", "label": "Graphics", "aliases": ["grafik", "resim", "tasarım"], "provider": "apps-graphics" },
+  "apps.office": { "icon": "󰏆", "iconName": "applications-office", "label": "Office", "aliases": ["ofis", "belge", "pdf"], "provider": "apps-office" },
+  "apps.system": { "icon": "󰒓", "iconName": "applications-system", "label": "System", "aliases": ["sistem", "yönetim"], "provider": "apps-system" },
+  "apps.utilities": { "icon": "󰘦", "iconName": "applications-utilities", "label": "Utilities", "aliases": ["araçlar", "faydalı"], "provider": "apps-utilities" },
+  "apps.all": { "icon": "󰀻", "iconName": "applications-all", "label": "All Apps", "aliases": ["all", "tümü", "hepsi"], "provider": "apps-all" },
+
+  // ─── System ──────────────────────────────────────────────────
+  "system.screensaver": { "icon": "󱄄", "iconName": "preferences-desktop-screensaver", "label": "Screensaver", "action": "loginctl lock-session" },
+  "system.lock": { "icon": "", "iconName": "system-lock-screen", "label": "Lock", "action": "loginctl lock-session" },
+  "system.suspend": { "icon": "󰒲", "iconName": "system-suspend", "label": "Suspend", "action": "systemctl suspend" },
+  "system.hibernate": { "icon": "󰤁", "iconName": "system-suspend-hibernate", "label": "Hibernate", "when": "[[ -f /sys/power/state ]] && grep -qw disk /sys/power/state", "action": "systemctl hibernate" },
+  "system.logout": { "icon": "󰍃", "iconName": "system-log-out", "label": "Logout", "action": "qdbus6 org.kde.Shutdown /Shutdown org.kde.Shutdown.logout" },
+  "system.reboot": { "icon": "󰜉", "iconName": "system-reboot", "label": "Reboot", "action": "qdbus6 org.kde.Shutdown /Shutdown org.kde.Shutdown.logoutAndReboot" },
+  "system.shutdown": { "icon": "󰐥", "iconName": "system-shutdown", "label": "Shutdown", "action": "qdbus6 org.kde.Shutdown /Shutdown org.kde.Shutdown.logoutAndShutdown" },
+
+  // ─── Appearance ──────────────────────────────────────────────
+  "appearance.colorscheme": { "icon": "󰸌", "iconName": "cs-color", "label": "Color Scheme", "aliases": ["colors", "theme"], "provider": "colorschemes" },
+  "appearance.wallpaper": { "icon": "", "iconName": "gnome-settings-background", "label": "Wallpaper", "action": "systemsettings kcm_wallpaper" },
+  "appearance.nightlight": { "icon": "󰔎", "iconName": "redshift-status-on", "label": "Night Light", "action": "systemsettings kcm_nightlight" },
+  "appearance.cursor": { "icon": "󰇀", "iconName": "preferences-desktop-mouse", "label": "Cursor Theme", "action": "systemsettings kcm_cursortheme" },
+  "appearance.icons": { "icon": "󰀻", "iconName": "icons", "label": "Icon Theme", "action": "systemsettings kcm_icons" },
+  "appearance.fonts": { "icon": "", "iconName": "gnome-settings-font", "label": "Fonts", "action": "systemsettings kcm_fonts" },
+  "appearance.powerprofile": { "icon": "󰂖", "iconName": "battery", "label": "Power Profile", "provider": "power-profiles" },
+
+  // ─── Trigger ─────────────────────────────────────────────────
+  "trigger.capture": { "icon": "", "iconName": "gnome-screenshot", "label": "Capture", "aliases": ["screenshot", "screenrecord"] },
+  "trigger.capture.fullscreen": { "icon": "󰍹", "iconName": "gnome-screenshot", "label": "Fullscreen", "action": "spectacle -f -b -n" },
+  "trigger.capture.activewindow": { "icon": "󰖲", "iconName": "gnome-screenshot", "label": "Active Window", "action": "spectacle -a -b -n" },
+  "trigger.capture.region": { "icon": "󰆞", "iconName": "gnome-screenshot", "label": "Region", "action": "spectacle -r -b -n" },
+  "trigger.capture.screenrecord": { "icon": "", "iconName": "gnome-screenshot", "label": "Screen Recording", "action": "spectacle -R" },
+  "trigger.emoji": { "icon": "", "label": "Emoji", "aliases": ["emoji", "emojis"], "action": "plasma-emojier" },
+  "trigger.clipboard": { "icon": "󰅇", "iconName": "org.kde.plasma.clipboard", "label": "Clipboard History", "aliases": ["clipboard", "pano", "kopyalananlar"], "provider": "clipboard" },
+
+  // ─── Nashi Radial Hub ─────────────────────────────────────────
+  "nashi.convert": { "icon": "󰑮", "iconName": "system-reboot", "label": "Dönüştürme Çarkı (Convert Wheel)", "aliases": ["convert", "dönüştür", "çark", "format"], "action": "/home/dokuro/Masaüstü/orkunprogram/nashi-linux/nashi --convert" },
+  "nashi.tools": { "icon": "󰘦", "iconName": "applications-utilities", "label": "Araçlar Çarkı (Tools Wheel)", "aliases": ["tools", "araçlar", "qr", "pdf"], "action": "/home/dokuro/Masaüstü/orkunprogram/nashi-linux/nashi --tools" },
+  "nashi.actions": { "icon": "󰌨", "iconName": "input-keyboard", "label": "Eylemler Çarkı (Actions Wheel)", "aliases": ["actions", "eylemler", "kısayol"], "action": "/home/dokuro/Masaüstü/orkunprogram/nashi-linux/nashi --actions" },
+  "nashi.window": { "icon": "󰴹", "iconName": "nashi", "label": "Nashi Ana Pencere (File Garden)", "aliases": ["nashi", "window", "pencere", "garden"], "action": "/home/dokuro/Masaüstü/orkunprogram/nashi-linux/nashi" },
+
+  // ─── Setup ───────────────────────────────────────────────────
+  "setup.general": { "icon": "", "iconName": "preferences-system", "label": "Genel", "aliases": ["general", "settings", "ayarlar", "system settings"], "action": "systemsettings" },
+  "setup.monitors": { "icon": "󰍹", "iconName": "cs-display", "label": "Monitors", "action": "systemsettings kcm_kscreen" },
+  "setup.keyboard": { "icon": "", "iconName": "cs-keyboard", "label": "Keyboard", "action": "systemsettings kcm_keyboard" },
+  "setup.network": { "icon": "󰛳", "iconName": "cs-network", "label": "Network", "aliases": ["network", "wifi"], "action": "systemsettings kcm_networkmanagement" },
+  "setup.bluetooth": { "icon": "󰂯", "iconName": "bluetooth", "label": "Bluetooth", "action": "systemsettings kcm_bluetooth" },
+  "setup.audio": { "icon": "󰕾", "iconName": "audio-volume-high", "label": "Audio", "action": "systemsettings kcm_pulseaudio" },
+  "setup.notifications": { "icon": "󰂛", "iconName": "gnome-panel-notification-area", "label": "Notifications", "action": "systemsettings kcm_notifications" },
+  "setup.desktop": { "icon": "󰪶", "iconName": "gnome-settings-background", "label": "Desktop & Wallpaper", "action": "systemsettings kcm_wallpaper" },
+  "setup.activities": { "icon": "󰏘", "iconName": "org.kde.plasma.showActivityManager", "label": "Activities", "action": "systemsettings kcm_activities" },
+  "setup.about": { "icon": "", "iconName": "help-about", "label": "About This System", "action": "systemsettings kcm_about-distro" },
+
+  // ─── Help & Shortcuts ─────────────────────────────────────────
+  "help.shortcuts": { "icon": "󰌌", "iconName": "preferences-desktop-keyboard", "label": "Klavye Kısayolları (Hile Sayfası)", "action": "notify-send -t 6000 'Omarchy Menü Kısayolları' '• Meta: Menüyü Aç\n• Esc / Backspace: Geri / Kapat\n• >: Terminal Komutu\n• =: Hesap Makinesi\n• ?: Web Arama\n• F: Temayı Favorile' -i preferences-desktop-keyboard" },
+  "help.omarchy": { "icon": "󰘦", "iconName": "help-about", "label": "Omarchy Menu Kullanım Kılavuzu", "action": "xdg-open /home/dokuro/.local/share/omarchy-menu/README.md" },
+  "help.nashi": { "icon": "󰴹", "iconName": "nashi", "label": "Nashi Çark Dokümantasyonu", "action": "xdg-open /home/dokuro/Masaüstü/orkunprogram/nashi-linux/DESIGN.md" },
+  "help.cachyos": { "icon": "󰣇", "iconName": "cachy-update-blue", "label": "CachyOS Wiki ve Yardım", "action": "xdg-open https://wiki.cachyos.org" },
+  "help.sysinfo": { "icon": "󰍹", "iconName": "help-about", "label": "Sistem Özeti", "action": "systemsettings kcm_about-distro" }
+}
