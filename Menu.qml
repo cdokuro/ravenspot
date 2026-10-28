@@ -72,17 +72,8 @@ Window {
 
     function syncActiveScreen() {
         var outName = Shell.getActiveOutputName()
-        if (outName) {
-            for (var i = 0; i < Qt.application.screens.length; i++) {
-                if (Qt.application.screens[i].name === outName) {
-                    if (root.screen !== Qt.application.screens[i]) {
-                        root.screen = Qt.application.screens[i]
-                    }
-                    root.width = Qt.application.screens[i].width
-                    root.height = Qt.application.screens[i].height
-                    break
-                }
-            }
+        if (outName && root.screen && root.screen.name !== outName) {
+            Shell.setWindowScreen(root, outName)
         }
     }
 
@@ -802,10 +793,11 @@ Window {
 
     Rectangle {
         id: card
+        objectName: "card"
         width: root.cardWidth
         height: Math.min(headerHeight + 1 + displayModel.count * rowHeight + 12 + footerHeight, 720)
-        x: (Screen.width - width) / 2
-        y: (Screen.height - height) / 2
+        x: (root.width - width) / 2
+        y: (root.height - height) / 2
         color: root.bgColor
         border.color: root.bgBorder
         border.width: 1
@@ -845,66 +837,69 @@ Window {
             acceptedModifiers: Qt.MetaModifier
         }
 
+        property bool isTransitioning: false
+
         function checkScreenTransition() {
+            if (isTransitioning) return
             if (!(cardDragAlt.active || cardDragMeta.active)) return
             if (!root.screen) return
             var curS = root.screen
 
             // Sağ ekrana geçiş (DP-1 -> DP-2)
-            if (card.x + card.width > root.width - 20) {
+            if (card.x + card.width >= root.width - 5) {
                 for (var i = 0; i < Qt.application.screens.length; i++) {
                     var sRight = Qt.application.screens[i]
-                    if (sRight !== curS && sRight.virtualX >= curS.virtualX + curS.width - 20) {
-                        root.screen = sRight
-                        root.width = sRight.width
-                        root.height = sRight.height
+                    if (sRight.name !== curS.name && sRight.virtualX >= curS.virtualX + curS.width - 20) {
+                        isTransitioning = true
+                        Shell.setWindowScreen(root, sRight.name)
                         card.x = 30
-                        card.y = Math.min(sRight.height - card.height - 30, Math.max(30, card.y))
+                        card.y = Math.min(root.height - card.height - 30, Math.max(30, card.y))
+                        isTransitioning = false
                         return
                     }
                 }
             }
 
             // Sol ekrana geçiş (DP-2 -> DP-1)
-            if (card.x < 20) {
+            if (card.x <= 5) {
                 for (var j = 0; j < Qt.application.screens.length; j++) {
                     var sLeft = Qt.application.screens[j]
-                    if (sLeft !== curS && sLeft.virtualX + sLeft.width <= curS.virtualX + 20) {
-                        root.screen = sLeft
-                        root.width = sLeft.width
-                        root.height = sLeft.height
-                        card.x = sLeft.width - card.width - 30
-                        card.y = Math.min(sLeft.height - card.height - 30, Math.max(30, card.y))
+                    if (sLeft.name !== curS.name && sLeft.virtualX + sLeft.width <= curS.virtualX + 20) {
+                        isTransitioning = true
+                        Shell.setWindowScreen(root, sLeft.name)
+                        card.x = root.width - card.width - 30
+                        card.y = Math.min(root.height - card.height - 30, Math.max(30, card.y))
+                        isTransitioning = false
                         return
                     }
                 }
             }
 
             // Aşağı ekrana geçiş
-            if (card.y + card.height > root.height - 20) {
+            if (card.y + card.height >= root.height - 5) {
                 for (var b = 0; b < Qt.application.screens.length; b++) {
                     var sBottom = Qt.application.screens[b]
-                    if (sBottom !== curS && sBottom.virtualY >= curS.virtualY + curS.height - 20) {
-                        root.screen = sBottom
-                        root.width = sBottom.width
-                        root.height = sBottom.height
+                    if (sBottom.name !== curS.name && sBottom.virtualY >= curS.virtualY + curS.height - 20) {
+                        isTransitioning = true
+                        Shell.setWindowScreen(root, sBottom.name)
                         card.y = 30
-                        card.x = Math.min(sBottom.width - card.width - 30, Math.max(30, card.x))
+                        card.x = Math.min(root.width - card.width - 30, Math.max(30, card.x))
+                        isTransitioning = false
                         return
                     }
                 }
             }
 
             // Yukarı ekrana geçiş
-            if (card.y < 20) {
+            if (card.y <= 5) {
                 for (var t = 0; t < Qt.application.screens.length; t++) {
                     var sTop = Qt.application.screens[t]
-                    if (sTop !== curS && sTop.virtualY + sTop.height <= curS.virtualY + 20) {
-                        root.screen = sTop
-                        root.width = sTop.width
-                        root.height = sTop.height
-                        card.y = sTop.height - card.height - 30
-                        card.x = Math.min(sTop.width - card.width - 30, Math.max(30, card.x))
+                    if (sTop.name !== curS.name && sTop.virtualY + sTop.height <= curS.virtualY + 20) {
+                        isTransitioning = true
+                        Shell.setWindowScreen(root, sTop.name)
+                        card.y = root.height - card.height - 30
+                        card.x = Math.min(root.width - card.width - 30, Math.max(30, card.x))
+                        isTransitioning = false
                         return
                     }
                 }

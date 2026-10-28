@@ -676,6 +676,22 @@ class Shell(QObject):
             pass
         return ""
 
+    @Slot(QObject, str, result=bool)
+    def setWindowScreen(self, qquick_window, screen_name):
+        for s in QGuiApplication.screens():
+            if s.name() == screen_name:
+                if qquick_window.screen() != s:
+                    qquick_window.hide()
+                    qquick_window.setScreen(s)
+                    qquick_window.setWidth(s.geometry().width())
+                    qquick_window.setHeight(s.geometry().height())
+                    qquick_window.show()
+                else:
+                    qquick_window.setWidth(s.geometry().width())
+                    qquick_window.setHeight(s.geometry().height())
+                return True
+        return False
+
     @Slot(result="QVariantMap")
     def getInitialAudioInfo(self):
         vol_pct = 50
