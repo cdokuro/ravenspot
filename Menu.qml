@@ -62,6 +62,20 @@ Window {
         root.themeVersion += 1
     }
 
+    function syncActiveScreen() {
+        var outName = Shell.getActiveOutputName()
+        if (outName) {
+            for (var i = 0; i < Qt.application.screens.length; i++) {
+                if (Qt.application.screens[i].name === outName) {
+                    if (root.screen !== Qt.application.screens[i]) {
+                        root.screen = Qt.application.screens[i]
+                    }
+                    break
+                }
+            }
+        }
+    }
+
     // ── Durum ─────────────────────────────────────────────
     property var items: ({})
     property var itemOrder: []
@@ -662,6 +676,7 @@ Window {
     }
 
     function openMenu(initialMenu) {
+        syncActiveScreen()
         root.activeMenu = root.item(initialMenu) ? initialMenu : "root"
         root.navStack = []
         root.filterText = ""
@@ -709,6 +724,7 @@ Window {
     }
 
     function handleHotkeyTrigger() {
+        syncActiveScreen()
         if (!root.opened) {
             openMenu("root")
             return
@@ -818,6 +834,67 @@ Window {
             acceptedButtons: Qt.LeftButton
             acceptedModifiers: Qt.MetaModifier
         }
+
+        function checkScreenTransition() {
+            if (!(cardDragAlt.active || cardDragMeta.active)) return
+            if (!root.screen) return
+            var curS = root.screen
+
+            // Sağ ekrana geçiş (DP-1 -> DP-2)
+            if (card.x + card.width > root.width - 20) {
+                for (var i = 0; i < Qt.application.screens.length; i++) {
+                    var sRight = Qt.application.screens[i]
+                    if (sRight !== curS && sRight.virtualX >= curS.virtualX + curS.width - 20) {
+                        root.screen = sRight
+                        card.x = 30
+                        card.y = Math.min(sRight.height - card.height - 30, Math.max(30, card.y))
+                        return
+                    }
+                }
+            }
+
+            // Sol ekrana geçiş (DP-2 -> DP-1)
+            if (card.x < 20) {
+                for (var j = 0; j < Qt.application.screens.length; j++) {
+                    var sLeft = Qt.application.screens[j]
+                    if (sLeft !== curS && sLeft.virtualX + sLeft.width <= curS.virtualX + 20) {
+                        root.screen = sLeft
+                        card.x = sLeft.width - card.width - 30
+                        card.y = Math.min(sLeft.height - card.height - 30, Math.max(30, card.y))
+                        return
+                    }
+                }
+            }
+
+            // Aşağı ekrana geçiş
+            if (card.y + card.height > root.height - 20) {
+                for (var b = 0; b < Qt.application.screens.length; b++) {
+                    var sBottom = Qt.application.screens[b]
+                    if (sBottom !== curS && sBottom.virtualY >= curS.virtualY + curS.height - 20) {
+                        root.screen = sBottom
+                        card.y = 30
+                        card.x = Math.min(sBottom.width - card.width - 30, Math.max(30, card.x))
+                        return
+                    }
+                }
+            }
+
+            // Yukarı ekrana geçiş
+            if (card.y < 20) {
+                for (var t = 0; t < Qt.application.screens.length; t++) {
+                    var sTop = Qt.application.screens[t]
+                    if (sTop !== curS && sTop.virtualY + sTop.height <= curS.virtualY + 20) {
+                        root.screen = sTop
+                        card.y = sTop.height - card.height - 30
+                        card.x = Math.min(sTop.width - card.width - 30, Math.max(30, card.x))
+                        return
+                    }
+                }
+            }
+        }
+
+        onXChanged: checkScreenTransition()
+        onYChanged: checkScreenTransition()
 
         onHeightChanged: {
             // Keep card at its dragged position or reasonable visible range
@@ -1447,6 +1524,7 @@ Window {
     }
 
     Component.onCompleted: {
+        syncActiveScreen()
         syncTheme()
         var ainfo = Shell.getInitialAudioInfo()
         if (ainfo) {

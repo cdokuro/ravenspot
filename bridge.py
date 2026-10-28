@@ -663,6 +663,19 @@ class Shell(QObject):
             "uptime": up_text or "--"
         }
 
+    @Slot(result=str)
+    def getActiveOutputName(self):
+        try:
+            out = subprocess.check_output(
+                ["busctl", "--user", "call", "org.kde.KWin", "/KWin", "org.kde.KWin", "activeOutputName"],
+                timeout=0.5
+            ).decode().strip()
+            if '"' in out:
+                return out.split('"')[1]
+        except Exception:
+            pass
+        return ""
+
     @Slot(result="QVariantMap")
     def getInitialAudioInfo(self):
         vol_pct = 50
