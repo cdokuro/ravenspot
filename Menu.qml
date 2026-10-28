@@ -696,7 +696,7 @@ Window {
     Rectangle {
         id: card
         width: root.cardWidth
-        height: Math.min(headerHeight + 1 + displayModel.count * rowHeight, 700)
+        height: Math.min(headerHeight + 1 + displayModel.count * rowHeight + 12, 700)
         x: (Screen.width - width) / 2
         y: (Screen.height - height) / 2
         color: root.bgColor
@@ -821,7 +821,7 @@ Window {
         ListView {
             id: resultList
             anchors.top: parent.top
-            anchors.topMargin: headerHeight + 1
+            anchors.topMargin: headerHeight + 1 + 6
             anchors.left: parent.left
             anchors.right: parent.right
             anchors.rightMargin: scrollTrack.visible ? 10 : 6
@@ -830,14 +830,14 @@ Window {
             anchors.bottomMargin: 6
             clip: true
             model: displayModel
+            boundsBehavior: Flickable.DragAndOvershootBounds
             highlight: Rectangle {
                 color: root.selBg
                 radius: 6
-                // Soft glow/border on hover/selection
-                border.color: Qt.rgba(root.selFg.r, root.selFg.g, root.selFg.b, 0.15)
+                border.color: Qt.rgba(root.selFg.r, root.selFg.g, root.selFg.b, 0.18)
                 border.width: 1
             }
-            highlightMoveDuration: 130
+            highlightMoveDuration: 55
             highlightMoveVelocity: -1
 
             delegate: Rectangle {
@@ -1009,7 +1009,7 @@ Window {
             anchors.right: parent.right
             anchors.rightMargin: 3
             width: 6
-            visible: resultList.contentHeight > resultList.height
+            visible: (resultList.contentHeight - resultList.height) > 16
 
             // Arka plan rayı (çok hafif, tutulabilirlik hissi verir)
             Rectangle {
