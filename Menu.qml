@@ -33,7 +33,7 @@ Window {
     property color cpuColor: "#ffd700"
     property color gpuColor: "#00f0ff"
     property string iconFont: "FantasqueSansM Nerd Font"
-    property string textFont: "FantasqueSansM Nerd Font"
+    property string textFont: "Inter"
     property int cardWidth: 620
     property int rowHeight: 48
     property int headerHeight: 70
@@ -773,20 +773,22 @@ Window {
         Behavior on scale { enabled: !reopenAnim.running; NumberAnimation { duration: 160; easing.type: Easing.OutBack } }
         Behavior on height { NumberAnimation { duration: 130; easing.type: Easing.OutCubic } }
 
-        // Alt+drag ile kartı taşı (LayerShell overlay olduğu için KWin taşımıyor).
+        // Kartı sürükle: Alt tuşuyla her yerden, veya başlıktaki boşluktan doğrudan sol tıkla
         DragHandler {
             id: cardDrag
             target: card
             acceptedModifiers: Qt.AltModifier
-            onActiveChanged: {
-            }
+        }
+        DragHandler {
+            id: headerDrag
+            target: card
+            acceptedButtons: Qt.LeftButton
+            acceptedModifiers: Qt.NoModifier
+            margin: 10
         }
 
         onHeightChanged: {
-            if (card.y + card.height > Screen.height - 40) {
-                card.y = Screen.height - 40 - card.height
-            }
-            if (card.y < 40) card.y = 40
+            // Keep card at its dragged position or reasonable visible range
         }
 
         // ── Klavye işleyici ─────────────────────────────────
@@ -857,25 +859,25 @@ Window {
                 height: 20
                 z: 5
 
-                // Sol: CPU Göstergesi (büyütüldü: 12px)
+                // Sol: CPU Göstergesi (büyütüldü: 14px / net okunur)
                 Row {
                     anchors.left: parent.left
                     anchors.verticalCenter: parent.verticalCenter
-                    spacing: 7
+                    spacing: 8
 
                     Text {
                         text: " CPU"
                         color: root.cpuColor
-                        font.pixelSize: 12
+                        font.pixelSize: 14
                         font.family: root.iconFont
                         font.weight: Font.Bold
                     }
                     Text {
                         text: root.cpuPercent + "%"
                         color: root.fgColor
-                        font.pixelSize: 12
+                        font.pixelSize: 14
                         font.family: root.textFont
-                        font.weight: Font.Bold
+                        font.weight: Font.DemiBold
                     }
                 }
 
@@ -980,25 +982,25 @@ Window {
                     }
                 }
 
-                // Sağ: GPU Göstergesi (büyütüldü: 12px)
+                // Sağ: GPU Göstergesi (büyütüldü: 14px / net okunur)
                 Row {
                     anchors.right: parent.right
                     anchors.verticalCenter: parent.verticalCenter
-                    spacing: 7
+                    spacing: 8
 
                     Text {
                         text: "󰢮 GPU"
                         color: root.gpuColor
-                        font.pixelSize: 12
+                        font.pixelSize: 14
                         font.family: root.iconFont
                         font.weight: Font.Bold
                     }
                     Text {
                         text: root.gpuPercent + "%"
                         color: root.fgColor
-                        font.pixelSize: 12
+                        font.pixelSize: 14
                         font.family: root.textFont
-                        font.weight: Font.Bold
+                        font.weight: Font.DemiBold
                     }
                 }
             }

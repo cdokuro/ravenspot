@@ -4,7 +4,7 @@
     "raven_cyber": {
       "name": "Raven Cyber",
       "desc": "Cyberpunk koyu obsidyen zemin ve altın sarısı neon parıltı",
-      "font": "FantasqueSansM Nerd Font",
+      "font": "Inter",
       "iconTheme": "candy-icons",
       "bgColor": "#0b0c10",
       "bgBorder": "#ffd700",
@@ -20,7 +20,7 @@
     "cachy_emerald": {
       "name": "Cachy Emerald",
       "desc": "CachyOS zümrüt yeşili ve modern koyu arayüz",
-      "font": "Fira Sans",
+      "font": "Inter",
       "iconTheme": "Nordic-green",
       "bgColor": "#0a1312",
       "bgBorder": "#00f5a0",
@@ -36,7 +36,7 @@
     "sweet_mars": {
       "name": "Sweet Mars",
       "desc": "KDE Sweet Mars neon mor/pembe synthwave estetiği",
-      "font": "Noto Sans",
+      "font": "Inter",
       "iconTheme": "candy-icons",
       "bgColor": "#110b1a",
       "bgBorder": "#ff2a6d",
@@ -52,7 +52,7 @@
     "nordic_frost": {
       "name": "Nordic Frost",
       "desc": "Kuzey buzulu soğuk mavi ve sade İskandinav tonları",
-      "font": "Fira Sans Condensed",
+      "font": "Inter",
       "iconTheme": "Nordic-bluish",
       "bgColor": "#0d1117",
       "bgBorder": "#5e81ac",
@@ -68,7 +68,7 @@
     "obsidian_stealth": {
       "name": "Obsidian Stealth",
       "desc": "Minimalist mat siyah monokrom ve saf beyaz ışıltı",
-      "font": "Fira Sans",
+      "font": "Inter",
       "iconTheme": "Tela-dark",
       "bgColor": "#080808",
       "bgBorder": "#e5e5e5",

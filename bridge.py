@@ -539,11 +539,11 @@ class Shell(QObject):
         # Sounds
         self._snd_thock = QSoundEffect()
         self._snd_thock.setSource(QUrl.fromLocalFile(os.path.join(APP_DIR, "sounds", "thock.wav")))
-        self._snd_thock.setVolume(0.25)
+        self._snd_thock.setVolume(0.15)
 
         self._snd_creamy = QSoundEffect()
         self._snd_creamy.setSource(QUrl.fromLocalFile(os.path.join(APP_DIR, "sounds", "creamy.wav")))
-        self._snd_creamy.setVolume(0.30)
+        self._snd_creamy.setVolume(0.18)
 
         # Telemetry timer
         self._last_cpu_idle = 0
