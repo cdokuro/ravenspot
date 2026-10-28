@@ -156,6 +156,8 @@ Window {
             loadPowerProfiles(id)
         } else if (entry.provider === "clipboard") {
             loadClipboard(id)
+        } else if (entry.provider && entry.provider.startsWith("files-")) {
+            loadFolderFiles(id, entry.provider.substring(6))
         }
     }
 
@@ -171,6 +173,26 @@ Window {
                 label: c.label, title: "", target: "", description: "Panoya kopyala",
                 action: "", provider: "clipboard-item", aliases: [], searchTerms: [],
                 when: "", checked: "", disabled: "", value: c.value, order: j
+            })
+        }
+        var merged = MenuModel.swapProviderRows(root.items, root.itemOrder, id, rows)
+        root.items = merged.items
+        root.itemOrder = merged.itemOrder
+        rebuildDisplay()
+    }
+
+    function loadFolderFiles(id, folderName) {
+        var arr = JSON.parse(Shell.listFolderFiles(folderName) || "[]")
+        var rows = []
+        for (var j = 0; j < arr.length; j++) {
+            var f = arr[j]
+            var rowId = id + ".file-" + j
+            rows.push({
+                id: rowId, parent: id, kind: "action",
+                icon: f.is_dir ? "󰉋" : "󰈔", iconFont: "", iconName: f.iconName,
+                label: f.name, title: "", target: "", description: f.desc,
+                action: "", provider: "file-item", aliases: [f.name], searchTerms: [f.name],
+                when: "", checked: "", disabled: "", filePath: f.path, order: j
             })
         }
         var merged = MenuModel.swapProviderRows(root.items, root.itemOrder, id, rows)
@@ -557,6 +579,10 @@ Window {
         } else if (row.provider === "clipboard-item") {
             root.opened = false
             Shell.setClipboard(row.value)
+            Qt.callLater(closeMenu)
+        } else if (row.provider === "file-item") {
+            root.opened = false
+            Shell.openPath(row.filePath)
             Qt.callLater(closeMenu)
         } else {
             root.opened = false

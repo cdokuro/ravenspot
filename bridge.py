@@ -421,6 +421,90 @@ class Shell(QObject):
         except Exception:
             pass
 
+    # ── Provider: files (downloads / user dirs) ───────────────────
+    @Slot(str, result=str)
+    def listFolderFiles(self, folder_name="downloads"):
+        import datetime, mimetypes
+        home = os.path.expanduser("~")
+        mapping = {
+            "downloads": ["İndirilenler", "Downloads"],
+            "desktop": ["Masaüstü", "Desktop"],
+            "documents": ["Belgeler", "Documents"],
+            "pictures": ["Resimler", "Pictures"],
+            "videos": ["Videolar", "Videos"],
+            "music": ["Müzik", "Music"],
+        }
+        target_dir = None
+        for candidate in mapping.get(folder_name, [folder_name]):
+            p = os.path.join(home, candidate)
+            if os.path.isdir(p):
+                target_dir = p
+                break
+        if not target_dir:
+            return "[]"
+
+        def _fmt_size(sz):
+            for unit in ["B", "KB", "MB", "GB", "TB"]:
+                if sz < 1024.0:
+                    return f"{sz:.1f} {unit}" if unit != "B" else f"{sz} B"
+                sz /= 1024.0
+            return f"{sz:.1f} PB"
+
+        def _icon_for(name, is_dir):
+            if is_dir:
+                return "folder"
+            ext = os.path.splitext(name)[1].lower()
+            ext_map = {
+                ".png": "image-png", ".jpg": "image-jpeg", ".jpeg": "image-jpeg", ".webp": "image-x-generic",
+                ".gif": "image-gif", ".svg": "image-x-generic",
+                ".tar": "application-x-tar", ".gz": "application-x-tar", ".zip": "application-zip",
+                ".xz": "application-x-tar", ".7z": "application-x-7z-compressed",
+                ".pdf": "application-pdf", ".txt": "text-plain", ".md": "text-markdown",
+                ".mp4": "video-mp4", ".mkv": "video-x-generic", ".mp3": "audio-mp3",
+                ".sh": "application-x-shellscript", ".py": "text-x-python",
+                ".json": "application-json", ".desktop": "application-x-desktop"
+            }
+            if ext in ext_map:
+                return ext_map[ext]
+            mime, _ = mimetypes.guess_type(name)
+            if mime:
+                return mime.replace("/", "-")
+            return "application-octet-stream"
+
+        rows = []
+        try:
+            for entry in os.scandir(target_dir):
+                try:
+                    st = entry.stat()
+                    is_d = entry.is_dir()
+                    dt = datetime.datetime.fromtimestamp(st.st_mtime).strftime("%d.%m %H:%M")
+                    sz_str = "Klasör" if is_d else _fmt_size(st.st_size)
+                    icon_nm = _icon_for(entry.name, is_d)
+                    rows.append({
+                        "name": entry.name,
+                        "path": entry.path,
+                        "is_dir": is_d,
+                        "mtime": st.st_mtime,
+                        "desc": f"{sz_str} • {dt}",
+                        "iconName": icon_nm
+                    })
+                except Exception:
+                    continue
+        except Exception:
+            return "[]"
+
+        rows.sort(key=lambda x: x["mtime"], reverse=True)
+        return json.dumps(rows[:80])
+
+    @Slot(str)
+    def openPath(self, path):
+        if not path:
+            return
+        try:
+            subprocess.Popen(["xdg-open", path])
+        except Exception:
+            pass
+
 
 class AppIconProvider(QQuickImageProvider):
     """QML'e `image://appicon/<desktop-id>` üzerinden uygulama ikonu verir."""

@@ -7,7 +7,10 @@
   // ─── Kök menü ────────────────────────────────────────────────
   "apps": { "icon": "󰀻", "iconName": "applications-all", "label": "Apps", "aliases": ["app", "applications", "uygulamalar"] },
   "shell": { "icon": "", "iconName": "utilities-terminal", "label": "Shell", "aliases": ["terminal", "konsole", "bash", "fish", "shell"], "action": "konsole" },
-  "files": { "icon": "󰉋", "iconName": "system-file-manager", "label": "Files", "action": "dolphin" },
+  "files": { "icon": "󰉋", "iconName": "system-file-manager", "label": "Files", "aliases": ["dosyalar", "file", "dizin", "klasör"] },
+  "files.downloads": { "icon": "󰇚", "iconName": "folder-download", "label": "Downloads (İndirilenler)", "aliases": ["downloads", "indirilenler", "download"], "provider": "files-downloads" },
+  "files.desktop": { "icon": "󰇄", "iconName": "user-desktop", "label": "Desktop (Masaüstü)", "aliases": ["desktop", "masaüstü"], "provider": "files-desktop" },
+  "files.dolphin": { "icon": "󰉋", "iconName": "system-file-manager", "label": "Dolphin Dosya Yöneticisi", "aliases": ["dolphin", "file manager", "manager"], "action": "dolphin" },
   "browser": { "icon": "󰖟", "iconName": "web-browser", "label": "Browser", "action": "xdg-open https://www.mozilla.org/" },
   "discover": { "icon": "󰀻", "iconName": "plasmadiscover", "label": "Discover", "aliases": ["discover", "store", "mağaza", "yazılım", "market"], "action": "plasma-discover" },
   "cachyupdate": { "icon": "󰚰", "iconName": "cachy-update-blue", "label": "Cachy Update", "aliases": ["cachy", "update", "güncelle", "cachyos", "pacman"], "action": "konsole -e arch-update" },
