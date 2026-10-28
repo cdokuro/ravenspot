@@ -912,14 +912,14 @@ def main():
     def handle_new_connection():
         sock = server.nextPendingConnection()
         if sock:
-            def on_ready_read():
+            def process_data(raw):
                 try:
-                    data = bytes(sock.readAll()).decode("utf-8", errors="ignore").strip()
+                    data = raw.decode("utf-8", errors="ignore").strip()
                     for line in data.splitlines():
                         cmd_line = line.strip().lower()
+                        print(f"ravenspot: IPC komutu alındı -> {cmd_line}", flush=True)
                         if cmd_line in ("toggle", "reopen"):
                             shell.toggleRequested.emit()
-                            shell.reopenRequested.emit()
                         elif cmd_line == "show":
                             shell.showRequested.emit()
                         elif cmd_line == "hide":
@@ -928,9 +928,15 @@ def main():
                             shell.reloadRequested.emit()
                         elif cmd_line == "quit":
                             QGuiApplication.quit()
-                except Exception:
-                    pass
+                except Exception as e:
+                    print(f"ravenspot IPC hata: {e}", flush=True)
+
+            def on_ready_read():
+                process_data(bytes(sock.readAll()))
+
             sock.readyRead.connect(on_ready_read)
+            if sock.bytesAvailable() > 0:
+                on_ready_read()
 
     server.newConnection.connect(handle_new_connection)
 

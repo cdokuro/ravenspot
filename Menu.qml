@@ -13,8 +13,11 @@ Window {
     color: "transparent"
     flags: Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.Tool
 
+    property bool canCloseOnInactive: false
     onActiveChanged: {
-        if (!active && root.opened) {
+        if (active) {
+            canCloseOnInactive = true
+        } else if (root.opened && canCloseOnInactive) {
             closeMenu()
         }
     }
@@ -674,6 +677,8 @@ Window {
             root.sysMuted = ainfo.muted
         }
 
+        root.canCloseOnInactive = false
+        root.visible = true
         root.opened = true
         if (!root.loaded) loadItems()
         else { evaluateGuards() }
@@ -681,12 +686,15 @@ Window {
         startProvider(root.activeMenu)
         Shell.onMenuVisibilityChanged(true)
         Qt.callLater(function(){
+            root.show()
             root.requestActivate()
+            root.raise()
             searchInput.forceActiveFocus()
         })
     }
 
     function closeMenu() {
+        root.canCloseOnInactive = false
         root.opened = false
         closeTimer.restart()
     }
@@ -704,9 +712,6 @@ Window {
     Connections {
         target: Shell
         function onToggleRequested() {
-            handleHotkeyTrigger()
-        }
-        function onReopenRequested() {
             handleHotkeyTrigger()
         }
         function onShowRequested() {
