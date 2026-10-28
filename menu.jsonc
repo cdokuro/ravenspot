@@ -13,7 +13,6 @@
   "cachyupdate": { "icon": "󰚰", "iconName": "cachy-update-blue", "label": "Cachy Update", "aliases": ["cachy", "update", "güncelle", "cachyos", "pacman"], "action": "konsole -e arch-update" },
   "appearance": { "icon": "󰏘", "iconName": "cs-themes", "label": "Appearance", "aliases": ["style", "theme"] },
   "trigger": { "icon": "󱓞", "iconName": "gnome-screenshot", "label": "Trigger" },
-  "nashi": { "icon": "󰴹", "iconName": "nashi", "label": "Nashi", "aliases": ["nashi", "çark", "wheel", "converter", "radial"] },
   "setup": { "icon": "", "iconName": "gnome-settings", "label": "Setup", "aliases": ["settings", "config"] },
   "system": { "icon": "", "iconName": "system-shutdown", "label": "System", "aliases": ["power-menu", "power"] },
   "help": { "icon": "", "iconName": "help-browser", "label": "Help", "aliases": ["help", "yardım", "kılavuz", "info"] },
@@ -57,11 +56,12 @@
   "trigger.emoji": { "icon": "", "label": "Emoji", "aliases": ["emoji", "emojis"], "action": "plasma-emojier" },
   "trigger.clipboard": { "icon": "󰅇", "iconName": "org.kde.plasma.clipboard", "label": "Clipboard History", "aliases": ["clipboard", "pano", "kopyalananlar"], "provider": "clipboard" },
 
-  // ─── Nashi Radial Hub ─────────────────────────────────────────
-  "nashi.convert": { "icon": "󰑮", "iconName": "system-reboot", "label": "Dönüştürme Çarkı (Convert Wheel)", "aliases": ["convert", "dönüştür", "çark", "format"], "action": "/home/dokuro/Masaüstü/orkunprogram/nashi-linux/nashi --convert" },
-  "nashi.tools": { "icon": "󰘦", "iconName": "applications-utilities", "label": "Araçlar Çarkı (Tools Wheel)", "aliases": ["tools", "araçlar", "qr", "pdf"], "action": "/home/dokuro/Masaüstü/orkunprogram/nashi-linux/nashi --tools" },
-  "nashi.actions": { "icon": "󰌨", "iconName": "input-keyboard", "label": "Eylemler Çarkı (Actions Wheel)", "aliases": ["actions", "eylemler", "kısayol"], "action": "/home/dokuro/Masaüstü/orkunprogram/nashi-linux/nashi --actions" },
-  "nashi.window": { "icon": "󰴹", "iconName": "nashi", "label": "Nashi Ana Pencere (File Garden)", "aliases": ["nashi", "window", "pencere", "garden"], "action": "/home/dokuro/Masaüstü/orkunprogram/nashi-linux/nashi" },
+  // ─── Trigger -> Nashi Radial Hub ──────────────────────────────
+  "trigger.nashi": { "icon": "󰴹", "iconName": "nashi", "label": "Nashi", "aliases": ["nashi", "çark", "wheel", "converter", "radial"] },
+  "trigger.nashi.convert": { "icon": "󰑮", "iconName": "system-reboot", "label": "Dönüştürme Çarkı (Convert Wheel)", "aliases": ["convert", "dönüştür", "çark", "format"], "action": "/home/dokuro/Masaüstü/orkunprogram/nashi-linux/nashi --convert" },
+  "trigger.nashi.tools": { "icon": "󰘦", "iconName": "applications-utilities", "label": "Araçlar Çarkı (Tools Wheel)", "aliases": ["tools", "araçlar", "qr", "pdf"], "action": "/home/dokuro/Masaüstü/orkunprogram/nashi-linux/nashi --tools" },
+  "trigger.nashi.actions": { "icon": "󰌨", "iconName": "input-keyboard", "label": "Eylemler Çarkı (Actions Wheel)", "aliases": ["actions", "eylemler", "kısayol"], "action": "/home/dokuro/Masaüstü/orkunprogram/nashi-linux/nashi --actions" },
+  "trigger.nashi.window": { "icon": "󰴹", "iconName": "nashi", "label": "Nashi Ana Pencere (File Garden)", "aliases": ["nashi", "window", "pencere", "garden"], "action": "/home/dokuro/Masaüstü/orkunprogram/nashi-linux/nashi" },
 
   // ─── Setup ───────────────────────────────────────────────────
   "setup.general": { "icon": "", "iconName": "preferences-system", "label": "Genel", "aliases": ["general", "settings", "ayarlar", "system settings"], "action": "systemsettings" },
