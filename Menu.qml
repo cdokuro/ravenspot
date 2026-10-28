@@ -32,7 +32,7 @@ Window {
     property string iconFont: "MesloLGS Nerd Font"
     property string textFont: "Noto Sans"
     property int cardWidth: 620
-    property int rowHeight: 44
+    property int rowHeight: 48
     property int headerHeight: 56
 
     // ── Durum ─────────────────────────────────────────────
@@ -904,33 +904,38 @@ Window {
                     fillMode: Image.PreserveAspectFit
                 }
 
-                Text {
-                    id: labelText
+                readonly property bool hasDetail: (root.filterText.length > 0 && !!model.detail && model.detail.length > 0)
+
+                Column {
                     anchors.left: glyph.right
                     anchors.right: favStar.visible ? favStar.left : (rightDetail.visible ? rightDetail.left : chevron.left)
                     anchors.rightMargin: 8
                     anchors.verticalCenter: parent.verticalCenter
-                    text: model.label
-                    color: (index === resultList.currentIndex && !model.disabled) ? root.selFg
-                         : (model.disabled ? root.fgDim : root.fgColor)
-                    font.pixelSize: 15
-                    font.family: root.textFont
-                    elide: Text.ElideRight
-                }
+                    spacing: 3
 
-                // Detay (arama sırasında alt yol)
-                Text {
-                    anchors.left: labelText.left
-                    anchors.right: chevron.left
-                    anchors.rightMargin: 8
-                    anchors.verticalCenter: parent.verticalCenter
-                    anchors.verticalCenterOffset: 10
-                    text: model.detail || ""
-                    color: root.fgDim
-                    font.pixelSize: 11
-                    font.family: root.textFont
-                    elide: Text.ElideRight
-                    visible: root.filterText.length > 0 && model.detail.length > 0
+                    Text {
+                        id: labelText
+                        width: parent.width
+                        text: model.label
+                        color: (index === resultList.currentIndex && !model.disabled) ? root.selFg
+                             : (model.disabled ? root.fgDim : root.fgColor)
+                        font.pixelSize: row.hasDetail ? 14 : 15
+                        font.family: root.textFont
+                        font.weight: row.hasDetail ? Font.Medium : Font.Normal
+                        elide: Text.ElideRight
+                    }
+
+                    // Detay (arama sırasında alt yol / açıklama)
+                    Text {
+                        id: subDetailText
+                        width: parent.width
+                        text: model.detail || ""
+                        color: (index === resultList.currentIndex && !model.disabled) ? Qt.rgba(root.selFg.r, root.selFg.g, root.selFg.b, 0.75) : root.fgDim
+                        font.pixelSize: 11
+                        font.family: root.textFont
+                        elide: Text.ElideRight
+                        visible: row.hasDetail
+                    }
                 }
 
                 // Sağ taraf: Durum rozeti / favori yıldızı
