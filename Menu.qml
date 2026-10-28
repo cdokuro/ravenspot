@@ -830,8 +830,15 @@ Window {
             anchors.bottomMargin: 6
             clip: true
             model: displayModel
-            highlight: Rectangle { color: root.selBg; radius: 6 }
-            highlightMoveDuration: 60
+            highlight: Rectangle {
+                color: root.selBg
+                radius: 6
+                // Soft glow/border on hover/selection
+                border.color: Qt.rgba(root.selFg.r, root.selFg.g, root.selFg.b, 0.15)
+                border.width: 1
+            }
+            highlightMoveDuration: 130
+            highlightMoveVelocity: -1
 
             delegate: Rectangle {
                 id: row
@@ -977,6 +984,13 @@ Window {
                 MouseArea {
                     anchors.fill: parent
                     hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onEntered: {
+                        if (!model.disabled && root.selectedIndex !== index) {
+                            root.selectedIndex = index
+                            resultList.currentIndex = index
+                        }
+                    }
                     onClicked: activateIndex(index)
                 }
             }
