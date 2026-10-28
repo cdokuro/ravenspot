@@ -7,5 +7,5 @@ Exec=/home/dokuro/.local/bin/ravenspot
 Icon=utilities-terminal
 Terminal=false
 NoDisplay=true
-X-KDE-Shortcuts=Alt+F1
+X-KDE-Shortcuts=Meta+Space
 Categories=Utility;System;

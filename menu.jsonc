@@ -75,7 +75,7 @@
   "setup.about": { "icon": "", "iconName": "help-about", "label": "About This System", "action": "systemsettings kcm_about-distro" },
 
   // ─── Help & Shortcuts ─────────────────────────────────────────
-  "help.shortcuts": { "icon": "󰌌", "iconName": "preferences-desktop-keyboard", "label": "Klavye Kısayolları (Hile Sayfası)", "action": "notify-send -t 6000 'RavenSpot Kısayolları' '• Meta: Menüyü Aç\n• Esc / Backspace: Geri / Kapat\n• >: Terminal Komutu\n• =: Hesap Makinesi\n• ?: Web Arama\n• F: Temayı Favorile' -i preferences-desktop-keyboard" },
+  "help.shortcuts": { "icon": "󰌌", "iconName": "preferences-desktop-keyboard", "label": "Klavye Kısayolları (Hile Sayfası)", "action": "notify-send -t 6000 'RavenSpot Kısayolları' '• Meta+Space: Menüyü Aç\n• Esc / Backspace: Geri / Kapat\n• >: Terminal Komutu\n• =: Hesap Makinesi\n• ?: Web Arama\n• F: Temayı Favorile' -i preferences-desktop-keyboard" },
   "help.ravenspot": { "icon": "󰘦", "iconName": "help-about", "label": "RavenSpot Kullanım Kılavuzu", "action": "xdg-open /home/dokuro/Masaüstü/ravenspot/README.md" },
   "help.nashi": { "icon": "󰴹", "iconName": "nashi", "label": "Nashi Çark Dokümantasyonu", "action": "xdg-open /home/dokuro/Masaüstü/orkunprogram/nashi-linux/DESIGN.md" },
   "help.cachyos": { "icon": "󰣇", "iconName": "cachy-update-blue", "label": "CachyOS Wiki ve Yardım", "action": "xdg-open https://wiki.cachyos.org" },
