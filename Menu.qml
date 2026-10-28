@@ -824,8 +824,10 @@ Window {
             anchors.topMargin: headerHeight + 1
             anchors.left: parent.left
             anchors.right: parent.right
-            anchors.rightMargin: scrollTrack.visible ? 10 : 0
+            anchors.rightMargin: scrollTrack.visible ? 10 : 6
+            anchors.leftMargin: 6
             anchors.bottom: parent.bottom
+            anchors.bottomMargin: 6
             clip: true
             model: displayModel
             highlight: Rectangle { color: root.selBg; radius: 6 }
@@ -833,9 +835,8 @@ Window {
 
             delegate: Rectangle {
                 id: row
-                width: resultList.width - 12
+                width: resultList.width
                 height: root.rowHeight
-                x: 6
                 radius: 6
                 color: (index === resultList.currentIndex && !model.disabled) ? "transparent" : "transparent"
 
@@ -988,28 +989,30 @@ Window {
         Item {
             id: scrollTrack
             anchors.top: resultList.top
+            anchors.topMargin: 4
             anchors.bottom: resultList.bottom
+            anchors.bottomMargin: 8
             anchors.right: parent.right
-            anchors.rightMargin: 1
-            width: 9
+            anchors.rightMargin: 3
+            width: 6
             visible: resultList.contentHeight > resultList.height
 
             // Arka plan rayı (çok hafif, tutulabilirlik hissi verir)
             Rectangle {
                 anchors.fill: parent
-                anchors.leftMargin: 3
-                anchors.rightMargin: 3
-                radius: 3
+                anchors.leftMargin: 1
+                anchors.rightMargin: 1
+                radius: 2
                 color: "#16000000"
             }
 
-            // Thumb — sabit 32px (~1cm) yükseklikte parlak şerit
+            // Thumb — zarif, modern parlak şerit
             Rectangle {
                 id: thumb
-                width: 7
-                height: 32
-                radius: 3
-                x: 1
+                width: 5
+                height: 36
+                radius: 2.5
+                x: 0.5
                 color: thumbDrag.pressed ? "#ffef9a"
                      : thumbDrag.containsMouse ? "#ffe08a"
                      : root.bgBorder
