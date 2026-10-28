@@ -375,6 +375,7 @@ Window {
             section: section || "",
             isFavorite: !!entry.isFavorite,
             isCurrent: !!entry.isCurrent,
+            themeKey: entry.themeKey || entry.value || "",
             themeSection: entry.themeSection || ""
         }
     }
@@ -634,8 +635,12 @@ Window {
             Qt.callLater(closeMenu)
         } else if (row.provider === "ravenspot-theme-item") {
             Shell.playCreamy()
-            Shell.applyRavenTheme(row.themeKey)
-            loadRavenThemes(root.activeMenu)
+            var k = row.themeKey || row.value || ""
+            if (k) {
+                Shell.applyRavenTheme(k)
+                root.syncTheme()
+                loadRavenThemes(root.activeMenu)
+            }
             return
         } else {
             Shell.playCreamy()
@@ -773,18 +778,18 @@ Window {
         Behavior on scale { enabled: !reopenAnim.running; NumberAnimation { duration: 160; easing.type: Easing.OutBack } }
         Behavior on height { NumberAnimation { duration: 130; easing.type: Easing.OutCubic } }
 
-        // Kartı sürükle: Alt tuşuyla her yerden, veya başlıktaki boşluktan doğrudan sol tıkla
+        // Kartı sürükle: Standart pencere davranışı — Yalnızca Alt veya Meta tuşuna basılı tutulduğunda sürüklenir
         DragHandler {
-            id: cardDrag
+            id: cardDragAlt
             target: card
+            acceptedButtons: Qt.LeftButton
             acceptedModifiers: Qt.AltModifier
         }
         DragHandler {
-            id: headerDrag
+            id: cardDragMeta
             target: card
             acceptedButtons: Qt.LeftButton
-            acceptedModifiers: Qt.NoModifier
-            margin: 10
+            acceptedModifiers: Qt.MetaModifier
         }
 
         onHeightChanged: {
@@ -907,43 +912,55 @@ Window {
                         }
                     }
 
-                    // Ses Barı / Slider
+                    // Ses Barı / Slider (Tıklama, Sürükleme ve WheelHandler)
                     Rectangle {
                         id: volumeSliderTrack
                         width: 110
-                        height: 5
-                        radius: 2.5
-                        color: "#25ffffff"
+                        height: 6
+                        radius: 3
+                        color: "#30ffffff"
                         anchors.verticalCenter: parent.verticalCenter
 
                         // Dolu kısım
                         Rectangle {
                             id: volumeSliderFill
                             height: parent.height
-                            radius: 2.5
+                            radius: 3
                             width: root.sysMuted ? 0 : Math.max(0, Math.min(parent.width, (root.sysVolume / 100.0) * parent.width))
                             color: root.bgBorder
-                            Behavior on width { NumberAnimation { duration: 50 } }
+                            Behavior on width { NumberAnimation { duration: 40 } }
                         }
 
                         // Thumb gösterge
                         Rectangle {
-                            width: 9
-                            height: 9
-                            radius: 4.5
+                            width: 10
+                            height: 10
+                            radius: 5
                             anchors.verticalCenter: parent.verticalCenter
-                            x: Math.max(0, Math.min(volumeSliderTrack.width - 9, volumeSliderFill.width - 4.5))
+                            x: Math.max(0, Math.min(volumeSliderTrack.width - 10, volumeSliderFill.width - 5))
                             color: root.selFg
                             border.color: root.bgBorder
                             border.width: 1
                             visible: !root.sysMuted
                         }
 
+                        WheelHandler {
+                            id: volWheelHandler
+                            acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
+                            onWheel: function(event) {
+                                var delta = event.angleDelta.y > 0 ? 5 : -5
+                                var v = Math.max(0, Math.min(100, root.sysVolume + delta))
+                                root.sysVolume = v
+                                root.sysMuted = false
+                                Shell.setSystemVolume(v)
+                            }
+                        }
+
                         MouseArea {
                             id: volDragArea
                             anchors.fill: parent
-                            anchors.topMargin: -6
-                            anchors.bottomMargin: -6
+                            anchors.topMargin: -8
+                            anchors.bottomMargin: -8
                             hoverEnabled: true
                             cursorShape: Qt.PointingHandCursor
 
