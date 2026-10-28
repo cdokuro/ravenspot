@@ -533,7 +533,7 @@ class Shell(QObject):
                 pass
 
         # Apply current theme icon theme to QIcon
-        cur_icon_theme = self.currentTheme().get("iconTheme", "candy-icons")
+        cur_icon_theme = "candy-icons"
         QIcon.setThemeName(cur_icon_theme)
 
         # Sounds
@@ -691,12 +691,12 @@ class AppIconProvider(QQuickImageProvider):
         self._shell = shell
 
     def requestImage(self, id, size, requestedSize):
-        # id: .desktop dosya adı (uzantısız)
+        clean_id = id.split("?")[0] if "?" in id else id
         icon_name = ""
         desktop = ""
         apps = self._shell._load_apps()
         for app in apps:
-            if app["id"] == id:
+            if app["id"] == clean_id:
                 icon_name = app["icon"]
                 desktop = app["desktop"]
                 break
@@ -723,11 +723,12 @@ class ThemeIconProvider(QQuickImageProvider):
         super().__init__(QQuickImageProvider.Image)
 
     def requestImage(self, id, size, requestedSize):
+        clean_id = id.split("?")[0] if "?" in id else id
         icon = QIcon()
-        if os.path.exists(id) or os.path.isabs(id):
-            icon = QIcon(id)
+        if os.path.exists(clean_id) or os.path.isabs(clean_id):
+            icon = QIcon(clean_id)
         if icon.isNull():
-            icon = QIcon.fromTheme(id)
+            icon = QIcon.fromTheme(clean_id)
         if icon.isNull():
             icon = QIcon.fromTheme("application-x-executable")
         sz = requestedSize if requestedSize.isValid() and requestedSize.width() > 0 else QSize(48, 48)
