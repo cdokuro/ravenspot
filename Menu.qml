@@ -880,6 +880,21 @@ Window {
             height: root.headerHeight
             color: "transparent"
 
+            // ── En üst ince hat doğrudan pencere taşıma alanı (Titlebar Drag Handle) ──
+            MouseArea {
+                id: topDragHandle
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.top: parent.top
+                height: 32
+                z: 2
+                acceptedButtons: Qt.LeftButton
+                cursorShape: Qt.ArrowCursor
+                onPressed: function(mouse) {
+                    root.startSystemMove()
+                }
+            }
+
             // ── Üst Bar: Ses Kontrol Paneli (Mute + Slider) ──
             Item {
                 id: topMetricsBar
@@ -895,6 +910,7 @@ Window {
                 // Orta: Ses Kontrol Paneli (Mute butonu + Ses Slider)
                 Row {
                     id: volumeControlRow
+                    z: 10
                     anchors.centerIn: parent
                     spacing: 8
 
