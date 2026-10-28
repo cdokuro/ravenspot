@@ -34,7 +34,7 @@ Window {
     property color gpuColor: "#00f0ff"
     property string iconFont: "FantasqueSansM Nerd Font"
     property string textFont: "Inter"
-    property int cardWidth: 620
+    property int cardWidth: 680
     property int rowHeight: 48
     property int headerHeight: 70
     property int cpuPercent: 0
@@ -42,7 +42,7 @@ Window {
     property int sysVolume: 50
     property bool sysMuted: false
     property var sysMonitor: ({ "ram_text": "--", "ram_pct": 0, "disk_text": "--", "disk_pct": 0, "temp": "--", "uptime": "--" })
-    property int footerHeight: 30
+    property int footerHeight: 38
 
     property int themeVersion: 1
 
@@ -1315,16 +1315,16 @@ Window {
 
             Row {
                 anchors.centerIn: parent
-                spacing: 14
+                spacing: 16
 
                 // CPU
                 Row {
-                    spacing: 5
+                    spacing: 6
                     anchors.verticalCenter: parent.verticalCenter
                     Text {
                         text: " CPU"
                         color: root.cpuColor
-                        font.pixelSize: 11
+                        font.pixelSize: 14
                         font.family: root.iconFont
                         font.weight: Font.Bold
                         anchors.verticalCenter: parent.verticalCenter
@@ -1332,7 +1332,7 @@ Window {
                     Text {
                         text: root.cpuPercent + "%"
                         color: root.fgDim
-                        font.pixelSize: 11
+                        font.pixelSize: 14
                         font.family: root.textFont
                         anchors.verticalCenter: parent.verticalCenter
                     }
@@ -1340,12 +1340,12 @@ Window {
 
                 // GPU
                 Row {
-                    spacing: 5
+                    spacing: 6
                     anchors.verticalCenter: parent.verticalCenter
                     Text {
                         text: "󰢮 GPU"
                         color: root.gpuColor
-                        font.pixelSize: 11
+                        font.pixelSize: 14
                         font.family: root.iconFont
                         font.weight: Font.Bold
                         anchors.verticalCenter: parent.verticalCenter
@@ -1353,7 +1353,7 @@ Window {
                     Text {
                         text: root.gpuPercent + "%"
                         color: root.fgDim
-                        font.pixelSize: 11
+                        font.pixelSize: 14
                         font.family: root.textFont
                         anchors.verticalCenter: parent.verticalCenter
                     }
@@ -1361,12 +1361,12 @@ Window {
 
                 // RAM
                 Row {
-                    spacing: 5
+                    spacing: 6
                     anchors.verticalCenter: parent.verticalCenter
                     Text {
                         text: "󰘚 RAM"
                         color: root.bgBorder
-                        font.pixelSize: 11
+                        font.pixelSize: 14
                         font.family: root.iconFont
                         font.weight: Font.Bold
                         anchors.verticalCenter: parent.verticalCenter
@@ -1374,7 +1374,7 @@ Window {
                     Text {
                         text: (root.sysMonitor ? root.sysMonitor.ram_text : "--") + " (" + (root.sysMonitor ? root.sysMonitor.ram_pct : 0) + "%)"
                         color: root.fgDim
-                        font.pixelSize: 11
+                        font.pixelSize: 14
                         font.family: root.textFont
                         anchors.verticalCenter: parent.verticalCenter
                     }
@@ -1382,12 +1382,12 @@ Window {
 
                 // Disk (Root /)
                 Row {
-                    spacing: 5
+                    spacing: 6
                     anchors.verticalCenter: parent.verticalCenter
                     Text {
                         text: "󰋊 Disk"
                         color: root.bgBorder
-                        font.pixelSize: 11
+                        font.pixelSize: 14
                         font.family: root.iconFont
                         font.weight: Font.Bold
                         anchors.verticalCenter: parent.verticalCenter
@@ -1395,7 +1395,7 @@ Window {
                     Text {
                         text: (root.sysMonitor ? root.sysMonitor.disk_text : "--") + " (" + (root.sysMonitor ? root.sysMonitor.disk_pct : 0) + "%)"
                         color: root.fgDim
-                        font.pixelSize: 11
+                        font.pixelSize: 14
                         font.family: root.textFont
                         anchors.verticalCenter: parent.verticalCenter
                     }
@@ -1403,12 +1403,12 @@ Window {
 
                 // Sıcaklık
                 Row {
-                    spacing: 5
+                    spacing: 6
                     anchors.verticalCenter: parent.verticalCenter
                     Text {
                         text: " Isı"
                         color: root.cpuColor
-                        font.pixelSize: 11
+                        font.pixelSize: 14
                         font.family: root.iconFont
                         font.weight: Font.Bold
                         anchors.verticalCenter: parent.verticalCenter
@@ -1416,7 +1416,7 @@ Window {
                     Text {
                         text: root.sysMonitor ? root.sysMonitor.temp : "--"
                         color: root.fgDim
-                        font.pixelSize: 11
+                        font.pixelSize: 14
                         font.family: root.textFont
                         anchors.verticalCenter: parent.verticalCenter
                     }
@@ -1424,12 +1424,12 @@ Window {
 
                 // Uptime
                 Row {
-                    spacing: 5
+                    spacing: 6
                     anchors.verticalCenter: parent.verticalCenter
                     Text {
                         text: "󰔚 Süre"
                         color: root.gpuColor
-                        font.pixelSize: 11
+                        font.pixelSize: 14
                         font.family: root.iconFont
                         font.weight: Font.Bold
                         anchors.verticalCenter: parent.verticalCenter
@@ -1437,7 +1437,7 @@ Window {
                     Text {
                         text: root.sysMonitor ? root.sysMonitor.uptime : "--"
                         color: root.fgDim
-                        font.pixelSize: 11
+                        font.pixelSize: 14
                         font.family: root.textFont
                         anchors.verticalCenter: parent.verticalCenter
                     }
