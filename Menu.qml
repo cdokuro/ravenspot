@@ -9,10 +9,18 @@ import "MenuModel.js" as MenuModel
 Window {
     id: root
     visible: true
-    width: Screen.width
-    height: Screen.height
+    screen: Qt.application.screens.length > 0 ? Qt.application.screens[0] : null
+    width: screen ? screen.width : 2560
+    height: screen ? screen.height : 1440
     color: "transparent"
     flags: Qt.FramelessWindowHint | Qt.Tool
+
+    onScreenChanged: {
+        if (screen) {
+            width = screen.width
+            height = screen.height
+        }
+    }
 
     // Katman-shell: KWin layer-shell v5 destekler; klavye odağı Exclusive ile gelir.
     LayerShell.Window.scope: "ravenspot"
@@ -70,6 +78,8 @@ Window {
                     if (root.screen !== Qt.application.screens[i]) {
                         root.screen = Qt.application.screens[i]
                     }
+                    root.width = Qt.application.screens[i].width
+                    root.height = Qt.application.screens[i].height
                     break
                 }
             }
@@ -846,6 +856,8 @@ Window {
                     var sRight = Qt.application.screens[i]
                     if (sRight !== curS && sRight.virtualX >= curS.virtualX + curS.width - 20) {
                         root.screen = sRight
+                        root.width = sRight.width
+                        root.height = sRight.height
                         card.x = 30
                         card.y = Math.min(sRight.height - card.height - 30, Math.max(30, card.y))
                         return
@@ -859,6 +871,8 @@ Window {
                     var sLeft = Qt.application.screens[j]
                     if (sLeft !== curS && sLeft.virtualX + sLeft.width <= curS.virtualX + 20) {
                         root.screen = sLeft
+                        root.width = sLeft.width
+                        root.height = sLeft.height
                         card.x = sLeft.width - card.width - 30
                         card.y = Math.min(sLeft.height - card.height - 30, Math.max(30, card.y))
                         return
@@ -872,6 +886,8 @@ Window {
                     var sBottom = Qt.application.screens[b]
                     if (sBottom !== curS && sBottom.virtualY >= curS.virtualY + curS.height - 20) {
                         root.screen = sBottom
+                        root.width = sBottom.width
+                        root.height = sBottom.height
                         card.y = 30
                         card.x = Math.min(sBottom.width - card.width - 30, Math.max(30, card.x))
                         return
@@ -885,6 +901,8 @@ Window {
                     var sTop = Qt.application.screens[t]
                     if (sTop !== curS && sTop.virtualY + sTop.height <= curS.virtualY + 20) {
                         root.screen = sTop
+                        root.width = sTop.width
+                        root.height = sTop.height
                         card.y = sTop.height - card.height - 30
                         card.x = Math.min(sTop.width - card.width - 30, Math.max(30, card.x))
                         return
