@@ -879,7 +879,7 @@ Window {
             height: root.headerHeight
             color: "transparent"
 
-            // ── Üst Bar: CPU, Ortada Ses Slider + Mute, GPU ──
+            // ── Üst Bar: Ses Kontrol Paneli (Mute + Slider) ──
             Item {
                 id: topMetricsBar
                 anchors.left: parent.left
@@ -890,30 +890,6 @@ Window {
                 anchors.topMargin: 8
                 height: 20
                 z: 5
-
-                // Sol: CPU Göstergesi (kusursuz dikey merkezleme ve taban hizalama)
-                Row {
-                    anchors.left: parent.left
-                    anchors.verticalCenter: parent.verticalCenter
-                    spacing: 8
-
-                    Text {
-                        text: " CPU"
-                        color: root.cpuColor
-                        font.pixelSize: 14
-                        font.family: root.iconFont
-                        font.weight: Font.Bold
-                        anchors.verticalCenter: parent.verticalCenter
-                    }
-                    Text {
-                        text: root.cpuPercent + "%"
-                        color: root.fgColor
-                        font.pixelSize: 14
-                        font.family: root.textFont
-                        font.weight: Font.DemiBold
-                        anchors.verticalCenter: parent.verticalCenter
-                    }
-                }
 
                 // Orta: Ses Kontrol Paneli (Mute butonu + Ses Slider)
                 Row {
@@ -1024,30 +1000,6 @@ Window {
                         font.pixelSize: 10
                         font.family: root.textFont
                         font.weight: Font.Bold
-                        anchors.verticalCenter: parent.verticalCenter
-                    }
-                }
-
-                // Sağ: GPU Göstergesi (kusursuz dikey merkezleme ve taban hizalama)
-                Row {
-                    anchors.right: parent.right
-                    anchors.verticalCenter: parent.verticalCenter
-                    spacing: 8
-
-                    Text {
-                        text: "󰢮 GPU"
-                        color: root.gpuColor
-                        font.pixelSize: 14
-                        font.family: root.iconFont
-                        font.weight: Font.Bold
-                        anchors.verticalCenter: parent.verticalCenter
-                    }
-                    Text {
-                        text: root.gpuPercent + "%"
-                        color: root.fgColor
-                        font.pixelSize: 14
-                        font.family: root.textFont
-                        font.weight: Font.DemiBold
                         anchors.verticalCenter: parent.verticalCenter
                     }
                 }
@@ -1363,11 +1315,53 @@ Window {
 
             Row {
                 anchors.centerIn: parent
-                spacing: 22
+                spacing: 14
+
+                // CPU
+                Row {
+                    spacing: 5
+                    anchors.verticalCenter: parent.verticalCenter
+                    Text {
+                        text: " CPU"
+                        color: root.cpuColor
+                        font.pixelSize: 11
+                        font.family: root.iconFont
+                        font.weight: Font.Bold
+                        anchors.verticalCenter: parent.verticalCenter
+                    }
+                    Text {
+                        text: root.cpuPercent + "%"
+                        color: root.fgDim
+                        font.pixelSize: 11
+                        font.family: root.textFont
+                        anchors.verticalCenter: parent.verticalCenter
+                    }
+                }
+
+                // GPU
+                Row {
+                    spacing: 5
+                    anchors.verticalCenter: parent.verticalCenter
+                    Text {
+                        text: "󰢮 GPU"
+                        color: root.gpuColor
+                        font.pixelSize: 11
+                        font.family: root.iconFont
+                        font.weight: Font.Bold
+                        anchors.verticalCenter: parent.verticalCenter
+                    }
+                    Text {
+                        text: root.gpuPercent + "%"
+                        color: root.fgDim
+                        font.pixelSize: 11
+                        font.family: root.textFont
+                        anchors.verticalCenter: parent.verticalCenter
+                    }
+                }
 
                 // RAM
                 Row {
-                    spacing: 6
+                    spacing: 5
                     anchors.verticalCenter: parent.verticalCenter
                     Text {
                         text: "󰘚 RAM"
@@ -1388,7 +1382,7 @@ Window {
 
                 // Disk (Root /)
                 Row {
-                    spacing: 6
+                    spacing: 5
                     anchors.verticalCenter: parent.verticalCenter
                     Text {
                         text: "󰋊 Disk"
@@ -1409,7 +1403,7 @@ Window {
 
                 // Sıcaklık
                 Row {
-                    spacing: 6
+                    spacing: 5
                     anchors.verticalCenter: parent.verticalCenter
                     Text {
                         text: " Isı"
@@ -1430,7 +1424,7 @@ Window {
 
                 // Uptime
                 Row {
-                    spacing: 6
+                    spacing: 5
                     anchors.verticalCenter: parent.verticalCenter
                     Text {
                         text: "󰔚 Süre"
