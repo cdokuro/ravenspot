@@ -511,7 +511,7 @@ class Shell(QObject):
 
     # ── Raven Themes, Telemetry & Sound Effects ──────────────────
     themeChanged = Signal()
-    statsUpdated = Signal(int, int)
+    statsUpdated = Signal(int, int, int, bool)
 
     def _init_extra(self):
         self._themes_file = os.path.join(APP_DIR, "themes.json")
@@ -539,11 +539,11 @@ class Shell(QObject):
         # Sounds
         self._snd_thock = QSoundEffect()
         self._snd_thock.setSource(QUrl.fromLocalFile(os.path.join(APP_DIR, "sounds", "thock.wav")))
-        self._snd_thock.setVolume(0.55)
+        self._snd_thock.setVolume(0.25)
 
         self._snd_creamy = QSoundEffect()
         self._snd_creamy.setSource(QUrl.fromLocalFile(os.path.join(APP_DIR, "sounds", "creamy.wav")))
-        self._snd_creamy.setVolume(0.65)
+        self._snd_creamy.setVolume(0.30)
 
         # Telemetry timer
         self._last_cpu_idle = 0
@@ -581,7 +581,38 @@ class Shell(QObject):
                         break
         except Exception:
             pass
-        self.statsUpdated.emit(cpu_pct, gpu_pct)
+
+        # Audio volume & mute
+        vol_pct = 50
+        is_muted = False
+        try:
+            out = subprocess.check_output(["wpctl", "get-volume", "@DEFAULT_AUDIO_SINK@"], timeout=1).decode().strip()
+            is_muted = "[MUTED]" in out
+            for part in out.split():
+                try:
+                    vol_pct = int(float(part) * 100)
+                    break
+                except ValueError:
+                    pass
+        except Exception:
+            pass
+
+        self.statsUpdated.emit(cpu_pct, gpu_pct, vol_pct, is_muted)
+
+    @Slot(int)
+    def setSystemVolume(self, volume):
+        vol = max(0, min(100, volume)) / 100.0
+        try:
+            subprocess.Popen(["wpctl", "set-volume", "@DEFAULT_AUDIO_SINK@", f"{vol:.2f}"])
+        except Exception:
+            pass
+
+    @Slot()
+    def toggleSystemMute(self):
+        try:
+            subprocess.Popen(["wpctl", "set-mute", "@DEFAULT_AUDIO_SINK@", "toggle"])
+        except Exception:
+            pass
 
     @Slot(result="QVariantMap")
     def currentTheme(self):

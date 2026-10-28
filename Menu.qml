@@ -36,9 +36,11 @@ Window {
     property string textFont: "FantasqueSansM Nerd Font"
     property int cardWidth: 620
     property int rowHeight: 48
-    property int headerHeight: 64
+    property int headerHeight: 70
     property int cpuPercent: 0
     property int gpuPercent: 0
+    property int sysVolume: 50
+    property bool sysMuted: false
 
     function syncTheme() {
         var t = Shell.currentTheme()
@@ -677,9 +679,11 @@ Window {
         function onReopenRequested() {
             handleHotkeyTrigger()
         }
-        function onStatsUpdated(cpu, gpu) {
+        function onStatsUpdated(cpu, gpu, vol, muted) {
             root.cpuPercent = cpu
             root.gpuPercent = gpu
+            root.sysVolume = vol
+            root.sysMuted = muted
         }
         function onThemeChanged() {
             root.syncTheme()
@@ -841,56 +845,161 @@ Window {
             height: root.headerHeight
             color: "transparent"
 
-            // ── Üst Köşe Telemetri Rozetleri ──
-            Row {
+            // ── Üst Bar: CPU, Ortada Ses Slider + Mute, GPU ──
+            Item {
+                id: topMetricsBar
                 anchors.left: parent.left
-                anchors.leftMargin: 18
-                anchors.top: parent.top
-                anchors.topMargin: 8
-                spacing: 6
-                z: 2
-
-                Text {
-                    text: " CPU"
-                    color: root.cpuColor
-                    font.pixelSize: 10
-                    font.family: root.iconFont
-                    font.weight: Font.Bold
-                    opacity: 0.85
-                }
-                Text {
-                    text: root.cpuPercent + "%"
-                    color: root.fgColor
-                    font.pixelSize: 10
-                    font.family: root.textFont
-                    font.weight: Font.Bold
-                    opacity: 0.95
-                }
-            }
-
-            Row {
                 anchors.right: parent.right
+                anchors.leftMargin: 18
                 anchors.rightMargin: 18
                 anchors.top: parent.top
                 anchors.topMargin: 8
-                spacing: 6
-                z: 2
+                height: 20
+                z: 5
 
-                Text {
-                    text: "󰢮 GPU"
-                    color: root.gpuColor
-                    font.pixelSize: 10
-                    font.family: root.iconFont
-                    font.weight: Font.Bold
-                    opacity: 0.85
+                // Sol: CPU Göstergesi (büyütüldü: 12px)
+                Row {
+                    anchors.left: parent.left
+                    anchors.verticalCenter: parent.verticalCenter
+                    spacing: 7
+
+                    Text {
+                        text: " CPU"
+                        color: root.cpuColor
+                        font.pixelSize: 12
+                        font.family: root.iconFont
+                        font.weight: Font.Bold
+                    }
+                    Text {
+                        text: root.cpuPercent + "%"
+                        color: root.fgColor
+                        font.pixelSize: 12
+                        font.family: root.textFont
+                        font.weight: Font.Bold
+                    }
                 }
-                Text {
-                    text: root.gpuPercent + "%"
-                    color: root.fgColor
-                    font.pixelSize: 10
-                    font.family: root.textFont
-                    font.weight: Font.Bold
-                    opacity: 0.95
+
+                // Orta: Ses Kontrol Paneli (Mute butonu + Ses Slider)
+                Row {
+                    id: volumeControlRow
+                    anchors.centerIn: parent
+                    spacing: 8
+
+                    // Mute Butonu
+                    Text {
+                        id: muteBtn
+                        text: root.sysMuted ? "󰝟" : (root.sysVolume > 50 ? "󰕾" : (root.sysVolume > 0 ? "󰖀" : "󰕿"))
+                        color: root.sysMuted ? "#ef4444" : root.bgBorder
+                        font.pixelSize: 14
+                        font.family: root.iconFont
+                        anchors.verticalCenter: parent.verticalCenter
+
+                        MouseArea {
+                            anchors.fill: parent
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: {
+                                Shell.playCreamy()
+                                Shell.toggleSystemMute()
+                                root.sysMuted = !root.sysMuted
+                            }
+                        }
+                    }
+
+                    // Ses Barı / Slider
+                    Rectangle {
+                        id: volumeSliderTrack
+                        width: 110
+                        height: 5
+                        radius: 2.5
+                        color: "#25ffffff"
+                        anchors.verticalCenter: parent.verticalCenter
+
+                        // Dolu kısım
+                        Rectangle {
+                            id: volumeSliderFill
+                            height: parent.height
+                            radius: 2.5
+                            width: root.sysMuted ? 0 : Math.max(0, Math.min(parent.width, (root.sysVolume / 100.0) * parent.width))
+                            color: root.bgBorder
+                            Behavior on width { NumberAnimation { duration: 50 } }
+                        }
+
+                        // Thumb gösterge
+                        Rectangle {
+                            width: 9
+                            height: 9
+                            radius: 4.5
+                            anchors.verticalCenter: parent.verticalCenter
+                            x: Math.max(0, Math.min(volumeSliderTrack.width - 9, volumeSliderFill.width - 4.5))
+                            color: root.selFg
+                            border.color: root.bgBorder
+                            border.width: 1
+                            visible: !root.sysMuted
+                        }
+
+                        MouseArea {
+                            id: volDragArea
+                            anchors.fill: parent
+                            anchors.topMargin: -6
+                            anchors.bottomMargin: -6
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+
+                            function updateVol(mouse) {
+                                var ratio = Math.max(0.0, Math.min(1.0, mouse.x / volumeSliderTrack.width))
+                                var newVol = Math.round(ratio * 100)
+                                root.sysVolume = newVol
+                                root.sysMuted = false
+                                Shell.setSystemVolume(newVol)
+                            }
+
+                            onPressed: function(mouse) {
+                                updateVol(mouse)
+                            }
+                            onPositionChanged: function(mouse) {
+                                if (pressed) updateVol(mouse)
+                            }
+                            onWheel: function(wheel) {
+                                var delta = wheel.angleDelta.y > 0 ? 5 : -5
+                                var v = Math.max(0, Math.min(100, root.sysVolume + delta))
+                                root.sysVolume = v
+                                root.sysMuted = false
+                                Shell.setSystemVolume(v)
+                            }
+                        }
+                    }
+
+                    // Ses Yüzdesi Metni
+                    Text {
+                        text: root.sysMuted ? "MUTE" : root.sysVolume + "%"
+                        color: root.sysMuted ? "#ef4444" : root.fgDim
+                        font.pixelSize: 10
+                        font.family: root.textFont
+                        font.weight: Font.Bold
+                        anchors.verticalCenter: parent.verticalCenter
+                    }
+                }
+
+                // Sağ: GPU Göstergesi (büyütüldü: 12px)
+                Row {
+                    anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
+                    spacing: 7
+
+                    Text {
+                        text: "󰢮 GPU"
+                        color: root.gpuColor
+                        font.pixelSize: 12
+                        font.family: root.iconFont
+                        font.weight: Font.Bold
+                    }
+                    Text {
+                        text: root.gpuPercent + "%"
+                        color: root.fgColor
+                        font.pixelSize: 12
+                        font.family: root.textFont
+                        font.weight: Font.Bold
+                    }
                 }
             }
 
