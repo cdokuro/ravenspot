@@ -39,7 +39,8 @@
   "system.shutdown": { "icon": "󰐥", "iconName": "system-shutdown", "label": "Shutdown", "action": "qdbus6 org.kde.Shutdown /Shutdown org.kde.Shutdown.logoutAndShutdown" },
 
   // ─── Appearance ──────────────────────────────────────────────
-  "appearance.colorscheme": { "icon": "󰸌", "iconName": "cs-color", "label": "Color Scheme", "aliases": ["colors", "theme"], "provider": "colorschemes" },
+  "appearance.ravenspot_theme": { "icon": "󰔉", "iconName": "cs-themes", "label": "RavenSpot Temaları (5 Özel Stil)", "aliases": ["ravenspot theme", "tema", "theme", "style", "görünüm"], "provider": "ravenspot-themes" },
+  "appearance.colorscheme": { "icon": "󰸌", "iconName": "cs-color", "label": "KDE Renk Şeması (Color Scheme)", "aliases": ["colors", "theme"], "provider": "colorschemes" },
   "appearance.wallpaper": { "icon": "", "iconName": "gnome-settings-background", "label": "Wallpaper", "action": "systemsettings kcm_wallpaper" },
   "appearance.nightlight": { "icon": "󰔎", "iconName": "redshift-status-on", "label": "Night Light", "action": "systemsettings kcm_nightlight" },
   "appearance.cursor": { "icon": "󰇀", "iconName": "preferences-desktop-mouse", "label": "Cursor Theme", "action": "systemsettings kcm_cursortheme" },

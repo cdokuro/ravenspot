@@ -22,18 +22,38 @@ Window {
     LayerShell.Window.anchors: LayerShell.Window.Anchors.AnchorTop | LayerShell.Window.Anchors.AnchorBottom | LayerShell.Window.Anchors.AnchorLeft | LayerShell.Window.Anchors.AnchorRight
 
     // ── Tema ──────────────────────────────────────────────
-    property color bgColor: "#cc08080c"   // iç: daha siyah, yarı saydam
-    property color bgBorder: "#e8c96a"    // tek neon şerit (açık sarı/altın)
-    property color fgColor: "#e8e8ee"
-    property color fgDim: "#9a9aa5"
-    property color selBg: "#2f6fed"
+    property color bgColor: "#cc0b0c10"
+    property color bgBorder: "#ffd700"
+    property color glowColor: "#ffd700"
+    property color fgColor: "#f0f2f5"
+    property color fgDim: "#8b949e"
+    property color selBg: "#1f51ff"
     property color selFg: "#ffffff"
     property color scrimColor: "#66000000"
-    property string iconFont: "MesloLGS Nerd Font"
-    property string textFont: "Noto Sans"
+    property color cpuColor: "#ffd700"
+    property color gpuColor: "#00f0ff"
+    property string iconFont: "FantasqueSansM Nerd Font"
+    property string textFont: "FantasqueSansM Nerd Font"
     property int cardWidth: 620
     property int rowHeight: 48
-    property int headerHeight: 56
+    property int headerHeight: 64
+    property int cpuPercent: 0
+    property int gpuPercent: 0
+
+    function syncTheme() {
+        var t = Shell.currentTheme()
+        if (!t) return
+        root.bgColor = t.bgColor
+        root.bgBorder = t.bgBorder
+        root.glowColor = t.glowColor
+        root.fgColor = t.fgColor
+        root.fgDim = t.fgDim
+        root.selBg = t.selBg
+        root.selFg = t.selFg
+        root.cpuColor = t.cpuColor
+        root.gpuColor = t.gpuColor
+        root.textFont = t.font || "FantasqueSansM Nerd Font"
+    }
 
     // ── Durum ─────────────────────────────────────────────
     property var items: ({})
@@ -158,6 +178,8 @@ Window {
             loadClipboard(id)
         } else if (entry.provider && entry.provider.startsWith("files-")) {
             loadFolderFiles(id, entry.provider.substring(6))
+        } else if (entry.provider === "ravenspot-themes") {
+            loadRavenThemes(id)
         }
     }
 
@@ -193,6 +215,27 @@ Window {
                 label: f.name, title: "", target: "", description: f.desc,
                 action: "", provider: "file-item", aliases: [f.name], searchTerms: [f.name],
                 when: "", checked: "", disabled: "", filePath: f.path, order: j
+            })
+        }
+        var merged = MenuModel.swapProviderRows(root.items, root.itemOrder, id, rows)
+        root.items = merged.items
+        root.itemOrder = merged.itemOrder
+        rebuildDisplay()
+    }
+
+    function loadRavenThemes(id) {
+        var arr = JSON.parse(Shell.listRavenThemes() || "[]")
+        var rows = []
+        for (var j = 0; j < arr.length; j++) {
+            var t = arr[j]
+            var rowId = id + "." + t.key
+            rows.push({
+                id: rowId, parent: id, kind: "action",
+                icon: "󰔉", iconFont: "", iconName: "cs-themes",
+                label: t.name + (t.isCurrent ? " (Aktif)" : ""),
+                title: "", target: "", description: t.desc + " • Font: " + t.font,
+                action: "", provider: "ravenspot-theme-item", aliases: [t.name, t.key], searchTerms: [t.name, t.key],
+                when: "", checked: "", disabled: "", themeKey: t.key, isCurrent: t.isCurrent, order: j
             })
         }
         var merged = MenuModel.swapProviderRows(root.items, root.itemOrder, id, rows)
@@ -534,6 +577,7 @@ Window {
         if (t < 0) return
         root.selectedIndex = t
         resultList.currentIndex = t
+        Shell.playThock()
     }
 
     function setFilter(next) {
@@ -573,6 +617,7 @@ Window {
         if (row.kind === "menu" || row.kind === "link") {
             setActiveMenu(row.target || row.itemId, true)
         } else if (row.kind === "app") {
+            Shell.playCreamy()
             root.opened = false
             Shell.launchApp(row.desktop)
             Qt.callLater(closeMenu)
@@ -581,10 +626,17 @@ Window {
             Shell.setClipboard(row.value)
             Qt.callLater(closeMenu)
         } else if (row.provider === "file-item") {
+            Shell.playCreamy()
             root.opened = false
             Shell.openPath(row.filePath)
             Qt.callLater(closeMenu)
+        } else if (row.provider === "ravenspot-theme-item") {
+            Shell.playCreamy()
+            Shell.applyRavenTheme(row.themeKey)
+            loadRavenThemes(root.activeMenu)
+            return
         } else {
+            Shell.playCreamy()
             root.opened = false
             if (row.provider === "colorscheme") {
                 Shell.applyColorscheme(row.value)
@@ -624,6 +676,13 @@ Window {
         target: Shell
         function onReopenRequested() {
             handleHotkeyTrigger()
+        }
+        function onStatsUpdated(cpu, gpu) {
+            root.cpuPercent = cpu
+            root.gpuPercent = gpu
+        }
+        function onThemeChanged() {
+            root.syncTheme()
         }
     }
 
@@ -775,18 +834,72 @@ Window {
             }
         }
 
-        // Başlık / arama
+        // Başlık / arama + Telemetri (CPU & GPU)
         Rectangle {
             id: header
             width: parent.width
             height: root.headerHeight
             color: "transparent"
 
+            // ── Üst Köşe Telemetri Rozetleri ──
+            Row {
+                anchors.left: parent.left
+                anchors.leftMargin: 18
+                anchors.top: parent.top
+                anchors.topMargin: 8
+                spacing: 6
+                z: 2
+
+                Text {
+                    text: " CPU"
+                    color: root.cpuColor
+                    font.pixelSize: 10
+                    font.family: root.iconFont
+                    font.weight: Font.Bold
+                    opacity: 0.85
+                }
+                Text {
+                    text: root.cpuPercent + "%"
+                    color: root.fgColor
+                    font.pixelSize: 10
+                    font.family: root.textFont
+                    font.weight: Font.Bold
+                    opacity: 0.95
+                }
+            }
+
+            Row {
+                anchors.right: parent.right
+                anchors.rightMargin: 18
+                anchors.top: parent.top
+                anchors.topMargin: 8
+                spacing: 6
+                z: 2
+
+                Text {
+                    text: "󰢮 GPU"
+                    color: root.gpuColor
+                    font.pixelSize: 10
+                    font.family: root.iconFont
+                    font.weight: Font.Bold
+                    opacity: 0.85
+                }
+                Text {
+                    text: root.gpuPercent + "%"
+                    color: root.fgColor
+                    font.pixelSize: 10
+                    font.family: root.textFont
+                    font.weight: Font.Bold
+                    opacity: 0.95
+                }
+            }
+
             Text {
                 id: pathLabel
                 anchors.left: parent.left
                 anchors.leftMargin: 18
-                anchors.verticalCenter: parent.verticalCenter
+                anchors.bottom: parent.bottom
+                anchors.bottomMargin: 11
                 text: root.activeMenu === "root" ? "RavenSpot" : MenuModel.pathFor(root.items, root.activeMenu)
                 color: root.fgDim
                 font.pixelSize: 13
@@ -796,10 +909,12 @@ Window {
 
             TextInput {
                 id: searchInput
-                anchors.fill: parent
+                anchors.left: parent.left
+                anchors.right: parent.right
                 anchors.leftMargin: 18
                 anchors.rightMargin: 18
-                verticalAlignment: TextInput.AlignVCenter
+                anchors.bottom: parent.bottom
+                anchors.bottomMargin: 8
                 color: root.fgColor
                 font.pixelSize: 18
                 font.family: root.textFont
@@ -989,6 +1104,7 @@ Window {
                         if (!model.disabled && root.selectedIndex !== index) {
                             root.selectedIndex = index
                             resultList.currentIndex = index
+                            Shell.playThock()
                         }
                     }
                     onClicked: activateIndex(index)
@@ -1073,6 +1189,7 @@ Window {
     }
 
     Component.onCompleted: {
+        syncTheme()
         openMenu("root")
     }
 }

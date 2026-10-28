@@ -17,7 +17,8 @@ import os
 import subprocess
 import sys
 
-from PySide6.QtCore import QObject, QUrl, Qt, Slot, QTimer, QSize, Signal
+from PySide6.QtCore import QObject, QUrl, Qt, Slot, QTimer, QSize, Signal, Property
+from PySide6.QtMultimedia import QSoundEffect
 from PySide6.QtGui import QGuiApplication, QIcon, QImage
 from PySide6.QtQml import QQmlApplicationEngine
 from PySide6.QtQuick import QQuickImageProvider
@@ -48,6 +49,7 @@ class Shell(QObject):
 
     def __init__(self):
         super().__init__()
+        self._init_extra()
         self._menu_path = MENU_PATH
         self._user_menu_path = USER_MENU_PATH
         self._apps_cache = None  # [ {id,label,icon,aliases,keywords,desktop} ]
@@ -502,6 +504,133 @@ class Shell(QObject):
             return
         try:
             subprocess.Popen(["xdg-open", path])
+        except Exception:
+            pass
+
+
+
+    # ── Raven Themes, Telemetry & Sound Effects ──────────────────
+    themeChanged = Signal()
+    statsUpdated = Signal(int, int)
+
+    def _init_extra(self):
+        self._themes_file = os.path.join(APP_DIR, "themes.json")
+        self._user_theme_file = os.path.expanduser("~/.config/ravenspot/theme.json")
+        os.makedirs(os.path.dirname(self._user_theme_file), exist_ok=True)
+        
+        # Load themes
+        with open(self._themes_file) as f:
+            self._themes_data = json.load(f)
+        
+        # Read saved user choice
+        if os.path.exists(self._user_theme_file):
+            try:
+                with open(self._user_theme_file) as f:
+                    saved = json.load(f)
+                    if saved.get("active") in self._themes_data["themes"]:
+                        self._themes_data["active"] = saved["active"]
+            except Exception:
+                pass
+
+        # Apply current theme icon theme to QIcon
+        cur_icon_theme = self.currentTheme().get("iconTheme", "candy-icons")
+        QIcon.setThemeName(cur_icon_theme)
+
+        # Sounds
+        self._snd_thock = QSoundEffect()
+        self._snd_thock.setSource(QUrl.fromLocalFile(os.path.join(APP_DIR, "sounds", "thock.wav")))
+        self._snd_thock.setVolume(0.55)
+
+        self._snd_creamy = QSoundEffect()
+        self._snd_creamy.setSource(QUrl.fromLocalFile(os.path.join(APP_DIR, "sounds", "creamy.wav")))
+        self._snd_creamy.setVolume(0.65)
+
+        # Telemetry timer
+        self._last_cpu_idle = 0
+        self._last_cpu_total = 0
+        self._telemetry_timer = QTimer(self)
+        self._telemetry_timer.setInterval(1000)
+        self._telemetry_timer.timeout.connect(self._update_telemetry)
+        self._telemetry_timer.start()
+
+    def _update_telemetry(self):
+        # CPU
+        cpu_pct = 0
+        try:
+            with open("/proc/stat") as f:
+                fields = [float(x) for x in f.readline().strip().split()[1:8]]
+            idle = fields[3] + fields[4]
+            total = sum(fields)
+            if self._last_cpu_total > 0:
+                dt = total - self._last_cpu_total
+                di = idle - self._last_cpu_idle
+                if dt > 0:
+                    cpu_pct = max(0, min(100, int(100.0 * (1.0 - di / dt))))
+            self._last_cpu_idle = idle
+            self._last_cpu_total = total
+        except Exception:
+            pass
+
+        # GPU
+        gpu_pct = 0
+        try:
+            for p in ["/sys/class/drm/card1/device/gpu_busy_percent", "/sys/class/drm/card0/device/gpu_busy_percent"]:
+                if os.path.exists(p):
+                    with open(p) as f:
+                        gpu_pct = int(f.read().strip())
+                        break
+        except Exception:
+            pass
+        self.statsUpdated.emit(cpu_pct, gpu_pct)
+
+    @Slot(result="QVariantMap")
+    def currentTheme(self):
+        act = self._themes_data.get("active", "raven_cyber")
+        t = dict(self._themes_data["themes"].get(act, {}))
+        t["key"] = act
+        return t
+
+    @Slot(result=str)
+    def listRavenThemes(self):
+        act = self._themes_data.get("active", "raven_cyber")
+        res = []
+        for k, v in self._themes_data["themes"].items():
+            res.append({
+                "key": k,
+                "name": v["name"],
+                "desc": v["desc"],
+                "isCurrent": (k == act),
+                "accent": v["accent"],
+                "font": v["font"],
+                "iconTheme": v["iconTheme"]
+            })
+        return json.dumps(res)
+
+    @Slot(str)
+    def applyRavenTheme(self, key):
+        if key in self._themes_data["themes"]:
+            self._themes_data["active"] = key
+            try:
+                with open(self._user_theme_file, "w") as f:
+                    json.dump({"active": key}, f)
+            except Exception:
+                pass
+            QIcon.setThemeName(self._themes_data["themes"][key].get("iconTheme", "candy-icons"))
+            self.themeChanged.emit()
+
+    @Slot()
+    def playThock(self):
+        try:
+            if self._snd_thock.status() == QSoundEffect.Ready or self._snd_thock.status() == QSoundEffect.Loading:
+                self._snd_thock.play()
+        except Exception:
+            pass
+
+    @Slot()
+    def playCreamy(self):
+        try:
+            if self._snd_creamy.status() == QSoundEffect.Ready or self._snd_creamy.status() == QSoundEffect.Loading:
+                self._snd_creamy.play()
         except Exception:
             pass
 
