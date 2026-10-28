@@ -7,7 +7,7 @@ import "MenuModel.js" as MenuModel
 
 Window {
     id: root
-    visible: true
+    visible: !Shell.startHidden
     width: card.width + 48
     height: card.height + 48
     color: "transparent"
@@ -679,6 +679,7 @@ Window {
         else { evaluateGuards() }
         rebuildDisplay()
         startProvider(root.activeMenu)
+        Shell.onMenuVisibilityChanged(true)
         Qt.callLater(function(){
             root.requestActivate()
             searchInput.forceActiveFocus()
@@ -689,12 +690,34 @@ Window {
         root.opened = false
         closeTimer.restart()
     }
-    Timer { id: closeTimer; interval: 140; running: false; repeat: false; onTriggered: Qt.quit() }
+    Timer {
+        id: closeTimer
+        interval: 90
+        running: false
+        repeat: false
+        onTriggered: {
+            root.visible = false
+            Shell.onMenuVisibilityChanged(false)
+        }
+    }
 
     Connections {
         target: Shell
+        function onToggleRequested() {
+            handleHotkeyTrigger()
+        }
         function onReopenRequested() {
             handleHotkeyTrigger()
+        }
+        function onShowRequested() {
+            openMenu("root")
+        }
+        function onHideRequested() {
+            closeMenu()
+        }
+        function onReloadRequested() {
+            loadItems()
+            rebuildDisplay()
         }
         function onStatsUpdated(cpu, gpu, vol, muted) {
             root.cpuPercent = cpu
@@ -709,7 +732,7 @@ Window {
     }
 
     function handleHotkeyTrigger() {
-        if (!root.opened) {
+        if (!root.visible || !root.opened) {
             openMenu("root")
             return
         }
@@ -1336,20 +1359,27 @@ Window {
 
                 // CPU
                 Row {
-                    spacing: 6
+                    spacing: 5
                     anchors.verticalCenter: parent.verticalCenter
                     Text {
-                        text: " CPU"
+                        text: ""
                         color: root.cpuColor
-                        font.pixelSize: 14
+                        font.pixelSize: 13
                         font.family: root.iconFont
-                        font.weight: Font.Bold
+                        anchors.verticalCenter: parent.verticalCenter
+                    }
+                    Text {
+                        text: "CPU"
+                        color: root.cpuColor
+                        font.pixelSize: 12
+                        font.family: root.textFont
+                        font.weight: Font.DemiBold
                         anchors.verticalCenter: parent.verticalCenter
                     }
                     Text {
                         text: root.cpuPercent + "%"
                         color: root.fgDim
-                        font.pixelSize: 14
+                        font.pixelSize: 12
                         font.family: root.textFont
                         anchors.verticalCenter: parent.verticalCenter
                     }
@@ -1357,20 +1387,27 @@ Window {
 
                 // GPU
                 Row {
-                    spacing: 6
+                    spacing: 5
                     anchors.verticalCenter: parent.verticalCenter
                     Text {
-                        text: "󰢮 GPU"
+                        text: "󰢮"
                         color: root.gpuColor
-                        font.pixelSize: 14
+                        font.pixelSize: 13
                         font.family: root.iconFont
-                        font.weight: Font.Bold
+                        anchors.verticalCenter: parent.verticalCenter
+                    }
+                    Text {
+                        text: "GPU"
+                        color: root.gpuColor
+                        font.pixelSize: 12
+                        font.family: root.textFont
+                        font.weight: Font.DemiBold
                         anchors.verticalCenter: parent.verticalCenter
                     }
                     Text {
                         text: root.gpuPercent + "%"
                         color: root.fgDim
-                        font.pixelSize: 14
+                        font.pixelSize: 12
                         font.family: root.textFont
                         anchors.verticalCenter: parent.verticalCenter
                     }
@@ -1378,20 +1415,27 @@ Window {
 
                 // RAM
                 Row {
-                    spacing: 6
+                    spacing: 5
                     anchors.verticalCenter: parent.verticalCenter
                     Text {
-                        text: "󰘚 RAM"
+                        text: "󰘚"
                         color: root.bgBorder
-                        font.pixelSize: 14
+                        font.pixelSize: 13
                         font.family: root.iconFont
-                        font.weight: Font.Bold
+                        anchors.verticalCenter: parent.verticalCenter
+                    }
+                    Text {
+                        text: "RAM"
+                        color: root.bgBorder
+                        font.pixelSize: 12
+                        font.family: root.textFont
+                        font.weight: Font.DemiBold
                         anchors.verticalCenter: parent.verticalCenter
                     }
                     Text {
                         text: (root.sysMonitor ? root.sysMonitor.ram_text : "--") + " (" + (root.sysMonitor ? root.sysMonitor.ram_pct : 0) + "%)"
                         color: root.fgDim
-                        font.pixelSize: 14
+                        font.pixelSize: 12
                         font.family: root.textFont
                         anchors.verticalCenter: parent.verticalCenter
                     }
@@ -1399,20 +1443,27 @@ Window {
 
                 // Disk (Root /)
                 Row {
-                    spacing: 6
+                    spacing: 5
                     anchors.verticalCenter: parent.verticalCenter
                     Text {
-                        text: "󰋊 Disk"
+                        text: "󰋊"
                         color: root.bgBorder
-                        font.pixelSize: 14
+                        font.pixelSize: 13
                         font.family: root.iconFont
-                        font.weight: Font.Bold
+                        anchors.verticalCenter: parent.verticalCenter
+                    }
+                    Text {
+                        text: "Disk"
+                        color: root.bgBorder
+                        font.pixelSize: 12
+                        font.family: root.textFont
+                        font.weight: Font.DemiBold
                         anchors.verticalCenter: parent.verticalCenter
                     }
                     Text {
                         text: (root.sysMonitor ? root.sysMonitor.disk_text : "--") + " (" + (root.sysMonitor ? root.sysMonitor.disk_pct : 0) + "%)"
                         color: root.fgDim
-                        font.pixelSize: 14
+                        font.pixelSize: 12
                         font.family: root.textFont
                         anchors.verticalCenter: parent.verticalCenter
                     }
@@ -1420,20 +1471,27 @@ Window {
 
                 // Sıcaklık
                 Row {
-                    spacing: 6
+                    spacing: 5
                     anchors.verticalCenter: parent.verticalCenter
                     Text {
-                        text: " Isı"
+                        text: ""
                         color: root.cpuColor
-                        font.pixelSize: 14
+                        font.pixelSize: 13
                         font.family: root.iconFont
-                        font.weight: Font.Bold
+                        anchors.verticalCenter: parent.verticalCenter
+                    }
+                    Text {
+                        text: "Isı"
+                        color: root.cpuColor
+                        font.pixelSize: 12
+                        font.family: root.textFont
+                        font.weight: Font.DemiBold
                         anchors.verticalCenter: parent.verticalCenter
                     }
                     Text {
                         text: root.sysMonitor ? root.sysMonitor.temp : "--"
                         color: root.fgDim
-                        font.pixelSize: 14
+                        font.pixelSize: 12
                         font.family: root.textFont
                         anchors.verticalCenter: parent.verticalCenter
                     }
@@ -1441,20 +1499,27 @@ Window {
 
                 // Uptime
                 Row {
-                    spacing: 6
+                    spacing: 5
                     anchors.verticalCenter: parent.verticalCenter
                     Text {
-                        text: "󰔚 Süre"
+                        text: "󰔚"
                         color: root.gpuColor
-                        font.pixelSize: 14
+                        font.pixelSize: 13
                         font.family: root.iconFont
-                        font.weight: Font.Bold
+                        anchors.verticalCenter: parent.verticalCenter
+                    }
+                    Text {
+                        text: "Süre"
+                        color: root.gpuColor
+                        font.pixelSize: 12
+                        font.family: root.textFont
+                        font.weight: Font.DemiBold
                         anchors.verticalCenter: parent.verticalCenter
                     }
                     Text {
                         text: root.sysMonitor ? root.sysMonitor.uptime : "--"
                         color: root.fgDim
-                        font.pixelSize: 14
+                        font.pixelSize: 12
                         font.family: root.textFont
                         anchors.verticalCenter: parent.verticalCenter
                     }
@@ -1471,6 +1536,12 @@ Window {
             root.sysMuted = ainfo.muted
         }
         root.sysMonitor = Shell.getSysMonitorInfo()
-        openMenu("root")
+        if (!Shell.startHidden) {
+            openMenu("root")
+        } else {
+            root.visible = false
+            root.opened = false
+            Shell.onMenuVisibilityChanged(false)
+        }
     }
 }

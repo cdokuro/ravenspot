@@ -1,21 +1,47 @@
 #!/usr/bin/env python3
 """
-omarchy-menu — Omarchy'nin Super+Space menüsünün KDE/CachyOS portu.
+RavenSpot — Spotlight-style Launcher for KDE Plasma 6 / CachyOS.
 
-Mimari:
-  - menu.jsonc    : menü tanımı (Omarchy ile aynı şema)
-  - MenuModel.js  : Omarchy'nin saf JS mantığı (arama, ağaç, guard) — değiştirilmeden
-  - Menu.qml      : LayerShellQt overlay render katmanı (Quickshell yerine)
-  - bridge.py     : bu dosya — QML'in kabuk/guard/provider/app işlerini yapan Python köprüsü
-
-Odak stratejisi: Wayland'da focus-stealing engellidir; LayerShellQt'nin
-KeyboardInteractivityExclusive özelliği pencereye klavye odağı kazandırır.
+Architecture:
+  - menu.jsonc    : declarative menu definition
+  - MenuModel.js  : search, hierarchy, and guard logic
+  - Menu.qml      : floating window UI (Wayland/X11)
+  - bridge.py     : daemon and system integration bridge (Python/Qt6)
 """
 
 import json
 import os
+import socket
 import subprocess
 import sys
+
+SOCKET_PATH = os.path.join(os.environ.get("XDG_RUNTIME_DIR", "/tmp"), "ravenspot.sock")
+
+def _try_fast_client():
+    cmd = "toggle"
+    start_hidden = False
+    for arg in sys.argv[1:]:
+        clean = arg.lstrip("-").lower()
+        if clean in ("toggle", "show", "hide", "quit", "reload"):
+            cmd = clean
+        elif clean in ("daemon", "start-daemon"):
+            start_hidden = True
+            cmd = None
+
+    if cmd:
+        try:
+            s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+            s.settimeout(0.2)
+            s.connect(SOCKET_PATH)
+            s.sendall((cmd + "\n").encode("utf-8"))
+            s.close()
+            sys.exit(0)
+        except Exception:
+            if cmd == "quit":
+                sys.exit(0)
+    return start_hidden
+
+START_HIDDEN = _try_fast_client()
 
 from PySide6.QtCore import QObject, QUrl, Qt, Slot, QTimer, QSize, Signal, Property
 from PySide6.QtMultimedia import QSoundEffect
@@ -24,11 +50,15 @@ from PySide6.QtQml import QQmlApplicationEngine
 from PySide6.QtQuick import QQuickImageProvider
 from PySide6.QtNetwork import QLocalServer, QLocalSocket
 
-SOCKET_NAME = "ravenspot-single-instance"
-
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
 MENU_PATH = os.path.join(APP_DIR, "menu.jsonc")
-USER_MENU_PATH = os.path.join(os.path.expanduser("~"), ".config", "omarchy-menu", "menu.jsonc")
+
+USER_CONFIG_DIR = os.path.join(os.path.expanduser("~"), ".config", "ravenspot")
+LEGACY_CONFIG_DIR = os.path.join(os.path.expanduser("~"), ".config", "omarchy-menu")
+
+USER_MENU_PATH = os.path.join(USER_CONFIG_DIR, "menu.jsonc")
+if not os.path.exists(USER_MENU_PATH) and os.path.exists(os.path.join(LEGACY_CONFIG_DIR, "menu.jsonc")):
+    USER_MENU_PATH = os.path.join(LEGACY_CONFIG_DIR, "menu.jsonc")
 
 # XDG application dirs (uygulama provider'ı için)
 def _xdg_data_dirs():
@@ -46,13 +76,32 @@ class Shell(QObject):
     """QML'e Python köprüsü. Tüm yan etkiler (kabuk, guard, provider, app) burada."""
 
     reopenRequested = Signal()
+    toggleRequested = Signal()
+    showRequested = Signal()
+    hideRequested = Signal()
+    reloadRequested = Signal()
 
-    def __init__(self):
+    def __init__(self, start_hidden=False):
         super().__init__()
+        self._start_hidden = start_hidden
         self._init_extra()
         self._menu_path = MENU_PATH
         self._user_menu_path = USER_MENU_PATH
         self._apps_cache = None  # [ {id,label,icon,aliases,keywords,desktop} ]
+
+    @Property(bool, constant=True)
+    def startHidden(self):
+        return self._start_hidden
+
+    @Slot(bool)
+    def onMenuVisibilityChanged(self, visible):
+        if visible:
+            self._update_telemetry()
+            if hasattr(self, "_telemetry_timer") and not self._telemetry_timer.isActive():
+                self._telemetry_timer.start(1000)
+        else:
+            if hasattr(self, "_telemetry_timer") and self._telemetry_timer.isActive():
+                self._telemetry_timer.stop()
 
     # ── Dosya okuma ──────────────────────────────────────────────
     @Slot(str, result=str)
@@ -212,12 +261,15 @@ class Shell(QObject):
         )
 
     # ── Provider: colorschemes & favorites ───────────────────────
-    FAV_THEMES_PATH = os.path.expanduser("~/.config/omarchy-menu/favorite-themes.json")
+    FAV_THEMES_PATH = os.path.join(USER_CONFIG_DIR, "favorite-themes.json")
 
     def _load_favorite_themes(self):
         try:
-            if os.path.isfile(self.FAV_THEMES_PATH):
-                with open(self.FAV_THEMES_PATH, "r", encoding="utf-8") as f:
+            target = self.FAV_THEMES_PATH
+            if not os.path.isfile(target) and os.path.isfile(os.path.join(LEGACY_CONFIG_DIR, "favorite-themes.json")):
+                target = os.path.join(LEGACY_CONFIG_DIR, "favorite-themes.json")
+            if os.path.isfile(target):
+                with open(target, "r", encoding="utf-8") as f:
                     return json.load(f)
         except Exception:
             pass
@@ -551,7 +603,8 @@ class Shell(QObject):
         self._telemetry_timer = QTimer(self)
         self._telemetry_timer.setInterval(1000)
         self._telemetry_timer.timeout.connect(self._update_telemetry)
-        self._telemetry_timer.start()
+        if not getattr(self, "_start_hidden", False):
+            self._telemetry_timer.start()
 
     def _update_telemetry(self):
         # CPU
@@ -836,36 +889,47 @@ class ThemeIconProvider(QQuickImageProvider):
 
 
 def main():
+    start_hidden = START_HIDDEN
+
+    # ── Daemon Başlatma ──────────────────────────────────────────
     QGuiApplication.setDesktopFileName("ravenspot")
     app = QGuiApplication(sys.argv)
 
-    # ── Single-instance kontrolü ─────────────────────────────────
-    client_socket = QLocalSocket()
-    client_socket.connectToServer(SOCKET_NAME)
-    if client_socket.waitForConnected(200):
-        # Başka bir örnek zaten çalışıyor! Sinyal gönder ve kapan.
-        client_socket.write(b"reopen\n")
-        client_socket.waitForBytesWritten(200)
-        client_socket.disconnectFromServer()
-        sys.exit(0)
+    # Eski soket dosyasını temizle
+    if os.path.exists(SOCKET_PATH):
+        try:
+            os.unlink(SOCKET_PATH)
+        except OSError:
+            pass
 
-    # Sunucuyu başlat
     server = QLocalServer()
-    server.removeServer(SOCKET_NAME)
-    server.listen(SOCKET_NAME)
+    if not server.listen(SOCKET_PATH):
+        print(f"ravenspot: Soket dinlenemedi ({SOCKET_PATH})", file=sys.stderr)
 
-    # QML'deki göreli import'ların (MenuModel.js) çözülmesi için çalışma dizini
-    # uygulama dizini olmalı.
     os.chdir(APP_DIR)
-
-    shell = Shell()
+    shell = Shell(start_hidden=start_hidden)
 
     def handle_new_connection():
         sock = server.nextPendingConnection()
         if sock:
             def on_ready_read():
-                sock.readAll()
-                shell.reopenRequested.emit()
+                try:
+                    data = bytes(sock.readAll()).decode("utf-8", errors="ignore").strip()
+                    for line in data.splitlines():
+                        cmd_line = line.strip().lower()
+                        if cmd_line in ("toggle", "reopen"):
+                            shell.toggleRequested.emit()
+                            shell.reopenRequested.emit()
+                        elif cmd_line == "show":
+                            shell.showRequested.emit()
+                        elif cmd_line == "hide":
+                            shell.hideRequested.emit()
+                        elif cmd_line == "reload":
+                            shell.reloadRequested.emit()
+                        elif cmd_line == "quit":
+                            QGuiApplication.quit()
+                except Exception:
+                    pass
             sock.readyRead.connect(on_ready_read)
 
     server.newConnection.connect(handle_new_connection)
@@ -880,12 +944,22 @@ def main():
     engine.load(QUrl.fromLocalFile(qml_path))
 
     if not engine.rootObjects():
-        print("omarchy-menu: QML yüklenemedi", file=sys.stderr)
+        print("ravenspot: QML yüklenemedi", file=sys.stderr)
         server.close()
+        if os.path.exists(SOCKET_PATH):
+            try:
+                os.unlink(SOCKET_PATH)
+            except OSError:
+                pass
         sys.exit(1)
 
     ret = app.exec()
     server.close()
+    if os.path.exists(SOCKET_PATH):
+        try:
+            os.unlink(SOCKET_PATH)
+        except OSError:
+            pass
     sys.exit(ret)
 
 

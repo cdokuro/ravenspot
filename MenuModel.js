@@ -483,41 +483,45 @@ function guardPackageSnapshot() {
     + " | awk '/^[A-Za-z]/ { provides = ($0 ~ /^Provides/); sub(/^[^:]*: /, \"\") }"
     + ' provides && $0 != "None" { n = split($0, p, " ");'
     + ' for (i = 1; i <= n; i++) { sub(/[<>=].*/, "", p[i]); print p[i] } }\' && echo /; } 2>/dev/null'
-  var stamp = 'stat -c "%d:%i:%.9Y:%.9Z" -- "$__omarchy_pkg_db/local" 2>/dev/null'
+  var stamp = 'stat -c "%d:%i:%.9Y:%.9Z" -- "$__raven_pkg_db/local" 2>/dev/null'
 
-  return '__omarchy_pkg_db=${OMARCHY_PACMAN_DB_PATH:-$(pacman-conf DBPath 2>/dev/null)} || __omarchy_pkg_db=""\n'
-    + '__omarchy_pkg_db=${__omarchy_pkg_db%/}\n'
-    + '__omarchy_pkg_cache=${XDG_RUNTIME_DIR:+$XDG_RUNTIME_DIR/omarchy-menu-packages}\n'
-    + '__omarchy_pkg_stamp=""\n'
-    + '[[ -z $__omarchy_pkg_db ]] || __omarchy_pkg_stamp=$(' + stamp + ') || __omarchy_pkg_stamp=""\n'
-    + '__omarchy_pkg_names=()\n'
-    + 'if [[ -n $__omarchy_pkg_cache && -n $__omarchy_pkg_stamp ]]'
-    + ' && { IFS= read -r __omarchy_pkg_line && [[ $__omarchy_pkg_line == "$__omarchy_pkg_stamp" ]]'
-    + ' && mapfile -t __omarchy_pkg_names; } 2>/dev/null <"$__omarchy_pkg_cache"; then :\n'
+  return '__raven_pkg_db=${RAVEN_PACMAN_DB_PATH:-${OMARCHY_PACMAN_DB_PATH:-$(pacman-conf DBPath 2>/dev/null)}} || __raven_pkg_db=""\n'
+    + '__raven_pkg_db=${__raven_pkg_db%/}\n'
+    + '__raven_pkg_cache=${XDG_RUNTIME_DIR:+$XDG_RUNTIME_DIR/raven-menu-packages}\n'
+    + '__raven_pkg_stamp=""\n'
+    + '[[ -z $__raven_pkg_db ]] || __raven_pkg_stamp=$(' + stamp + ') || __raven_pkg_stamp=""\n'
+    + '__raven_pkg_names=()\n'
+    + 'if [[ -n $__raven_pkg_cache && -n $__raven_pkg_stamp ]]'
+    + ' && { IFS= read -r __raven_pkg_line && [[ $__raven_pkg_line == "$__raven_pkg_stamp" ]]'
+    + ' && mapfile -t __raven_pkg_names; } 2>/dev/null <"$__raven_pkg_cache"; then :\n'
     + 'else\n'
-    + '  __omarchy_pkg_names=()\n'
-    + '  [[ ! -e $__omarchy_pkg_db/db.lck ]] || __omarchy_pkg_stamp=""\n'
-    + '  mapfile -t __omarchy_pkg_names < <(' + build + ')\n'
-    + '  if ((${#__omarchy_pkg_names[@]})) && [[ ${__omarchy_pkg_names[-1]} == "/" ]]; then unset "__omarchy_pkg_names[-1]"; else __omarchy_pkg_stamp=""; fi\n'
-    + '  if [[ -n $__omarchy_pkg_cache && -n $__omarchy_pkg_stamp && ! -e $__omarchy_pkg_db/db.lck ]]'
-    + ' && [[ $(' + stamp + ') == "$__omarchy_pkg_stamp" ]]; then\n'
-    + '    { printf "%s\\n" "$__omarchy_pkg_stamp" "${__omarchy_pkg_names[@]}" >"$__omarchy_pkg_cache.$$"'
-    + ' && mv -f -- "$__omarchy_pkg_cache.$$" "$__omarchy_pkg_cache"; } 2>/dev/null'
-    + ' || rm -f -- "$__omarchy_pkg_cache.$$" 2>/dev/null || :\n'
+    + '  __raven_pkg_names=()\n'
+    + '  [[ ! -e $__raven_pkg_db/db.lck ]] || __raven_pkg_stamp=""\n'
+    + '  mapfile -t __raven_pkg_names < <(' + build + ')\n'
+    + '  if ((${#__raven_pkg_names[@]})) && [[ ${__raven_pkg_names[-1]} == "/" ]]; then unset "__raven_pkg_names[-1]"; else __raven_pkg_stamp=""; fi\n'
+    + '  if [[ -n $__raven_pkg_cache && -n $__raven_pkg_stamp && ! -e $__raven_pkg_db/db.lck ]]'
+    + ' && [[ $(' + stamp + ') == "$__raven_pkg_stamp" ]]; then\n'
+    + '    { printf "%s\\n" "$__raven_pkg_stamp" "${__raven_pkg_names[@]}" >"$__raven_pkg_cache.$$"'
+    + ' && mv -f -- "$__raven_pkg_cache.$$" "$__raven_pkg_cache"; } 2>/dev/null'
+    + ' || rm -f -- "$__raven_pkg_cache.$$" 2>/dev/null || :\n'
     + '  fi\n'
     + 'fi\n'
 }
 
 function guardHelpers() {
-  return 'declare -A __omarchy_pkgs=()\n'
+  return 'declare -A __raven_pkgs=()\n'
     + guardPackageSnapshot()
-    + 'for __omarchy_pkg in "${__omarchy_pkg_names[@]}"; do __omarchy_pkgs[$__omarchy_pkg]=1; done\n'
-    + '__omarchy_pkg_has() { [[ -n ${__omarchy_pkgs[$1]-} ]] && return 0; '
+    + 'for __raven_pkg in "${__raven_pkg_names[@]}"; do __raven_pkgs[$__raven_pkg]=1; done\n'
+    + '__raven_pkg_has() { [[ -n ${__raven_pkgs[$1]-} ]] && return 0; '
     + '[[ $1 == *[\\<\\>=]* ]] && { pacman -Q "$1" &>/dev/null; return; }; return 1; }\n'
-    + 'omarchy-pkg-present() { local p; for p in "$@"; do __omarchy_pkg_has "$p" || return 1; done; return 0; }\n'
-    + 'omarchy-pkg-missing() { local p; for p in "$@"; do __omarchy_pkg_has "$p" || return 0; done; return 1; }\n'
-    + 'omarchy-cmd-present() { local c; for c in "$@"; do command -v "$c" &>/dev/null || return 1; done; return 0; }\n'
-    + 'omarchy-cmd-missing() { local c; for c in "$@"; do command -v "$c" &>/dev/null || return 0; done; return 1; }\n'
+    + 'raven-pkg-present() { local p; for p in "$@"; do __raven_pkg_has "$p" || return 1; done; return 0; }\n'
+    + 'raven-pkg-missing() { local p; for p in "$@"; do __raven_pkg_has "$p" || return 0; done; return 1; }\n'
+    + 'raven-cmd-present() { local c; for c in "$@"; do command -v "$c" &>/dev/null || return 1; done; return 0; }\n'
+    + 'raven-cmd-missing() { local c; for c in "$@"; do command -v "$c" &>/dev/null || return 0; done; return 1; }\n'
+    + 'omarchy-pkg-present() { raven-pkg-present "$@"; }\n'
+    + 'omarchy-pkg-missing() { raven-pkg-missing "$@"; }\n'
+    + 'omarchy-cmd-present() { raven-cmd-present "$@"; }\n'
+    + 'omarchy-cmd-missing() { raven-cmd-missing "$@"; }\n'
 }
 
 // Substitute the captured answer into the expression rather than shadowing
@@ -540,8 +544,8 @@ function guardPrelude(guards) {
     // The guards arrive already substituted, so what marks a reader as wanted
     // is the slot standing in for it, not the call it replaced.
     if (guards.indexOf(guardReaderSlot(i)) < 0) continue
-    var value = "__omarchy_read_" + i
-    var fd = "__omarchy_read_fd_" + i
+    var value = "__raven_read_" + i
+    var fd = "__raven_read_fd_" + i
     start += "exec {" + fd + "}< <(" + GUARD_READERS[i] + " 2>/dev/null)\n"
     // `|| :` because read reports the EOF it stops at, and a login shell may
     // have turned on errexit.
@@ -554,7 +558,7 @@ function guardPrelude(guards) {
 }
 
 function guardReaderSlot(index) {
-  return "${__omarchy_read_" + index + "}"
+  return "${__raven_read_" + index + "}"
 }
 
 function substituteGuardReaders(expression) {
@@ -611,11 +615,11 @@ function guardScript(items) {
     groups[group] = (groups[group] || "") + lines[j]
   }
 
-  var script = guardPrelude(lines.join("")) + "__omarchy_groups=()\n"
-  for (var k = 0; k < groups.length; k++) script += "{\n" + groups[k] + "} &\n__omarchy_groups+=($!)\n"
-  return script + "__omarchy_failed=0\n"
-    + 'for __omarchy_group in "${__omarchy_groups[@]}"; do wait "$__omarchy_group" || __omarchy_failed=1; done\n'
-    + "((__omarchy_failed == 0))\n"
+  var script = guardPrelude(lines.join("")) + "__raven_groups=()\n"
+  for (var k = 0; k < groups.length; k++) script += "{\n" + groups[k] + "} &\n__raven_groups+=($!)\n"
+  return script + "__raven_failed=0\n"
+    + 'for __raven_group in "${__raven_groups[@]}"; do wait "$__raven_group" || __raven_failed=1; done\n'
+    + "((__raven_failed == 0))\n"
 }
 
 // An action that only asks this shell to summon one of its own plugins can be
@@ -623,7 +627,7 @@ function guardScript(items) {
 // bare call, such as a second command or a shell-expanded payload, is left to
 // bash.
 function summonAction(action) {
-  var match = /^omarchy-shell shell summon ([A-Za-z0-9._-]+)(?: '([^']*)')?$/.exec(String(action || ""))
+  var match = /^(?:raven|omarchy)-shell shell summon ([A-Za-z0-9._-]+)(?: '([^']*)')?$/.exec(String(action || ""))
   if (!match) return null
   return { id: match[1], payload: match[2] || "{}" }
 }

@@ -1,6 +1,5 @@
 {
-  // Omarchy menu definition — KDE/CachyOS port.
-  // Şema Omarchy 4'ün omarchy-menu.jsonc'siyle aynıdır.
+  // RavenSpot menu definition — KDE Plasma 6 / CachyOS Spotlight Launcher.
   // Ek alan: "iconName" — candy-icons (freedesktop) ikon temasından renkli ikon.
   //   iconName varsa QML renkli tema ikonunu gösterir; yoksa icon (Nerd Font glifi) kullanılır.
 
