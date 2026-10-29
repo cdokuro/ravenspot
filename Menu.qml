@@ -1828,7 +1828,7 @@ Window {
                     Text {
                         anchors.verticalCenter: parent.verticalCenter
                         text: model.label
-                        font.family: root.fontFamily
+                        font.family: root.textFont
                         font.pixelSize: 12
                         font.weight: Font.Medium
                         color: mouseItem.containsMouse ? root.selFg : (model.isDanger ? "#ff5252" : root.fgColor)
