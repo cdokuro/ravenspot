@@ -17,9 +17,32 @@ import socket
 import subprocess
 import sys
 
-SOCKET_PATH = os.path.join(os.environ.get("XDG_RUNTIME_DIR", "/tmp"), "ravenspot.sock")
+# ── Platform Path & IPC Definitions ───────────────────────────
+IS_WINDOWS = sys.platform == "win32"
+
+if IS_WINDOWS:
+    USER_CONFIG_DIR = os.path.join(os.environ.get("APPDATA", os.path.expanduser("~")), "ravenspot")
+    SERVER_NAME = "ravenspot_ipc_socket"
+else:
+    USER_CONFIG_DIR = os.path.expanduser("~/.config/ravenspot")
+    SERVER_NAME = os.path.join(os.environ.get("XDG_RUNTIME_DIR", "/tmp"), "ravenspot.sock")
+
+SOCKET_PATH = SERVER_NAME
+
+# PyInstaller bundle path resolution (frozen binary)
+if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
+    APP_DIR = sys._MEIPASS
+else:
+    APP_DIR = os.path.dirname(os.path.abspath(__file__))
+
+LEGACY_CONFIG_DIR = USER_CONFIG_DIR
+MENU_PATH = os.path.join(APP_DIR, "menu.jsonc")
+USER_MENU_PATH = os.path.join(USER_CONFIG_DIR, "menu.jsonc")
 
 def _try_fast_client():
+    if "unittest" in sys.modules or os.environ.get("RAVENSPOT_TESTING") == "1":
+        return True
+
     cmd = "toggle"
     start_hidden = False
     for arg in sys.argv[1:]:
@@ -32,12 +55,22 @@ def _try_fast_client():
 
     if cmd:
         try:
-            s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-            s.settimeout(0.2)
-            s.connect(SOCKET_PATH)
-            s.sendall((cmd + "\n").encode("utf-8"))
-            s.close()
-            sys.exit(0)
+            if hasattr(socket, "AF_UNIX") and not IS_WINDOWS:
+                s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+                s.settimeout(0.2)
+                s.connect(SOCKET_PATH)
+                s.sendall((cmd + "\n").encode("utf-8"))
+                s.close()
+                sys.exit(0)
+            else:
+                from PySide6.QtNetwork import QLocalSocket
+                s = QLocalSocket()
+                s.connectToServer(SERVER_NAME)
+                if s.waitForConnected(300):
+                    s.write((cmd + "\n").encode("utf-8"))
+                    s.waitForBytesWritten(300)
+                    s.disconnectFromServer()
+                    sys.exit(0)
         except Exception:
             if cmd == "quit":
                 sys.exit(0)
@@ -45,14 +78,12 @@ def _try_fast_client():
 
 START_HIDDEN = _try_fast_client()
 
-from PySide6.QtCore import QObject, QUrl, Qt, Slot, QTimer, QSize, Signal, Property
+from PySide6.QtCore import QObject, QUrl, Qt, Slot, QTimer, QSize, Signal, Property, QThread
 from PySide6.QtMultimedia import QSoundEffect
 from PySide6.QtGui import QGuiApplication, QIcon, QImage
 from PySide6.QtQml import QQmlApplicationEngine
 from PySide6.QtQuick import QQuickImageProvider
 from PySide6.QtNetwork import QLocalServer, QLocalSocket
-
-APP_DIR = os.path.dirname(os.path.abspath(__file__))
 MENU_PATH = os.path.join(APP_DIR, "menu.jsonc")
 
 USER_CONFIG_DIR = os.path.join(os.path.expanduser("~"), ".config", "ravenspot")
@@ -1035,16 +1066,18 @@ def main():
     QGuiApplication.setDesktopFileName("ravenspot")
     app = QGuiApplication(sys.argv)
 
-    # Eski soket dosyasını temizle
-    if os.path.exists(SOCKET_PATH):
+    # Eski soket dosyasını / pipe temizle
+    if not IS_WINDOWS and os.path.exists(SOCKET_PATH):
         try:
             os.unlink(SOCKET_PATH)
         except OSError:
             pass
+    elif IS_WINDOWS:
+        QLocalServer.removeServer(SERVER_NAME)
 
     server = QLocalServer()
-    if not server.listen(SOCKET_PATH):
-        print(f"ravenspot: Soket dinlenemedi ({SOCKET_PATH})", file=sys.stderr)
+    if not server.listen(SERVER_NAME):
+        print(f"ravenspot: Soket dinlenemedi ({SERVER_NAME})", file=sys.stderr)
 
     os.chdir(APP_DIR)
     shell = Shell(start_hidden=start_hidden)
