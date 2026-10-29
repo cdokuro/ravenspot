@@ -777,103 +777,152 @@ class Shell(QObject):
     def _update_telemetry(self):
         # CPU
         cpu_pct = 0
-        try:
-            with open("/proc/stat") as f:
-                fields = [float(x) for x in f.readline().strip().split()[1:8]]
-            idle = fields[3] + fields[4]
-            total = sum(fields)
-            if self._last_cpu_total > 0:
-                dt = total - self._last_cpu_total
-                di = idle - self._last_cpu_idle
-                if dt > 0:
-                    cpu_pct = max(0, min(100, int(100.0 * (1.0 - di / dt))))
-            self._last_cpu_idle = idle
-            self._last_cpu_total = total
-        except Exception:
-            pass
+        if IS_WINDOWS:
+            try:
+                import ctypes
+                from ctypes import wintypes
+                idle_t, kern_t, user_t = wintypes.FILETIME(), wintypes.FILETIME(), wintypes.FILETIME()
+                if ctypes.windll.kernel32.GetSystemTimes(ctypes.byref(idle_t), ctypes.byref(kern_t), ctypes.byref(user_t)):
+                    def _to_i(ft): return (ft.dwHighDateTime << 32) + ft.dwLowDateTime
+                    idle = _to_i(idle_t)
+                    total = _to_i(kern_t) + _to_i(user_t)
+                    if self._last_cpu_total > 0:
+                        dt = total - self._last_cpu_total
+                        di = idle - self._last_cpu_idle
+                        if dt > 0:
+                            cpu_pct = max(0, min(100, int(100.0 * (1.0 - di / dt))))
+                    self._last_cpu_idle = idle
+                    self._last_cpu_total = total
+            except Exception:
+                pass
+        else:
+            try:
+                with open("/proc/stat") as f:
+                    fields = [float(x) for x in f.readline().strip().split()[1:8]]
+                idle = fields[3] + fields[4]
+                total = sum(fields)
+                if self._last_cpu_total > 0:
+                    dt = total - self._last_cpu_total
+                    di = idle - self._last_cpu_idle
+                    if dt > 0:
+                        cpu_pct = max(0, min(100, int(100.0 * (1.0 - di / dt))))
+                self._last_cpu_idle = idle
+                self._last_cpu_total = total
+            except Exception:
+                pass
 
         # GPU
         gpu_pct = 0
-        try:
-            for p in ["/sys/class/drm/card1/device/gpu_busy_percent", "/sys/class/drm/card0/device/gpu_busy_percent"]:
-                if os.path.exists(p):
-                    with open(p) as f:
-                        gpu_pct = int(f.read().strip())
-                        break
-        except Exception:
-            pass
+        if not IS_WINDOWS:
+            try:
+                for p in ["/sys/class/drm/card1/device/gpu_busy_percent", "/sys/class/drm/card0/device/gpu_busy_percent"]:
+                    if os.path.exists(p):
+                        with open(p) as f:
+                            gpu_pct = int(f.read().strip())
+                            break
+            except Exception:
+                pass
 
         # Audio volume & mute
         vol_pct = 50
         is_muted = False
-        try:
-            out = subprocess.check_output(["wpctl", "get-volume", "@DEFAULT_AUDIO_SINK@"], timeout=1).decode().strip()
-            is_muted = "[MUTED]" in out
-            for part in out.split():
-                try:
-                    vol_pct = int(float(part) * 100)
-                    break
-                except ValueError:
-                    pass
-        except Exception:
-            pass
+        if not IS_WINDOWS:
+            try:
+                out = subprocess.check_output(["wpctl", "get-volume", "@DEFAULT_AUDIO_SINK@"], timeout=1).decode().strip()
+                is_muted = "[MUTED]" in out
+                for part in out.split():
+                    try:
+                        vol_pct = int(float(part) * 100)
+                        break
+                    except ValueError:
+                        pass
+            except Exception:
+                pass
 
         self.statsUpdated.emit(cpu_pct, gpu_pct, vol_pct, is_muted)
 
     @Slot(result="QVariantMap")
     def getSysMonitorInfo(self):
-        import glob
-        # RAM
         tot_ram, used_ram, ram_pct = 0, 0, 0
-        try:
-            with open("/proc/meminfo") as f:
-                mem = {}
-                for line in f:
-                    parts = line.split(":")
-                    if len(parts) == 2:
-                        mem[parts[0].strip()] = int(parts[1].strip().split()[0])
-            tot_ram = mem.get("MemTotal", 0) / 1024 / 1024
-            avail_ram = mem.get("MemAvailable", 0) / 1024 / 1024
-            used_ram = tot_ram - avail_ram
-            ram_pct = int((used_ram / tot_ram) * 100) if tot_ram > 0 else 0
-        except Exception:
-            pass
+        up_text = ""
+        if IS_WINDOWS:
+            try:
+                import ctypes
+                class MEMORYSTATUSEX(ctypes.Structure):
+                    _fields_ = [
+                        ("dwLength", ctypes.c_ulong),
+                        ("dwMemoryLoad", ctypes.c_ulong),
+                        ("ullTotalPhys", ctypes.c_ulonglong),
+                        ("ullAvailPhys", ctypes.c_ulonglong),
+                        ("ullTotalPageFile", ctypes.c_ulonglong),
+                        ("ullAvailPageFile", ctypes.c_ulonglong),
+                        ("ullTotalVirtual", ctypes.c_ulonglong),
+                        ("ullAvailVirtual", ctypes.c_ulonglong),
+                        ("ullAvailExtendedVirtual", ctypes.c_ulonglong),
+                    ]
+                stat = MEMORYSTATUSEX()
+                stat.dwLength = ctypes.sizeof(MEMORYSTATUSEX)
+                if ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(stat)):
+                    tot_ram = stat.ullTotalPhys / (1024**3)
+                    avail = stat.ullAvailPhys / (1024**3)
+                    used_ram = tot_ram - avail
+                    ram_pct = int(stat.dwMemoryLoad)
 
-        # Disk
+                up_sec = int(ctypes.windll.kernel32.GetTickCount64() / 1000)
+                up_hrs = up_sec // 3600
+                up_mins = (up_sec % 3600) // 60
+                up_text = f"{up_hrs}s {up_mins}d"
+            except Exception:
+                pass
+        else:
+            try:
+                with open("/proc/meminfo") as f:
+                    mem = {}
+                    for line in f:
+                        parts = line.split(":")
+                        if len(parts) == 2:
+                            mem[parts[0].strip()] = int(parts[1].strip().split()[0])
+                tot_ram = mem.get("MemTotal", 0) / 1024 / 1024
+                avail_ram = mem.get("MemAvailable", 0) / 1024 / 1024
+                used_ram = tot_ram - avail_ram
+                ram_pct = int((used_ram / tot_ram) * 100) if tot_ram > 0 else 0
+            except Exception:
+                pass
+
+            try:
+                with open("/proc/uptime") as f:
+                    up_sec = int(float(f.readline().split()[0]))
+                up_hrs = up_sec // 3600
+                up_mins = (up_sec % 3600) // 60
+                up_text = f"{up_hrs}s {up_mins}d"
+            except Exception:
+                pass
+
+        # Disk (shutil.disk_usage works on both Windows and Linux)
         disk_tot, disk_used, disk_pct = 0, 0, 0
         try:
-            statvfs = os.statvfs("/")
-            disk_tot = (statvfs.f_blocks * statvfs.f_frsize) / (1024**3)
-            disk_avail = (statvfs.f_bavail * statvfs.f_frsize) / (1024**3)
-            disk_used = disk_tot - disk_avail
+            root_drive = (os.environ.get("SystemDrive", "C:") + "\\") if IS_WINDOWS else "/"
+            total_b, used_b, free_b = shutil.disk_usage(root_drive)
+            disk_tot = total_b / (1024**3)
+            disk_used = used_b / (1024**3)
             disk_pct = int((disk_used / disk_tot) * 100) if disk_tot > 0 else 0
-        except Exception:
-            pass
-
-        # Uptime
-        up_text = ""
-        try:
-            with open("/proc/uptime") as f:
-                up_sec = int(float(f.readline().split()[0]))
-            up_hrs = up_sec // 3600
-            up_mins = (up_sec % 3600) // 60
-            up_text = f"{up_hrs}s {up_mins}d"
         except Exception:
             pass
 
         # CPU Temp
         temp_c = 0
-        try:
-            for t in ["/sys/class/hwmon/hwmon4/temp6_input", "/sys/class/hwmon/hwmon3/temp1_input", "/sys/class/thermal/thermal_zone0/temp"]:
-                if os.path.exists(t):
-                    with open(t) as f:
-                        val = int(f.read().strip())
-                        if val > 1000: val = int(val / 1000)
-                        if 20 <= val <= 105:
-                            temp_c = val
-                            break
-        except Exception:
-            pass
+        if not IS_WINDOWS:
+            try:
+                for t in ["/sys/class/hwmon/hwmon4/temp6_input", "/sys/class/hwmon/hwmon3/temp1_input", "/sys/class/thermal/thermal_zone0/temp"]:
+                    if os.path.exists(t):
+                        with open(t) as f:
+                            val = int(f.read().strip())
+                            if val > 1000: val = int(val / 1000)
+                            if 20 <= val <= 105:
+                                temp_c = val
+                                break
+            except Exception:
+                pass
 
         return {
             "ram_text": f"{used_ram:.1f}/{tot_ram:.0f}G",
@@ -899,14 +948,16 @@ class Shell(QObject):
 
     @Slot(QObject)
     def centerWindowOnActiveScreen(self, qquick_window):
-        out_name = self.getActiveOutputName()
         target_screen = None
-        for s in QGuiApplication.screens():
-            if s.name() == out_name:
-                target_screen = s
-                break
+        if not IS_WINDOWS:
+            out_name = self.getActiveOutputName()
+            for s in QGuiApplication.screens():
+                if s.name() == out_name:
+                    target_screen = s
+                    break
         if not target_screen:
-            target_screen = QGuiApplication.primaryScreen()
+            from PySide6.QtGui import QCursor
+            target_screen = QGuiApplication.screenAt(QCursor.pos()) or QGuiApplication.primaryScreen()
         if target_screen and qquick_window:
             geom = target_screen.geometry()
             qquick_window.setScreen(target_screen)
@@ -936,17 +987,19 @@ class Shell(QObject):
     @Slot(int)
     def setSystemVolume(self, volume):
         vol = max(0, min(100, volume)) / 100.0
-        try:
-            subprocess.Popen(["wpctl", "set-volume", "@DEFAULT_AUDIO_SINK@", f"{vol:.2f}"])
-        except Exception:
-            pass
+        if not IS_WINDOWS:
+            try:
+                subprocess.Popen(["wpctl", "set-volume", "@DEFAULT_AUDIO_SINK@", f"{vol:.2f}"])
+            except Exception:
+                pass
 
     @Slot()
     def toggleSystemMute(self):
-        try:
-            subprocess.Popen(["wpctl", "set-mute", "@DEFAULT_AUDIO_SINK@", "toggle"])
-        except Exception:
-            pass
+        if not IS_WINDOWS:
+            try:
+                subprocess.Popen(["wpctl", "set-mute", "@DEFAULT_AUDIO_SINK@", "toggle"])
+            except Exception:
+                pass
 
     @Slot(result="QVariantMap")
     def currentTheme(self):
