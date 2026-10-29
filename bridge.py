@@ -17,6 +17,8 @@ import socket
 import subprocess
 import sys
 
+__version__ = "0.2.1"
+
 # ── Platform Path & IPC Definitions ───────────────────────────
 IS_WINDOWS = sys.platform == "win32"
 
@@ -237,6 +239,10 @@ class Shell(QObject):
     @Property(bool, constant=True)
     def startHidden(self):
         return self._start_hidden
+
+    @Property(str, constant=True)
+    def version(self):
+        return __version__
 
     @Slot(bool)
     def onMenuVisibilityChanged(self, visible):
