@@ -656,7 +656,16 @@ class Shell(QObject):
         if not path:
             return
         try:
-            expanded = os.path.expanduser(path)
+            expanded = os.path.expandvars(os.path.expanduser(path))
+            if IS_WINDOWS:
+                if os.path.isdir(expanded):
+                    subprocess.Popen(["explorer.exe", os.path.normpath(expanded)])
+                else:
+                    if hasattr(os, "startfile"):
+                        os.startfile(expanded)
+                    else:
+                        subprocess.Popen(["explorer.exe", os.path.normpath(expanded)])
+                return
             if os.path.isdir(expanded):
                 if shutil.which("dolphin"):
                     subprocess.Popen(["dolphin", os.path.abspath(expanded)])
@@ -697,12 +706,19 @@ class Shell(QObject):
 
     @Slot(str)
     def openContainingFolder(self, path):
-        """Dosyanın veya uygulamanın bulunduğu klasörü Dolphin ile açıp dosyayı seç."""
+        """Dosyanın veya uygulamanın bulunduğu klasörü dosya yöneticisi ile açıp dosyayı seç."""
         if not path:
             return
         try:
-            expanded = os.path.expanduser(path)
+            expanded = os.path.expandvars(os.path.expanduser(path))
             if not os.path.exists(expanded):
+                return
+            if IS_WINDOWS:
+                norm = os.path.normpath(expanded)
+                if os.path.isdir(norm):
+                    subprocess.Popen(["explorer.exe", norm])
+                else:
+                    subprocess.Popen(["explorer.exe", f"/select,{norm}"])
                 return
             if shutil.which("dolphin"):
                 subprocess.Popen(["dolphin", "--select", os.path.abspath(expanded)])
@@ -718,8 +734,17 @@ class Shell(QObject):
         if not path:
             return
         try:
-            expanded = os.path.expanduser(path)
+            expanded = os.path.expandvars(os.path.expanduser(path))
             target_dir = expanded if os.path.isdir(expanded) else os.path.dirname(expanded)
+            if IS_WINDOWS:
+                norm_dir = os.path.normpath(target_dir)
+                if shutil.which("wt.exe") or shutil.which("wt"):
+                    subprocess.Popen(["wt.exe", "-d", norm_dir])
+                elif shutil.which("powershell.exe") or shutil.which("powershell"):
+                    subprocess.Popen(["powershell.exe", "-NoExit", "-Command", f"Set-Location -LiteralPath '{norm_dir}'"])
+                else:
+                    subprocess.Popen(["cmd.exe", "/K", f"cd /d \"{norm_dir}\""])
+                return
             if shutil.which("konsole"):
                 subprocess.Popen(["konsole", "--workdir", target_dir])
             else:
@@ -729,11 +754,20 @@ class Shell(QObject):
 
     @Slot(str)
     def runInTerminal(self, desktop_or_cmd):
-        """Uygulamayı veya komutu Konsole içinde çalıştır."""
+        """Uygulamayı veya komutu terminal içinde çalıştır."""
         if not desktop_or_cmd:
             return
         try:
             cmd = desktop_or_cmd
+            if IS_WINDOWS:
+                if shutil.which("wt.exe") or shutil.which("wt"):
+                    subprocess.Popen(["wt.exe", "powershell.exe", "-NoExit", "-Command", cmd])
+                elif shutil.which("powershell.exe") or shutil.which("powershell"):
+                    subprocess.Popen(["powershell.exe", "-NoExit", "-Command", cmd])
+                else:
+                    subprocess.Popen(["cmd.exe", "/K", cmd])
+                return
+
             if desktop_or_cmd.endswith(".desktop") and os.path.isfile(desktop_or_cmd):
                 import configparser
                 cp = configparser.ConfigParser(interpolation=None)
@@ -750,10 +784,13 @@ class Shell(QObject):
 
     @Slot(str)
     def openInDiscover(self, desktop):
-        """Uygulamayı KDE Discover (Yazılım Merkezi) sayfasında aç."""
+        """Uygulamayı uygulama mağazasında veya klasöründe aç."""
         if not desktop:
             return
         try:
+            if IS_WINDOWS:
+                self.openContainingFolder(desktop)
+                return
             if shutil.which("plasma-discover"):
                 subprocess.Popen(["plasma-discover", "--open-desktop-file", desktop])
             else:
@@ -763,10 +800,17 @@ class Shell(QObject):
 
     @Slot(str)
     def editDesktopFile(self, desktop):
-        """Uygulama .desktop dosyasını menü düzenleyicisinde veya metin düzenleyicide aç."""
+        """Uygulama kısayolunu veya yapılandırmasını düzenleyicide aç."""
         if not desktop:
             return
         try:
+            if IS_WINDOWS:
+                norm = os.path.normpath(desktop)
+                if shutil.which("notepad.exe") or shutil.which("notepad"):
+                    subprocess.Popen(["notepad.exe", norm])
+                else:
+                    self.openContainingFolder(desktop)
+                return
             if shutil.which("kmenuedit"):
                 subprocess.Popen(["kmenuedit"])
             elif shutil.which("kate"):
@@ -782,9 +826,37 @@ class Shell(QObject):
         if not path:
             return False
         try:
-            expanded = os.path.expanduser(path)
+            expanded = os.path.expandvars(os.path.expanduser(path))
             if not os.path.exists(expanded):
                 return False
+            if IS_WINDOWS:
+                try:
+                    from ctypes import wintypes
+                    class SHFILEOPSTRUCTW(ctypes.Structure):
+                        _fields_ = [
+                            ("hwnd", wintypes.HWND),
+                            ("wFunc", wintypes.UINT),
+                            ("pFrom", wintypes.LPCWSTR),
+                            ("pTo", wintypes.LPCWSTR),
+                            ("fFlags", wintypes.WORD),
+                            ("fAnyOperationsAborted", wintypes.BOOL),
+                            ("hNameMappings", wintypes.LPVOID),
+                            ("lpszProgressTitle", wintypes.LPCWSTR),
+                        ]
+                    FO_DELETE = 0x0003
+                    FOF_ALLOWUNDO = 0x0040
+                    FOF_NOCONFIRMATION = 0x0010
+                    FOF_SILENT = 0x0004
+                    
+                    norm = os.path.normpath(expanded) + '\0'
+                    fileop = SHFILEOPSTRUCTW()
+                    fileop.wFunc = FO_DELETE
+                    fileop.pFrom = norm
+                    fileop.fFlags = FOF_ALLOWUNDO | FOF_NOCONFIRMATION | FOF_SILENT
+                    ret = ctypes.windll.shell32.SHFileOperationW(ctypes.byref(fileop))
+                    return ret == 0 and not fileop.fAnyOperationsAborted
+                except Exception:
+                    return False
             if shutil.which("gio"):
                 res = subprocess.run(["gio", "trash", expanded], capture_output=True, timeout=5)
                 return res.returncode == 0
@@ -803,7 +875,7 @@ class Shell(QObject):
 
     def _init_extra(self):
         self._themes_file = os.path.join(APP_DIR, "themes.json")
-        self._user_theme_file = os.path.expanduser("~/.config/ravenspot/theme.json")
+        self._user_theme_file = os.path.join(USER_CONFIG_DIR, "theme.json")
         os.makedirs(os.path.dirname(self._user_theme_file), exist_ok=True)
         
         # Load themes
