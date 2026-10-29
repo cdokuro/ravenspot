@@ -94,6 +94,51 @@ if not os.path.exists(USER_MENU_PATH) and os.path.exists(os.path.join(LEGACY_CON
     USER_MENU_PATH = os.path.join(LEGACY_CONFIG_DIR, "menu.jsonc")
 
 # XDG application dirs (uygulama provider'ı için)
+def scan_windows_directory(base_dir):
+    """Windows Başlat Menüsü (.lnk / .url) kısayollarını tara."""
+    apps = []
+    if not os.path.isdir(base_dir):
+        return apps
+
+    ignore_keywords = {"uninstall", "kaldır", "setup", "help", "readme", "documentation"}
+    for root, dirs, files in os.walk(base_dir):
+        for f in sorted(files):
+            ext = os.path.splitext(f)[1].lower()
+            if ext in (".lnk", ".url"):
+                label = os.path.splitext(f)[0]
+                if any(ign in label.lower() for ign in ignore_keywords):
+                    continue
+                full_path = os.path.join(root, f)
+                slug = re.sub(r"[^\w\s-]", "", label.lower()).strip().replace(" ", "-")
+                aliases = [w.lower() for w in re.split(r"[\s_-]+", label) if len(w) > 1]
+
+                cat = "utilities"
+                lower_path = full_path.lower()
+                if any(k in lower_path for k in ["game", "steam", "riot", "epic", "oyun"]):
+                    cat = "games"
+                elif any(k in lower_path for k in ["browser", "chrome", "edge", "firefox", "brave", "zen", "internet"]):
+                    cat = "internet"
+                elif any(k in lower_path for k in ["code", "studio", "dev", "git", "python", "terminal"]):
+                    cat = "development"
+                elif any(k in lower_path for k in ["music", "video", "media", "spotify", "vlc", "audio"]):
+                    cat = "multimedia"
+                elif any(k in lower_path for k in ["photo", "paint", "gimp", "photoshop", "figma"]):
+                    cat = "graphics"
+                elif any(k in lower_path for k in ["word", "excel", "powerpoint", "office", "pdf"]):
+                    cat = "office"
+                elif any(k in lower_path for k in ["settings", "system", "ayar"]):
+                    cat = "system"
+
+                apps.append({
+                    "id": slug or label,
+                    "label": label,
+                    "icon": full_path,
+                    "aliases": aliases,
+                    "desktop": full_path,
+                    "category": cat
+                })
+    return apps
+
 def _xdg_data_dirs():
     dirs = []
     home = os.path.expanduser("~")
@@ -202,6 +247,22 @@ class Shell(QObject):
         if self._apps_cache is not None:
             return self._apps_cache
 
+        if IS_WINDOWS:
+            apps = []
+            seen = set()
+            start_dirs = [
+                os.path.expandvars(r"%ProgramData%\Microsoft\Windows\Start Menu\Programs"),
+                os.path.expandvars(r"%APPDATA%\Microsoft\Windows\Start Menu\Programs"),
+            ]
+            for d in start_dirs:
+                for app in scan_windows_directory(d):
+                    k = app["label"].lower()
+                    if k not in seen:
+                        seen.add(k)
+                        apps.append(app)
+            self._apps_cache = apps
+            return apps
+
         import configparser
         seen = {}
         for d in _xdg_data_dirs():
@@ -284,9 +345,16 @@ class Shell(QObject):
 
     @Slot(str)
     def launchApp(self, desktop):
-        """Bir .desktop dosyasını KDE'nin kendi mekanizmasıyla başlat."""
+        """Bir uygulamayı / kısayolu başlat."""
         if not desktop:
             return
+        if IS_WINDOWS:
+            try:
+                os.startfile(desktop)
+            except Exception:
+                subprocess.Popen(["cmd", "/c", "start", "", desktop], shell=True)
+            return
+
         subprocess.Popen(
             ["kioclient", "exec", desktop],
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
@@ -1062,6 +1130,24 @@ class AppIconProvider(QQuickImageProvider):
 
     def requestImage(self, id, size, requestedSize):
         clean_id = id.split("?")[0] if "?" in id else id
+        sz = requestedSize if requestedSize.isValid() and requestedSize.width() > 0 else QSize(48, 48)
+
+        if IS_WINDOWS or (os.path.exists(clean_id) and clean_id.lower().endswith((".lnk", ".exe", ".url"))):
+            try:
+                from PySide6.QtWidgets import QFileIconProvider
+                from PySide6.QtCore import QFileInfo
+                if not hasattr(self, "_file_icon_provider"):
+                    self._file_icon_provider = QFileIconProvider()
+                fi_icon = self._file_icon_provider.icon(QFileInfo(clean_id))
+                if not fi_icon.isNull():
+                    pm = fi_icon.pixmap(sz)
+                    img = pm.toImage()
+                    size.setWidth(img.width())
+                    size.setHeight(img.height())
+                    return img
+            except Exception:
+                pass
+
         icon_name = ""
         desktop = ""
         apps = self._shell._load_apps()
