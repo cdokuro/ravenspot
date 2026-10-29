@@ -1,0 +1,77 @@
+name: Build & Release Windows 11 Executable
+
+on:
+  push:
+    branches: [ main ]
+    tags: [ 'v*' ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows:
+    name: Build RavenSpot.exe (Windows 11 x64)
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt pyinstaller
+
+      - name: Build standalone executable with PyInstaller
+        shell: cmd
+        run: |
+          pyinstaller --noconsole --onefile --name "RavenSpot" ^
+            --add-data "Menu.qml;." ^
+            --add-data "MenuModel.js;." ^
+            --add-data "menu.jsonc;." ^
+            --add-data "themes.json;." ^
+            --add-data "sounds;sounds" ^
+            --add-data "icons;icons" ^
+            --clean ^
+            bridge.py
+
+      - name: Verify build artifact
+        shell: cmd
+        run: |
+          if not exist dist\RavenSpot.exe (
+            echo "Error: dist\RavenSpot.exe was not created!"
+            exit /b 1
+          )
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: RavenSpot-Windows-x64
+          path: dist/RavenSpot.exe
+          if-no-files-found: error
+
+      - name: Package Release Zip
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        run: |
+          Compress-Archive -Path dist/RavenSpot.exe, README.md, LICENSE, menu.jsonc, themes.json -DestinationPath RavenSpot-Windows-x64.zip
+
+      - name: Publish GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            RavenSpot-Windows-x64.zip
+            dist/RavenSpot.exe
+          draft: false
+          prerelease: false
+          generate_release_notes: true
