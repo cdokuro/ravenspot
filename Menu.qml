@@ -14,10 +14,20 @@ Window {
     flags: Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.Tool
 
     property bool canCloseOnInactive: false
+    Timer {
+        id: enableCloseOnInactiveTimer
+        interval: 350
+        repeat: false
+        onTriggered: {
+            if (root.active) {
+                root.canCloseOnInactive = true
+            }
+        }
+    }
     onActiveChanged: {
         if (active) {
-            canCloseOnInactive = true
-        } else if (root.opened && canCloseOnInactive) {
+            enableCloseOnInactiveTimer.restart()
+        } else if (root.opened && root.canCloseOnInactive) {
             closeMenu()
         }
     }
@@ -222,7 +232,7 @@ Window {
                 icon: f.is_dir ? "󰉋" : "󰈔", iconFont: "", iconName: f.iconName,
                 label: f.name, title: "", target: "", description: f.desc,
                 action: "", provider: "file-item", aliases: [f.name], searchTerms: [f.name],
-                when: "", checked: "", disabled: "", filePath: f.path, order: j
+                when: "", checked: "", disabled: "", filePath: f.path, isDir: !!f.is_dir, order: j
             })
         }
         var merged = MenuModel.swapProviderRows(root.items, root.itemOrder, id, rows)
@@ -382,7 +392,9 @@ Window {
             isFavorite: !!entry.isFavorite,
             isCurrent: !!entry.isCurrent,
             themeKey: entry.themeKey || entry.value || "",
-            themeSection: entry.themeSection || ""
+            themeSection: entry.themeSection || "",
+            filePath: entry.filePath || "",
+            isDir: !!entry.isDir
         }
     }
 
@@ -662,7 +674,209 @@ Window {
         }
     }
 
+    // ── Sağ Tık Bağlam Menüsü (Context Menu) ──────────────────────
+    property var contextRow: null
+    ListModel { id: contextMenuModel }
+
+    function openContextMenu(rowItem, globalX, globalY) {
+        if (!rowItem) return
+        root.contextRow = rowItem
+        contextMenuModel.clear()
+
+        if (rowItem.kind === "app" || (rowItem.desktop && rowItem.desktop.length > 0)) {
+            // 1. Başlat
+            contextMenuModel.append({
+                label: "Başlat",
+                icon: "",
+                actionType: "launchApp",
+                actionPayload: rowItem.desktop,
+                isDanger: false
+            })
+            // 2. .desktop Actions (KDE Kickoff'taki gibi: Yeni Gizli Pencere, Yeni Pencere vb.)
+            try {
+                var acts = JSON.parse(Shell.getAppActions(rowItem.desktop) || "[]")
+                for (var i = 0; i < acts.length; i++) {
+                    contextMenuModel.append({
+                        label: acts[i].name,
+                        icon: "󰅂",
+                        actionType: "runAction",
+                        actionPayload: acts[i].exec,
+                        isDanger: false
+                    })
+                }
+            } catch(e) {}
+
+            // 3. Konumu Aç (Dolphin'de Göster)
+            contextMenuModel.append({
+                label: "Dolphin'de Göster",
+                icon: "󰉋",
+                actionType: "openLocation",
+                actionPayload: rowItem.desktop,
+                isDanger: false
+            })
+            // 4. Terminalde Çalıştır
+            contextMenuModel.append({
+                label: "Terminalde Çalıştır",
+                icon: "",
+                actionType: "runInTerminal",
+                actionPayload: rowItem.desktop,
+                isDanger: false
+            })
+            // 5. Discover
+            contextMenuModel.append({
+                label: "Yazılım Merkezinde Aç",
+                icon: "󰀻",
+                actionType: "openInDiscover",
+                actionPayload: rowItem.desktop,
+                isDanger: false
+            })
+            // 6. Düzenle
+            contextMenuModel.append({
+                label: "Uygulamayı Düzenle",
+                icon: "",
+                actionType: "editDesktop",
+                actionPayload: rowItem.desktop,
+                isDanger: false
+            })
+            // 7. Yolu Kopyala
+            contextMenuModel.append({
+                label: "Dosya Yolunu Kopyala",
+                icon: "󰅇",
+                actionType: "copyPath",
+                actionPayload: rowItem.desktop,
+                isDanger: false
+            })
+        } else if (rowItem.provider === "file-item" || (rowItem.filePath && rowItem.filePath.length > 0)) {
+            // 1. Aç
+            contextMenuModel.append({
+                label: rowItem.isDir ? "Klasörü Aç" : "Dosyayı Aç",
+                icon: "",
+                actionType: "openPath",
+                actionPayload: rowItem.filePath,
+                isDanger: false
+            })
+            // 2. Dolphin'de Göster
+            contextMenuModel.append({
+                label: "Dolphin'de Göster",
+                icon: "󰉋",
+                actionType: "openLocation",
+                actionPayload: rowItem.filePath,
+                isDanger: false
+            })
+            // 3. Terminalde Aç
+            contextMenuModel.append({
+                label: "Terminalde Aç",
+                icon: "",
+                actionType: "openInTerminal",
+                actionPayload: rowItem.filePath,
+                isDanger: false
+            })
+            // 4. Yolu Kopyala
+            contextMenuModel.append({
+                label: "Dosya Yolunu Kopyala",
+                icon: "󰅇",
+                actionType: "copyPath",
+                actionPayload: rowItem.filePath,
+                isDanger: false
+            })
+            // 5. Çöp Kutusuna Taşı
+            contextMenuModel.append({
+                label: "Çöp Kutusuna Taşı",
+                icon: "",
+                actionType: "moveToTrash",
+                actionPayload: rowItem.filePath,
+                isDanger: true
+            })
+        } else {
+            // Genel menü öğeleri
+            contextMenuModel.append({
+                label: "Seç / Çalıştır",
+                icon: "",
+                actionType: "activateCurrent",
+                actionPayload: "",
+                isDanger: false
+            })
+            var toCopy = rowItem.action || rowItem.value || rowItem.label || ""
+            if (toCopy) {
+                contextMenuModel.append({
+                    label: "Metni / Komutu Kopyala",
+                    icon: "󰅇",
+                    actionType: "copyPath",
+                    actionPayload: toCopy,
+                    isDanger: false
+                })
+            }
+        }
+
+        // Konum hesaplama
+        var pw = contextPopup.width
+        var ph = contextPopup.height
+        contextPopup.x = Math.max(16, Math.min(globalX, root.width - pw - 16))
+        contextPopup.y = Math.max(16, Math.min(globalY, root.height - ph - 16))
+        contextPopup.open()
+    }
+
+    function executeContextAction(actionType, payload) {
+        contextPopup.close()
+        var r = root.contextRow
+        if (!r) return
+
+        if (actionType === "launchApp") {
+            Shell.playCreamy()
+            root.opened = false
+            Shell.launchApp(r.desktop)
+            Qt.callLater(closeMenu)
+        } else if (actionType === "runAction") {
+            Shell.playCreamy()
+            root.opened = false
+            Shell.runDetached(payload)
+            Qt.callLater(closeMenu)
+        } else if (actionType === "openPath") {
+            Shell.playCreamy()
+            root.opened = false
+            Shell.openPath(payload || r.filePath)
+            Qt.callLater(closeMenu)
+        } else if (actionType === "openLocation") {
+            Shell.playCreamy()
+            root.opened = false
+            Shell.openContainingFolder(payload || r.filePath || r.desktop)
+            Qt.callLater(closeMenu)
+        } else if (actionType === "openInTerminal") {
+            Shell.playCreamy()
+            root.opened = false
+            Shell.openInTerminal(payload || r.filePath)
+            Qt.callLater(closeMenu)
+        } else if (actionType === "runInTerminal") {
+            Shell.playCreamy()
+            root.opened = false
+            Shell.runInTerminal(r.desktop)
+            Qt.callLater(closeMenu)
+        } else if (actionType === "openInDiscover") {
+            Shell.playCreamy()
+            root.opened = false
+            Shell.openInDiscover(r.desktop)
+            Qt.callLater(closeMenu)
+        } else if (actionType === "editDesktop") {
+            Shell.playCreamy()
+            root.opened = false
+            Shell.editDesktopFile(r.desktop)
+            Qt.callLater(closeMenu)
+        } else if (actionType === "copyPath") {
+            Shell.setClipboard(payload)
+        } else if (actionType === "moveToTrash") {
+            Shell.moveToTrash(payload || r.filePath)
+            if (root.activeMenu === "downloads") {
+                root.providersLoaded["downloads"] = false
+                loadFolderFiles("downloads", "downloads")
+            }
+        } else if (actionType === "activateCurrent") {
+            activateIndex(resultList.currentIndex)
+        }
+    }
+
     function openMenu(initialMenu) {
+        root.canCloseOnInactive = false
+        enableCloseOnInactiveTimer.stop()
         Shell.centerWindowOnActiveScreen(root)
         root.activeMenu = root.item(initialMenu) ? initialMenu : "root"
         root.navStack = []
@@ -690,10 +904,13 @@ Window {
             root.requestActivate()
             root.raise()
             searchInput.forceActiveFocus()
+            enableCloseOnInactiveTimer.restart()
         })
     }
 
     function closeMenu() {
+        if (contextPopup.opened) contextPopup.close()
+        enableCloseOnInactiveTimer.stop()
         root.canCloseOnInactive = false
         root.opened = false
         closeTimer.restart()
@@ -860,6 +1077,11 @@ Window {
             id: keyHandler
             Keys.onPressed: function(event) {
                 if (event.key === Qt.Key_Escape) {
+                    if (contextPopup.opened) {
+                        contextPopup.close()
+                        event.accepted = true
+                        return
+                    }
                     if (root.filterText.length) {
                         setFilter("")
                         searchInput.text = ""
@@ -869,6 +1091,11 @@ Window {
                         closeMenu()
                     }
                     event.accepted = true
+                } else if (event.key === Qt.Key_Menu || (event.key === Qt.Key_F10 && (event.modifiers & Qt.ShiftModifier))) {
+                    if (root.selectedIndex >= 0 && root.selectedIndex < displayModel.count) {
+                        openContextMenu(displayModel.get(root.selectedIndex), root.width / 2, 180)
+                        event.accepted = true
+                    }
                 } else if ((event.key === Qt.Key_Backspace || event.key === Qt.Key_Left) && !root.filterText.length) {
                     goBack()
                     event.accepted = true
@@ -1256,6 +1483,7 @@ Window {
                     anchors.fill: parent
                     hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
+                    acceptedButtons: Qt.LeftButton | Qt.RightButton
                     onEntered: {
                         if (!model.disabled && root.selectedIndex !== index) {
                             root.selectedIndex = index
@@ -1263,7 +1491,16 @@ Window {
                             Shell.playThock()
                         }
                     }
-                    onClicked: activateIndex(index)
+                    onClicked: function(mouse) {
+                        if (mouse.button === Qt.RightButton) {
+                            root.selectedIndex = index
+                            resultList.currentIndex = index
+                            var pt = mapToItem(root.contentItem, mouse.x, mouse.y)
+                            openContextMenu(displayModel.get(index), pt.x, pt.y)
+                        } else {
+                            activateIndex(index)
+                        }
+                    }
                 }
             }
         }
@@ -1527,6 +1764,86 @@ Window {
                         font.pixelSize: 12
                         font.family: root.textFont
                         anchors.verticalCenter: parent.verticalCenter
+                    }
+                }
+            }
+        }
+    }
+
+    // ── Bağlam Menüsü Görünümü (Context Menu Popup) ──────────────
+    Popup {
+        id: contextPopup
+        parent: Overlay.overlay
+        width: 250
+        height: Math.min(contextList.contentHeight + 16, 380)
+        padding: 8
+        modal: true
+        focus: true
+        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+
+        background: Rectangle {
+            color: root.bgColor
+            border.color: root.bgBorder
+            border.width: 1
+            radius: 10
+            layer.enabled: true
+            layer.effect: MultiEffect {
+                shadowEnabled: true
+                shadowColor: root.glowColor
+                shadowBlur: 0.6
+                shadowOpacity: 0.5
+            }
+        }
+
+        contentItem: ListView {
+            id: contextList
+            model: contextMenuModel
+            clip: true
+            spacing: 3
+            boundsBehavior: Flickable.StopAtBounds
+
+            delegate: Rectangle {
+                id: cItem
+                width: contextList.width
+                height: 32
+                radius: 6
+                color: mouseItem.containsMouse ? (model.isDanger ? "#8b0000" : root.selBg) : "transparent"
+
+                Row {
+                    anchors.fill: parent
+                    anchors.leftMargin: 10
+                    anchors.rightMargin: 10
+                    spacing: 10
+
+                    Text {
+                        width: 18
+                        anchors.verticalCenter: parent.verticalCenter
+                        horizontalAlignment: Text.AlignHCenter
+                        text: model.icon
+                        font.family: root.iconFont
+                        font.pixelSize: 14
+                        color: mouseItem.containsMouse ? root.selFg : (model.isDanger ? "#ff5252" : root.fgColor)
+                    }
+
+                    Text {
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: model.label
+                        font.family: root.fontFamily
+                        font.pixelSize: 12
+                        font.weight: Font.Medium
+                        color: mouseItem.containsMouse ? root.selFg : (model.isDanger ? "#ff5252" : root.fgColor)
+                        elide: Text.ElideRight
+                    }
+                }
+
+                MouseArea {
+                    id: mouseItem
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: {
+                        Shell.playCreamy()
+                        executeContextAction(model.actionType, model.actionPayload)
                     }
                 }
             }

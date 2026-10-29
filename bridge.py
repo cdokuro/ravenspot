@@ -11,6 +11,8 @@ Architecture:
 
 import json
 import os
+import re
+import shutil
 import socket
 import subprocess
 import sys
@@ -555,9 +557,144 @@ class Shell(QObject):
         if not path:
             return
         try:
-            subprocess.Popen(["xdg-open", path])
+            expanded = os.path.expanduser(path)
+            if os.path.isdir(expanded):
+                if shutil.which("dolphin"):
+                    subprocess.Popen(["dolphin", os.path.abspath(expanded)])
+                    return
+            subprocess.Popen(["xdg-open", expanded])
         except Exception:
             pass
+
+    @Slot(str, result=str)
+    def getAppActions(self, desktop):
+        """Bir .desktop dosyasındaki Action tanımlarını (yeni pencere vb.) döndür."""
+        if not desktop:
+            return "[]"
+        expanded = os.path.expanduser(desktop)
+        if not os.path.isfile(expanded):
+            return "[]"
+        import configparser
+        cp = configparser.ConfigParser(interpolation=None)
+        try:
+            cp.read(expanded, encoding="utf-8")
+        except Exception:
+            return "[]"
+        actions = []
+        if cp.has_section("Desktop Entry"):
+            de = cp["Desktop Entry"]
+            raw_actions = de.get("Actions", "")
+            action_names = [a.strip() for a in raw_actions.split(";") if a.strip()]
+            for act in action_names:
+                sec = f"Desktop Action {act}"
+                if cp.has_section(sec):
+                    act_sec = cp[sec]
+                    name = act_sec.get("Name", act)
+                    raw_exec = act_sec.get("Exec", "")
+                    if name and raw_exec:
+                        clean_exec = re.sub(r"%[a-zA-Z]", "", raw_exec).strip()
+                        actions.append({"id": act, "name": name, "exec": clean_exec})
+        return json.dumps(actions)
+
+    @Slot(str)
+    def openContainingFolder(self, path):
+        """Dosyanın veya uygulamanın bulunduğu klasörü Dolphin ile açıp dosyayı seç."""
+        if not path:
+            return
+        try:
+            expanded = os.path.expanduser(path)
+            if not os.path.exists(expanded):
+                return
+            if shutil.which("dolphin"):
+                subprocess.Popen(["dolphin", "--select", os.path.abspath(expanded)])
+            else:
+                target = expanded if os.path.isdir(expanded) else os.path.dirname(expanded)
+                subprocess.Popen(["xdg-open", target])
+        except Exception:
+            pass
+
+    @Slot(str)
+    def openInTerminal(self, path):
+        """Belirtilen dosya veya klasörün konumunda terminal aç."""
+        if not path:
+            return
+        try:
+            expanded = os.path.expanduser(path)
+            target_dir = expanded if os.path.isdir(expanded) else os.path.dirname(expanded)
+            if shutil.which("konsole"):
+                subprocess.Popen(["konsole", "--workdir", target_dir])
+            else:
+                subprocess.Popen(["x-terminal-emulator"], cwd=target_dir)
+        except Exception:
+            pass
+
+    @Slot(str)
+    def runInTerminal(self, desktop_or_cmd):
+        """Uygulamayı veya komutu Konsole içinde çalıştır."""
+        if not desktop_or_cmd:
+            return
+        try:
+            cmd = desktop_or_cmd
+            if desktop_or_cmd.endswith(".desktop") and os.path.isfile(desktop_or_cmd):
+                import configparser
+                cp = configparser.ConfigParser(interpolation=None)
+                cp.read(desktop_or_cmd, encoding="utf-8")
+                if cp.has_section("Desktop Entry"):
+                    cmd = cp["Desktop Entry"].get("Exec", desktop_or_cmd)
+                    cmd = re.sub(r"%[a-zA-Z]", "", cmd).strip()
+            if shutil.which("konsole"):
+                subprocess.Popen(["konsole", "-e", "bash", "-c", f"{cmd}; echo; read -p 'Kapatmak için Enter basınız...'"])
+            else:
+                subprocess.Popen(["x-terminal-emulator", "-e", cmd])
+        except Exception:
+            pass
+
+    @Slot(str)
+    def openInDiscover(self, desktop):
+        """Uygulamayı KDE Discover (Yazılım Merkezi) sayfasında aç."""
+        if not desktop:
+            return
+        try:
+            if shutil.which("plasma-discover"):
+                subprocess.Popen(["plasma-discover", "--open-desktop-file", desktop])
+            else:
+                self.openContainingFolder(desktop)
+        except Exception:
+            pass
+
+    @Slot(str)
+    def editDesktopFile(self, desktop):
+        """Uygulama .desktop dosyasını menü düzenleyicisinde veya metin düzenleyicide aç."""
+        if not desktop:
+            return
+        try:
+            if shutil.which("kmenuedit"):
+                subprocess.Popen(["kmenuedit"])
+            elif shutil.which("kate"):
+                subprocess.Popen(["kate", desktop])
+            else:
+                subprocess.Popen(["xdg-open", desktop])
+        except Exception:
+            pass
+
+    @Slot(str, result=bool)
+    def moveToTrash(self, path):
+        """Dosyayı veya klasörü çöp kutusuna taşı."""
+        if not path:
+            return False
+        try:
+            expanded = os.path.expanduser(path)
+            if not os.path.exists(expanded):
+                return False
+            if shutil.which("gio"):
+                res = subprocess.run(["gio", "trash", expanded], capture_output=True, timeout=5)
+                return res.returncode == 0
+            elif shutil.which("kioclient"):
+                res = subprocess.run(["kioclient", "move", expanded, "trash:/"], capture_output=True, timeout=5)
+                return res.returncode == 0
+        except Exception:
+            pass
+        return False
 
 
 
@@ -880,8 +1017,11 @@ class ThemeIconProvider(QQuickImageProvider):
             icon = QIcon.fromTheme(clean_id)
         if icon.isNull():
             icon = QIcon.fromTheme("application-x-executable")
-        sz = requestedSize if requestedSize.isValid() and requestedSize.width() > 0 else QSize(48, 48)
-        pm = icon.pixmap(sz)
+        # Candy icon temasındaki 48x48 ve scalable zengin renkli ikonların seçilmesi için
+        # en az 64x64 çözünürlük talep ediyoruz (places/16 monokrom ikonlar yerine).
+        w = max(requestedSize.width() if requestedSize.isValid() and requestedSize.width() > 0 else 48, 64)
+        h = max(requestedSize.height() if requestedSize.isValid() and requestedSize.height() > 0 else 48, 64)
+        pm = icon.pixmap(QSize(w, h))
         img = pm.toImage()
         size.setWidth(img.width())
         size.setHeight(img.height())
