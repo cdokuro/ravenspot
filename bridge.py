@@ -84,14 +84,81 @@ from PySide6.QtGui import QGuiApplication, QIcon, QImage
 from PySide6.QtQml import QQmlApplicationEngine
 from PySide6.QtQuick import QQuickImageProvider
 from PySide6.QtNetwork import QLocalServer, QLocalSocket
-MENU_PATH = os.path.join(APP_DIR, "menu.jsonc")
 
-USER_CONFIG_DIR = os.path.join(os.path.expanduser("~"), ".config", "ravenspot")
 LEGACY_CONFIG_DIR = os.path.join(os.path.expanduser("~"), ".config", "omarchy-menu")
-
 USER_MENU_PATH = os.path.join(USER_CONFIG_DIR, "menu.jsonc")
 if not os.path.exists(USER_MENU_PATH) and os.path.exists(os.path.join(LEGACY_CONFIG_DIR, "menu.jsonc")):
     USER_MENU_PATH = os.path.join(LEGACY_CONFIG_DIR, "menu.jsonc")
+
+class Win32HotkeyThread(QThread):
+    """Windows global hotkey listener thread (Alt+Space and Win+Space)."""
+    hotkeyTriggered = Signal()
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._running = False
+        self._thread_id = None
+
+    def run(self):
+        if not IS_WINDOWS:
+            return
+        import ctypes
+        from ctypes import wintypes
+
+        user32 = getattr(ctypes, "windll", None) and getattr(ctypes.windll, "user32", None)
+        kernel32 = getattr(ctypes, "windll", None) and getattr(ctypes.windll, "kernel32", None)
+        if not user32 or not kernel32:
+            return
+
+        MOD_ALT = 0x0001
+        MOD_WIN = 0x0008
+        MOD_NOREPEAT = 0x4000
+        VK_SPACE = 0x20
+        WM_HOTKEY = 0x0312
+
+        self._running = True
+        try:
+            self._thread_id = kernel32.GetCurrentThreadId()
+        except Exception:
+            self._thread_id = None
+
+        # id 1: Alt + Space, id 2: Win + Space
+        try:
+            user32.RegisterHotKey(None, 1, MOD_ALT | MOD_NOREPEAT, VK_SPACE)
+            user32.RegisterHotKey(None, 2, MOD_WIN | MOD_NOREPEAT, VK_SPACE)
+        except Exception:
+            pass
+
+        try:
+            msg = wintypes.MSG()
+            while self._running:
+                ret = user32.GetMessageW(ctypes.byref(msg), None, 0, 0)
+                if ret <= 0:
+                    break
+                if msg.message == WM_HOTKEY:
+                    self.hotkeyTriggered.emit()
+                user32.TranslateMessage(ctypes.byref(msg))
+                user32.DispatchMessageW(ctypes.byref(msg))
+        except Exception:
+            pass
+        finally:
+            try:
+                user32.UnregisterHotKey(None, 1)
+                user32.UnregisterHotKey(None, 2)
+            except Exception:
+                pass
+
+    def stop(self):
+        self._running = False
+        if IS_WINDOWS and self._thread_id:
+            try:
+                import ctypes
+                WM_QUIT = 0x0012
+                if getattr(ctypes, "windll", None) and getattr(ctypes.windll, "user32", None):
+                    ctypes.windll.user32.PostThreadMessageW(self._thread_id, WM_QUIT, 0, 0)
+            except Exception:
+                pass
+        self.wait(1000)
 
 # XDG application dirs (uygulama provider'ı için)
 def scan_windows_directory(base_dir):
@@ -1323,6 +1390,13 @@ def main():
                 on_ready_read()
 
     server.newConnection.connect(handle_new_connection)
+
+    hotkey_thread = None
+    if IS_WINDOWS:
+        hotkey_thread = Win32HotkeyThread()
+        hotkey_thread.hotkeyTriggered.connect(shell.toggleRequested.emit)
+        hotkey_thread.start()
+        app.aboutToQuit.connect(hotkey_thread.stop)
 
     engine = QQmlApplicationEngine()
     engine.addImageProvider("appicon", AppIconProvider(shell))
