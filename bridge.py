@@ -1167,7 +1167,8 @@ class Shell(QObject):
             target_screen = QGuiApplication.screenAt(QCursor.pos()) or QGuiApplication.primaryScreen()
         if target_screen and qquick_window:
             geom = target_screen.geometry()
-            qquick_window.setScreen(target_screen)
+            if qquick_window.screen() != target_screen:
+                qquick_window.setScreen(target_screen)
             w = qquick_window.width() if qquick_window.width() > 0 else 728
             h = qquick_window.height() if qquick_window.height() > 0 else 548
             x = geom.x() + (geom.width() - w) // 2

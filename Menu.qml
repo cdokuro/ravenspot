@@ -11,7 +11,7 @@ Window {
     width: card.width + 48
     height: card.height + 48
     color: "transparent"
-    flags: Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.Tool
+    flags: Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint
 
     property bool canCloseOnInactive: false
     Timer {
@@ -900,9 +900,7 @@ Window {
         startProvider(root.activeMenu)
         Shell.onMenuVisibilityChanged(true)
         Qt.callLater(function(){
-            root.show()
             root.requestActivate()
-            root.raise()
             searchInput.forceActiveFocus()
             enableCloseOnInactiveTimer.restart()
         })
@@ -1778,6 +1776,8 @@ Window {
         height: Math.min(contextList.contentHeight + 16, 380)
         padding: 8
         modal: true
+        dim: false
+        Overlay.modal: Item {}
         focus: true
         closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
 
