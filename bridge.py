@@ -17,7 +17,7 @@ import socket
 import subprocess
 import sys
 
-__version__ = "0.2.6"
+__version__ = "0.2.7"
 
 # ── Platform Path & IPC Definitions ───────────────────────────
 IS_WINDOWS = sys.platform == "win32"
@@ -733,6 +733,19 @@ class Shell(QObject):
                 exp = os.path.expanduser(m)
                 if os.path.exists(exp):
                     return exp
+
+        # 5. Apps listesi içinde desktop kontrolü (uygulama konumu)
+        if item_id:
+            for a in self._apps:
+                aid = (a.get("id") or "").lower()
+                if aid == low_id or aid.endswith("." + low_id):
+                    return a.get("desktop", "")
+        if action:
+            act_cmd = action.split()[0].lower() if action.split() else ""
+            for a in self._apps:
+                aid = (a.get("id") or "").lower()
+                if aid == act_cmd or aid.endswith("." + act_cmd):
+                    return a.get("desktop", "")
 
         return ""
 

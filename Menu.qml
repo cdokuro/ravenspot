@@ -1142,6 +1142,31 @@ Window {
         }
     }
 
+    function openItemLocation(rowItem) {
+        if (!rowItem || rowItem.disabled) return
+        var path = rowItem.filePath || rowItem.desktop || ""
+        if (!path) {
+            path = Shell.resolveItemPath(rowItem.itemId || "", rowItem.provider || "", rowItem.action || "", rowItem.value || "")
+        }
+        if (path) {
+            Shell.playCreamy()
+            root.opened = false
+            if (Shell.isDirectory(path)) {
+                Shell.openPath(path)
+            } else {
+                Shell.openContainingFolder(path)
+            }
+            Qt.callLater(closeMenu)
+            return
+        }
+        if (rowItem.action) {
+            Shell.playCreamy()
+            root.opened = false
+            Shell.runDetached(rowItem.action)
+            Qt.callLater(closeMenu)
+        }
+    }
+
     // ── Sağ Tık Bağlam Menüsü (Context Menu) ──────────────────────
     property var contextRow: null
     ListModel { id: contextMenuModel }
@@ -1611,6 +1636,9 @@ Window {
                     select(-6); event.accepted = true
                 } else if (event.key === Qt.Key_PageDown) {
                     select(6); event.accepted = true
+                } else if ((event.key === Qt.Key_Return || event.key === Qt.Key_Enter) && (event.modifiers & Qt.ControlModifier)) {
+                    openItemLocation(displayModel.get(root.selectedIndex))
+                    event.accepted = true
                 } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter || event.key === Qt.Key_Right) {
                     activateIndex(root.selectedIndex)
                     event.accepted = true
@@ -2115,7 +2143,7 @@ Window {
                     anchors.fill: parent
                     hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
-                    acceptedButtons: Qt.LeftButton | Qt.RightButton
+                    acceptedButtons: Qt.LeftButton | Qt.RightButton | Qt.MiddleButton
                     onEntered: {
                         if (!model.disabled && root.selectedIndex !== index) {
                             root.selectedIndex = index
@@ -2129,6 +2157,10 @@ Window {
                             resultList.currentIndex = index
                             var pt = mapToItem(root.contentItem, mouse.x, mouse.y)
                             openContextMenu(displayModel.get(index), pt.x, pt.y)
+                        } else if (mouse.button === Qt.MiddleButton) {
+                            root.selectedIndex = index
+                            resultList.currentIndex = index
+                            openItemLocation(displayModel.get(index))
                         } else {
                             activateIndex(index)
                         }
