@@ -6,7 +6,7 @@
   // ─── Kök menü ────────────────────────────────────────────────
   "apps": { "icon": "󰀻", "iconName": "applications-all", "label": "Apps", "aliases": ["app", "applications", "uygulamalar"] },
   "shell": { "icon": "", "iconName": "utilities-terminal", "label": "Shell", "aliases": ["terminal", "konsole", "bash", "fish", "shell"], "action": "konsole" },
-  "downloads": { "icon": "󰇚", "iconName": "folder-download", "label": "Downloads", "aliases": ["downloads", "indirilenler", "download", "dosyalar", "files"], "provider": "files-downloads" },
+  "downloads": { "icon": "󰇚", "iconName": "aptdaemon-download", "label": "Downloads", "aliases": ["downloads", "indirilenler", "download", "dosyalar", "files"], "provider": "files-downloads" },
   "browser": { "icon": "󰖟", "iconName": "web-browser", "label": "Browser", "action": "xdg-open https://www.mozilla.org/" },
   "discover": { "icon": "󰀻", "iconName": "plasmadiscover", "label": "Discover", "aliases": ["discover", "store", "mağaza", "yazılım", "market"], "action": "plasma-discover" },
   "cachyupdate": { "icon": "󰚰", "iconName": "cachy-update-blue", "label": "Cachy Update", "aliases": ["cachy", "update", "güncelle", "cachyos", "pacman"], "action": "konsole -e arch-update" },

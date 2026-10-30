@@ -1665,11 +1665,12 @@ Window {
                 anchors.rightMargin: 16
                 height: 42
                 radius: 12
-                color: Qt.rgba(1, 1, 1, 0.08)
-                border.color: searchInput.activeFocus ? root.bgBorder : Qt.rgba(255, 255, 255, 0.12)
-                border.width: searchInput.activeFocus ? 1.5 : 1
+                color: searchInput.activeFocus ? Qt.rgba(1, 1, 1, 0.12) : Qt.rgba(1, 1, 1, 0.07)
+                border.color: searchInput.activeFocus ? Qt.rgba(255, 255, 255, 0.28) : Qt.rgba(255, 255, 255, 0.10)
+                border.width: searchInput.activeFocus ? 1.2 : 1
 
                 Behavior on border.color { ColorAnimation { duration: 120 } }
+                Behavior on color { ColorAnimation { duration: 120 } }
 
                 // Sol: Büyüteç İkonu (Apple Spotlight Style)
                 Text {
@@ -1680,7 +1681,7 @@ Window {
                     text: "󰍉"
                     font.family: root.iconFont
                     font.pixelSize: 17
-                    color: searchInput.text.length > 0 ? root.bgBorder : root.fgDim
+                    color: searchInput.text.length > 0 ? root.fgColor : root.fgDim
                     Behavior on color { ColorAnimation { duration: 120 } }
                 }
 
@@ -1702,7 +1703,7 @@ Window {
                         spacing: 4
                         Text {
                             text: "‹"
-                            color: root.bgBorder
+                            color: root.fgDim
                             font.pixelSize: 13
                             font.bold: true
                             anchors.verticalCenter: parent.verticalCenter

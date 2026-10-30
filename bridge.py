@@ -17,7 +17,7 @@ import socket
 import subprocess
 import sys
 
-__version__ = "0.2.2"
+__version__ = "0.2.3"
 
 # ── Platform Path & IPC Definitions ───────────────────────────
 IS_WINDOWS = sys.platform == "win32"
@@ -965,7 +965,11 @@ class Shell(QObject):
             except Exception:
                 pass
 
-        # Apply current theme icon theme to QIcon
+        # Apply current theme icon theme to QIcon & search paths
+        local_icons_dir = os.path.join(APP_DIR, "icons")
+        if os.path.isdir(local_icons_dir):
+            paths = [local_icons_dir] + [p for p in QIcon.themeSearchPaths() if p != local_icons_dir]
+            QIcon.setThemeSearchPaths(paths)
         cur_icon_theme = "candy-icons"
         QIcon.setThemeName(cur_icon_theme)
 
@@ -1441,6 +1445,8 @@ class ThemeIconProvider(QQuickImageProvider):
         icon = QIcon()
         if os.path.exists(clean_id) or os.path.isabs(clean_id):
             icon = QIcon(clean_id)
+        if icon.isNull() and clean_id in ("folder-download", "folder-downloads", "download"):
+            icon = QIcon.fromTheme("aptdaemon-download")
         if icon.isNull():
             icon = QIcon.fromTheme(clean_id)
         if icon.isNull():
