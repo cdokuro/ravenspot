@@ -8,15 +8,21 @@ RavenSpot brings the speed and elegance of macOS Spotlight and Raycast combined 
 
 ## ✨ Features
 
+- 🍎 **Apple Spotlight Frosted Search Capsule**: Floating rounded pill container (`radius: 12px`) with frosted glass backdrop, dynamic focus glowing borders, magnifying glass icon, category breadcrumbs, clear button `(×)`, and `ESC` badge.
+- ⚡ **KRunner-Style Multi-Action Engine**:
+  - **System Power & Session Controls**: Instant system actions for `kapat` / `shutdown`, `yeniden başlat` / `reboot`, `kilitle` / `lock`, `uyut` / `sleep`, `çıkış` / `logout`, and `plasma restart`.
+  - **Inline Math & Unit Conversion**: Compute expressions (`sqrt(144)`, `2^10`, `20% of 150`, `150 + 10%`, `pi * 2`) and convert units (`10 km in m`, `50 gb in mb`, `100 c in f`, `5 kg in lbs`, `10 miles in km`) with instant clipboard copy.
+  - **Web Search Bangs**: Query directly with prefixes like `g ` (Google), `yt ` (YouTube), `gh ` (GitHub), `w ` (Wikipedia), `tr ` (Translate), `map ` (Maps), and `ddg ` (DuckDuckGo).
+  - **Process Killer**: Type `kill <name>` to scan running processes and terminate matching PIDs with one keystroke.
+  - **Path & Directory Navigator**: Enter paths starting with `~` or `/` (`~/Downloads`, `/etc`) to open directly in Dolphin or Konsole.
+  - **Audio & Volume Commands**: Instant volume control with `ses 70`, `vol 50`, or `mute`/`sessiz`.
 - ⚡ **Instant Fuzzy Search**: Search applications, settings, actions, and custom triggers in milliseconds.
 - 🗂️ **Categorized Apps**: Categorized FreeDesktop applications (Linux) & Start Menu shortcuts (Windows) with live badge counts.
 - 🍬 **Candy Icon Theme**: Bundled gradient Candy icons for native vibrancy and crisp scaling across platforms.
 - 🖱️ **Rich Context Menu (Right-Click)**:
   - **Linux**: Launch, Desktop Actions, Open containing folder in Dolphin, Run in Konsole, Open in Discover, Edit `.desktop`, Move to Trash.
   - **Windows**: Launch, Show in File Explorer (`/select,`), Open in Windows Terminal / PowerShell, Edit shortcut in Notepad, Move to Recycle Bin (with full Undo support via Win32 Shell API).
-- 🧮 **Inline Calculator**: Type any math expression (`125 * 4`, `500 / 2.5`, `(20 + 5) * 4`, `2^8`) and press Enter to copy the evaluated result to your clipboard.
 - 💻 **Terminal Command Mode**: Prefix queries with `>` to run any shell command directly in Konsole or Windows Terminal / PowerShell (`> btop`, `> ping 1.1.1.1`).
-- 🌐 **Web Fallback Search**: Instant Google and DuckDuckGo search fallback when no local match is found (or prefix queries with `?`).
 - 📋 **Integrated Clipboard Manager**: Live list of your recent clipboard history right inside the palette with single-click restore.
 - 🎨 **Theme Manager & Favorites**: Browse themes with currently active theme highlighted and single-key (`F`) favoriting.
 - 📊 **Realtime Telemetry**: Live CPU, RAM, and Disk usage metrics.

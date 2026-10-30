@@ -47,7 +47,7 @@ Window {
     property string textFont: "Inter"
     property int cardWidth: 680
     property int rowHeight: 48
-    property int headerHeight: 70
+    property int headerHeight: 84
     property int cpuPercent: 0
     property int gpuPercent: 0
     property int sysVolume: 50
@@ -399,18 +399,89 @@ Window {
     }
 
     function tryEvalMath(q) {
-        var expr = q.startsWith("=") ? q.substring(1).trim() : q
+        var expr = q.startsWith("=") ? q.substring(1).trim() : q.trim()
         if (!expr) return null
-        if (!/^[\d\s+\-*/xX÷^().,%]+$/.test(expr)) return null
-        if (!q.startsWith("=") && !/[+\-*/xX÷^%]/.test(expr)) return null
+
+        // Yüzde kalıpları: "20% of 150" veya "150 + 20%"
+        expr = expr.replace(/(\d+(\.\d+)?)\s*%\s*(?:of|\*)\s*(\d+(\.\d+)?)/gi, "($1/100*$3)")
+        expr = expr.replace(/(\d+(\.\d+)?)\s*([+-])\s*(\d+(\.\d+)?)\s*%/gi, "($1 $3 ($1 * ($4/100)))")
+        expr = expr.replace(/(\d+(\.\d+)?)\s*%/g, "($1/100)")
+
+        var fnExpr = expr
+            .replace(/\bpi\b/gi, "Math.PI")
+            .replace(/\be\b/gi, "Math.E")
+            .replace(/\bsqrt\(/gi, "Math.sqrt(")
+            .replace(/\bsin\(/gi, "Math.sin(")
+            .replace(/\bcos\(/gi, "Math.cos(")
+            .replace(/\btan\(/gi, "Math.tan(")
+            .replace(/\blog\(/gi, "Math.log10(")
+            .replace(/\bln\(/gi, "Math.log(")
+            .replace(/\babs\(/gi, "Math.abs(")
+            .replace(/\bround\(/gi, "Math.round(")
+            .replace(/\bfloor\(/gi, "Math.floor(")
+            .replace(/\bceil\(/gi, "Math.ceil(")
+            .replace(/x|X/g, "*")
+            .replace(/÷/g, "/")
+            .replace(/\^/g, "**")
+
+        if (!/^[\d\s+\-*/()^.,%*MathPIEsqrtincosagblorfed]+$/.test(fnExpr)) return null
+        if (!q.startsWith("=") && !/[+\-*/^()]|Math\./.test(fnExpr)) return null
+
         try {
-            var sanitized = expr.replace(/x|X/g, "*").replace(/÷/g, "/").replace(/\^/g, "**")
-            sanitized = sanitized.replace(/(\d+(\.\d+)?)%/g, "($1/100)")
-            var res = Function("return (" + sanitized + ")")()
+            var res = Function("return (" + fnExpr + ")")()
             if (typeof res === "number" && !isNaN(res) && isFinite(res)) {
                 return (Math.round(res * 100000000) / 100000000).toString()
             }
         } catch (e) {}
+        return null
+    }
+
+    function tryEvalUnit(q) {
+        var str = q.trim().toLowerCase()
+        var m = str.match(/^([\d.]+)\s*([a-z°]+)\s*(?:in|to|\/|->)\s*([a-z°]+)$/i)
+        if (!m) return null
+        var val = parseFloat(m[1])
+        var u1 = m[2].toLowerCase()
+        var u2 = m[3].toLowerCase()
+        if (isNaN(val)) return null
+
+        var res = null
+        var unitName = ""
+
+        if (u1 === "km" && (u2 === "m" || u2 === "meter")) { res = val * 1000; unitName = "m" }
+        else if ((u1 === "m" || u1 === "meter") && u2 === "km") { res = val / 1000; unitName = "km" }
+        else if (u1 === "miles" || u1 === "mi") {
+            if (u2 === "km") { res = val * 1.60934; unitName = "km" }
+            else if (u2 === "m") { res = val * 1609.34; unitName = "m" }
+        }
+        else if (u1 === "km" && (u2 === "miles" || u2 === "mi")) { res = val / 1.60934; unitName = "mil" }
+        else if (u1 === "cm" && u2 === "m") { res = val / 100; unitName = "m" }
+        else if (u1 === "m" && u2 === "cm") { res = val * 100; unitName = "cm" }
+        else if ((u1 === "in" || u1 === "inch") && u2 === "cm") { res = val * 2.54; unitName = "cm" }
+        else if (u2 === "in" || u2 === "inch") {
+            if (u1 === "cm") { res = val / 2.54; unitName = "in" }
+        }
+        else if (u1 === "gb" && u2 === "mb") { res = val * 1024; unitName = "MB" }
+        else if (u1 === "mb" && u2 === "gb") { res = val / 1024; unitName = "GB" }
+        else if (u1 === "tb" && u2 === "gb") { res = val * 1024; unitName = "GB" }
+        else if (u1 === "gb" && u2 === "tb") { res = val / 1024; unitName = "TB" }
+        else if (u1 === "kb" && u2 === "mb") { res = val / 1024; unitName = "MB" }
+        else if (u1 === "mb" && u2 === "kb") { res = val * 1024; unitName = "KB" }
+        else if ((u1 === "c" || u1 === "°c") && (u2 === "f" || u2 === "°f")) { res = (val * 9/5) + 32; unitName = "°F" }
+        else if ((u1 === "f" || u1 === "°f") && (u2 === "c" || u2 === "°c")) { res = (val - 32) * 5/9; unitName = "°C" }
+        else if (u1 === "kg" && (u2 === "lbs" || u2 === "lb")) { res = val * 2.20462; unitName = "lbs" }
+        else if ((u1 === "lbs" || u1 === "lb") && u2 === "kg") { res = val / 2.20462; unitName = "kg" }
+        else if (u1 === "kg" && (u2 === "g" || u2 === "gram")) { res = val * 1000; unitName = "g" }
+        else if ((u1 === "g" || u1 === "gram") && u2 === "kg") { res = val / 1000; unitName = "kg" }
+
+        if (res !== null) {
+            var formatted = Math.round(res * 10000) / 10000
+            return {
+                original: val + " " + u1,
+                result: formatted + " " + unitName,
+                copyVal: formatted.toString()
+            }
+        }
         return null
     }
 
@@ -469,7 +540,283 @@ Window {
                 })
             }
 
-            // 2. Terminal komut modu ('>' öneki)
+            // 1.b Birim Dönüştürücü (KRunner)
+            var unitObj = tryEvalUnit(query)
+            if (unitObj !== null) {
+                rows.unshift({
+                    itemId: "__unit__",
+                    kind: "action",
+                    icon: "󰑮",
+                    iconName: "accessories-calculator",
+                    iconFont: "",
+                    appIcon: "",
+                    appId: "",
+                    label: unitObj.original + " = " + unitObj.result,
+                    target: "",
+                    detail: "Birim Dönüştürme Sonucu (Enter: Panoya Kopyala)",
+                    path: "Dönüştür",
+                    childCount: 0,
+                    action: "",
+                    provider: "clipboard-item",
+                    value: unitObj.copyVal,
+                    desktop: "",
+                    disabled: false,
+                    score: -99999,
+                    section: ""
+                })
+            }
+
+            // 2. KRunner Sistem Eylemleri (Kapat, Yeniden Başlat, Kilitle, vb.)
+            var qLower = query.toLowerCase()
+            var sysActions = [
+                {
+                    triggers: ["kapat", "shutdown", "poweroff", "power off", "sistemi kapat"],
+                    label: "Sistemi Kapat",
+                    detail: "Bilgisayarı hemen kapat",
+                    icon: "󰐥",
+                    actionId: "poweroff"
+                },
+                {
+                    triggers: ["yeniden başlat", "reboot", "restart", "yeniden baslat"],
+                    label: "Yeniden Başlat",
+                    detail: "Bilgisayarı yeniden başlat",
+                    icon: "󰜉",
+                    actionId: "reboot"
+                },
+                {
+                    triggers: ["kilitle", "lock", "lock screen", "ekranı kilitle", "ekrani kilitle"],
+                    label: "Ekranı Kilitle",
+                    detail: "Oturumu anında kilitle",
+                    icon: "󰌾",
+                    actionId: "lock"
+                },
+                {
+                    triggers: ["uyut", "sleep", "suspend", "uyku", "askıya al", "askiya al"],
+                    label: "Askıya Al (Uyku Modu)",
+                    detail: "Sistemi askıya al",
+                    icon: "󰒲",
+                    actionId: "sleep"
+                },
+                {
+                    triggers: ["çıkış", "cikis", "logout", "log out", "oturum kapat"],
+                    label: "Oturumu Kapat",
+                    detail: "Mevcut kullanıcı oturumunu sonlandır",
+                    icon: "󰗽",
+                    actionId: "logout"
+                },
+                {
+                    triggers: ["restart plasma", "plasma restart", "kwin restart"],
+                    label: "KDE Plasma'yı Yeniden Başlat",
+                    detail: "Masaüstü kabuğunu tazeleyerek yeniden başlat",
+                    icon: "󰑐",
+                    actionId: "restart_plasma"
+                }
+            ]
+
+            for (var sa = 0; sa < sysActions.length; sa++) {
+                var act = sysActions[sa]
+                for (var st = 0; st < act.triggers.length; st++) {
+                    if (act.triggers[st].indexOf(qLower) !== -1 || qLower.indexOf(act.triggers[st]) !== -1) {
+                        rows.unshift({
+                            itemId: "__sys_" + act.actionId + "__",
+                            kind: "action",
+                            icon: act.icon,
+                            iconName: "system-run",
+                            iconFont: "",
+                            appIcon: "",
+                            appId: "",
+                            label: act.label,
+                            target: "",
+                            detail: act.detail,
+                            path: "Sistem",
+                            childCount: 0,
+                            action: "",
+                            provider: "sys-action",
+                            value: act.actionId,
+                            desktop: "",
+                            disabled: false,
+                            score: -99990,
+                            section: ""
+                        })
+                        break
+                    }
+                }
+            }
+
+            // 3. Ses ve Mute Komutları (örn. "ses 60", "vol 80", "mute", "sessiz")
+            var volMatch = qLower.match(/^(?:ses|vol|volume)\s*(\d{1,3})$/)
+            if (volMatch) {
+                var targetVol = Math.max(0, Math.min(100, parseInt(volMatch[1])))
+                rows.unshift({
+                    itemId: "__set_vol__",
+                    kind: "action",
+                    icon: "󰕾",
+                    iconName: "audio-volume-high",
+                    iconFont: "",
+                    appIcon: "",
+                    appId: "",
+                    label: "Sesi %" + targetVol + " Yap",
+                    target: "",
+                    detail: "Sistem ses seviyesini ayarla",
+                    path: "Ses Kontrolü",
+                    childCount: 0,
+                    action: "",
+                    provider: "set-volume",
+                    value: targetVol.toString(),
+                    desktop: "",
+                    disabled: false,
+                    score: -99995,
+                    section: ""
+                })
+            } else if (qLower === "mute" || qLower === "sessiz") {
+                rows.unshift({
+                    itemId: "__toggle_mute__",
+                    kind: "action",
+                    icon: "󰝟",
+                    iconName: "audio-volume-muted",
+                    iconFont: "",
+                    appIcon: "",
+                    appId: "",
+                    label: "Sesi Kapat / Aç (Mute)",
+                    target: "",
+                    detail: "Sistem sesini sustur veya aç",
+                    path: "Ses Kontrolü",
+                    childCount: 0,
+                    action: "",
+                    provider: "toggle-mute",
+                    value: "",
+                    desktop: "",
+                    disabled: false,
+                    score: -99995,
+                    section: ""
+                })
+            }
+
+            // 4. Süreç Sonlandırıcı (kill komutu)
+            if (qLower.startsWith("kill ")) {
+                var pFilter = query.substring(5).trim()
+                if (pFilter) {
+                    try {
+                        var procs = JSON.parse(Shell.listProcesses(pFilter))
+                        for (var pi = 0; pi < procs.length; pi++) {
+                            var pr = procs[pi]
+                            rows.unshift({
+                                itemId: "__kill_" + pr.pid + "__",
+                                kind: "action",
+                                icon: "󰅙",
+                                iconName: "process-stop",
+                                iconFont: "",
+                                appIcon: "",
+                                appId: "",
+                                label: "Sonlandır: " + pr.name + " (PID " + pr.pid + ")",
+                                target: "",
+                                detail: "Süreci durdur (SIGTERM)",
+                                path: "Süreç Yönetimi",
+                                childCount: 0,
+                                action: "",
+                                provider: "kill-process",
+                                value: pr.pid,
+                                desktop: "",
+                                disabled: false,
+                                score: -99997,
+                                section: ""
+                            })
+                        }
+                    } catch (e) {}
+                }
+            }
+
+            // 5. Dizin ve Dosya Yolu Açıcı (~/ veya /)
+            if (query.startsWith("~") || query.startsWith("/")) {
+                var cleanPath = query
+                rows.unshift({
+                    itemId: "__open_dir__",
+                    kind: "action",
+                    icon: "󰝰",
+                    iconName: "folder",
+                    iconFont: "",
+                    appIcon: "",
+                    appId: "",
+                    label: "Klasörü Aç: " + cleanPath,
+                    target: "",
+                    detail: "Dolphin ile konumu aç",
+                    path: "Dosya Gezgini",
+                    childCount: 0,
+                    action: "",
+                    provider: "open-folder-path",
+                    value: cleanPath,
+                    desktop: "",
+                    disabled: false,
+                    score: -99996,
+                    section: ""
+                })
+                rows.push({
+                    itemId: "__open_term_dir__",
+                    kind: "action",
+                    icon: "",
+                    iconName: "terminal",
+                    iconFont: "",
+                    appIcon: "",
+                    appId: "",
+                    label: "Bu Konumda Terminal Aç: " + cleanPath,
+                    target: "",
+                    detail: "Konsole ile bu klasörde başlat",
+                    path: "Terminal",
+                    childCount: 0,
+                    action: "konsole --workdir " + (cleanPath.startsWith("~") ? "$HOME/" + cleanPath.substring(2) : cleanPath),
+                    provider: "",
+                    value: "",
+                    desktop: "",
+                    disabled: false,
+                    score: -99995,
+                    section: ""
+                })
+            }
+
+            // 6. Raycast / KRunner Web Bangs
+            var bangs = [
+                { prefix: "g ", name: "Google", icon: "󰖟", url: "https://www.google.com/search?q=" },
+                { prefix: "yt ", name: "YouTube", icon: "󰗃", url: "https://www.youtube.com/results?search_query=" },
+                { prefix: "gh ", name: "GitHub", icon: "󰊤", url: "https://github.com/search?q=" },
+                { prefix: "w ", name: "Wikipedia", icon: "󰖬", url: "https://tr.wikipedia.org/w/index.php?search=" },
+                { prefix: "tr ", name: "Google Çeviri", icon: "󰗊", url: "https://translate.google.com/?sl=auto&tl=tr&text=" },
+                { prefix: "map ", name: "Haritalar", icon: "󰍎", url: "https://www.google.com/maps/search/" },
+                { prefix: "ddg ", name: "DuckDuckGo", icon: "󰇧", url: "https://duckduckgo.com/?q=" }
+            ]
+
+            var hasBang = false
+            for (var bi = 0; bi < bangs.length; bi++) {
+                var bg = bangs[bi]
+                if (qLower.startsWith(bg.prefix)) {
+                    hasBang = true
+                    var bangQ = query.substring(bg.prefix.length).trim()
+                    if (bangQ) {
+                        rows.unshift({
+                            itemId: "__bang_" + bg.name + "__",
+                            kind: "action",
+                            icon: bg.icon,
+                            iconName: "web-browser",
+                            iconFont: "",
+                            appIcon: "",
+                            appId: "",
+                            label: bg.name + "'da Ara: \"" + bangQ + "\"",
+                            target: "",
+                            detail: "Varsayılan tarayıcıda ara",
+                            path: "Web Arama",
+                            childCount: 0,
+                            action: "xdg-open '" + bg.url + encodeURIComponent(bangQ) + "'",
+                            provider: "",
+                            value: "",
+                            desktop: "",
+                            disabled: false,
+                            score: -99998,
+                            section: ""
+                        })
+                    }
+                }
+            }
+
+            // 7. Terminal komut modu ('>' öneki)
             if (query.startsWith(">")) {
                 var termCmd = query.substring(1).trim()
                 if (termCmd) {
@@ -497,10 +844,10 @@ Window {
                 }
             }
 
-            // 3. Web Arama (Fallback veya '?' öneki)
+            // 8. Web Arama (Fallback veya '?' öneki)
             var isWebQuery = query.startsWith("?")
             var rawSearch = isWebQuery ? query.substring(1).trim() : query
-            if (rawSearch && (isWebQuery || rows.length === 0)) {
+            if (!hasBang && rawSearch && (isWebQuery || rows.length === 0)) {
                 var webRows = [
                     {
                         itemId: "__web_google__",
@@ -660,6 +1007,38 @@ Window {
                 loadRavenThemes(root.activeMenu)
             }
             return
+        } else if (row.provider === "sys-action") {
+            Shell.playCreamy()
+            root.opened = false
+            if (row.value === "poweroff") Shell.powerOff()
+            else if (row.value === "reboot") Shell.rebootSystem()
+            else if (row.value === "lock") Shell.lockScreen()
+            else if (row.value === "sleep") Shell.suspendSystem()
+            else if (row.value === "logout") Shell.logoutUser()
+            else if (row.value === "restart_plasma") Shell.restartPlasma()
+            Qt.callLater(closeMenu)
+        } else if (row.provider === "set-volume") {
+            Shell.playCreamy()
+            var nv = parseInt(row.value)
+            root.sysVolume = nv
+            root.sysMuted = false
+            Shell.setSystemVolume(nv)
+            Qt.callLater(closeMenu)
+        } else if (row.provider === "toggle-mute") {
+            Shell.playCreamy()
+            Shell.toggleSystemMute()
+            root.sysMuted = !root.sysMuted
+            Qt.callLater(closeMenu)
+        } else if (row.provider === "kill-process") {
+            Shell.playCreamy()
+            Shell.killProcess(row.value)
+            Qt.callLater(closeMenu)
+        } else if (row.provider === "open-folder-path") {
+            Shell.playCreamy()
+            root.opened = false
+            var pth = row.value.startsWith("~") ? "$HOME/" + row.value.substring(2) : row.value
+            Shell.runDetached("xdg-open " + pth)
+            Qt.callLater(closeMenu)
         } else {
             Shell.playCreamy()
             root.opened = false
@@ -1275,34 +1654,167 @@ Window {
                 }
             }
 
-            Text {
-                id: pathLabel
-                anchors.left: parent.left
-                anchors.leftMargin: 18
-                anchors.bottom: parent.bottom
-                anchors.bottomMargin: 11
-                text: root.activeMenu === "root" ? "RavenSpot" : MenuModel.pathFor(root.items, root.activeMenu)
-                color: root.fgDim
-                font.pixelSize: 13
-                font.family: root.textFont
-                visible: !root.filterText.length
-            }
-
-            TextInput {
-                id: searchInput
+            // ── Apple Spotlight Style Frosted Glass Search Pill Bar ──
+            Rectangle {
+                id: searchPill
+                anchors.top: topMetricsBar.bottom
+                anchors.topMargin: 8
                 anchors.left: parent.left
                 anchors.right: parent.right
-                anchors.leftMargin: 18
-                anchors.rightMargin: 18
-                anchors.bottom: parent.bottom
-                anchors.bottomMargin: 8
-                color: root.fgColor
-                font.pixelSize: 18
-                font.family: root.textFont
-                focus: true
-                selectByMouse: true
-                onTextChanged: setFilter(text)
-                Keys.forwardTo: [keyHandler]
+                anchors.leftMargin: 16
+                anchors.rightMargin: 16
+                height: 42
+                radius: 12
+                color: Qt.rgba(1, 1, 1, 0.08)
+                border.color: searchInput.activeFocus ? root.bgBorder : Qt.rgba(255, 255, 255, 0.12)
+                border.width: searchInput.activeFocus ? 1.5 : 1
+
+                Behavior on border.color { ColorAnimation { duration: 120 } }
+
+                // Sol: Büyüteç İkonu (Apple Spotlight Style)
+                Text {
+                    id: searchIcon
+                    anchors.left: parent.left
+                    anchors.leftMargin: 12
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: "󰍉"
+                    font.family: root.iconFont
+                    font.pixelSize: 17
+                    color: searchInput.text.length > 0 ? root.bgBorder : root.fgDim
+                    Behavior on color { ColorAnimation { duration: 120 } }
+                }
+
+                // Alt Kategori Dizin Breadcrumb Rozeti
+                Rectangle {
+                    id: categoryBadge
+                    visible: root.activeMenu !== "root" && !root.filterText.length
+                    anchors.left: searchIcon.right
+                    anchors.leftMargin: 8
+                    anchors.verticalCenter: parent.verticalCenter
+                    height: 24
+                    radius: 6
+                    color: Qt.rgba(255, 255, 255, 0.12)
+                    width: catBadgeContent.width + 16
+
+                    Row {
+                        id: catBadgeContent
+                        anchors.centerIn: parent
+                        spacing: 4
+                        Text {
+                            text: "‹"
+                            color: root.bgBorder
+                            font.pixelSize: 13
+                            font.bold: true
+                            anchors.verticalCenter: parent.verticalCenter
+                        }
+                        Text {
+                            text: MenuModel.pathFor(root.items, root.activeMenu)
+                            color: root.fgColor
+                            font.pixelSize: 12
+                            font.family: root.textFont
+                            anchors.verticalCenter: parent.verticalCenter
+                        }
+                    }
+
+                    MouseArea {
+                        anchors.fill: parent
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: {
+                            Shell.playCreamy()
+                            goBack()
+                        }
+                    }
+                }
+
+                // Placeholder Metni
+                Text {
+                    id: placeholderText
+                    anchors.left: categoryBadge.visible ? categoryBadge.right : searchIcon.right
+                    anchors.leftMargin: 10
+                    anchors.right: clearBtn.visible ? clearBtn.left : escBadge.left
+                    anchors.rightMargin: 8
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: root.activeMenu === "root" ? "RavenSpot'ta ara veya komut yaz..." : "Bu kategoride ara..."
+                    color: root.fgDim
+                    opacity: 0.55
+                    font.pixelSize: 14
+                    font.family: root.textFont
+                    elide: Text.ElideRight
+                    visible: !root.filterText.length
+                }
+
+                // Arama Girişi (TextInput)
+                TextInput {
+                    id: searchInput
+                    anchors.left: categoryBadge.visible ? categoryBadge.right : searchIcon.right
+                    anchors.leftMargin: 10
+                    anchors.right: clearBtn.visible ? clearBtn.left : escBadge.left
+                    anchors.rightMargin: 8
+                    anchors.verticalCenter: parent.verticalCenter
+                    color: root.fgColor
+                    font.pixelSize: 15
+                    font.family: root.textFont
+                    focus: true
+                    selectByMouse: true
+                    onTextChanged: setFilter(text)
+                    Keys.forwardTo: [keyHandler]
+                }
+
+                // Temizleme Butonu (×)
+                Rectangle {
+                    id: clearBtn
+                    visible: root.filterText.length > 0
+                    anchors.right: parent.right
+                    anchors.rightMargin: 10
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: 22
+                    height: 22
+                    radius: 11
+                    color: clearMouse.containsMouse ? Qt.rgba(255, 255, 255, 0.22) : Qt.rgba(255, 255, 255, 0.1)
+
+                    Text {
+                        anchors.centerIn: parent
+                        text: "󰅖"
+                        font.family: root.iconFont
+                        font.pixelSize: 12
+                        color: root.fgColor
+                    }
+
+                    MouseArea {
+                        id: clearMouse
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: {
+                            searchInput.text = ""
+                            setFilter("")
+                        }
+                    }
+                }
+
+                // ESC Kısayol Rozeti (Arama boşken görünür)
+                Rectangle {
+                    id: escBadge
+                    visible: !root.filterText.length
+                    anchors.right: parent.right
+                    anchors.rightMargin: 10
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: 32
+                    height: 18
+                    radius: 4
+                    color: Qt.rgba(255, 255, 255, 0.07)
+                    border.color: Qt.rgba(255, 255, 255, 0.12)
+                    border.width: 1
+
+                    Text {
+                        anchors.centerIn: parent
+                        text: "ESC"
+                        font.pixelSize: 9
+                        font.weight: Font.DemiBold
+                        font.family: root.textFont
+                        color: root.fgDim
+                    }
+                }
             }
         }
 

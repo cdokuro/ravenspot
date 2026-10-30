@@ -17,7 +17,7 @@ import socket
 import subprocess
 import sys
 
-__version__ = "0.2.1"
+__version__ = "0.2.2"
 
 # ── Platform Path & IPC Definitions ───────────────────────────
 IS_WINDOWS = sys.platform == "win32"
@@ -1265,6 +1265,118 @@ class Shell(QObject):
                 self._snd_creamy.play()
         except Exception:
             pass
+
+    # ── KRunner System Actions ─────────────────────────────────────
+    @Slot()
+    def powerOff(self):
+        """Sistemi kapat."""
+        if IS_WINDOWS:
+            subprocess.Popen("shutdown /s /t 0", shell=True)
+        else:
+            subprocess.Popen(
+                ["bash", "-c", "qdbus6 org.kde.Shutdown /Shutdown logoutAndShutdown 2>/dev/null || systemctl poweroff"],
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True
+            )
+
+    @Slot()
+    def rebootSystem(self):
+        """Sistemi yeniden başlat."""
+        if IS_WINDOWS:
+            subprocess.Popen("shutdown /r /t 0", shell=True)
+        else:
+            subprocess.Popen(
+                ["bash", "-c", "qdbus6 org.kde.Shutdown /Shutdown logoutAndReboot 2>/dev/null || systemctl reboot"],
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True
+            )
+
+    @Slot()
+    def lockScreen(self):
+        """Ekranı kilitle."""
+        if IS_WINDOWS:
+            subprocess.Popen("rundll32.exe user32.dll,LockWorkStation", shell=True)
+        else:
+            subprocess.Popen(
+                ["bash", "-c", "loginctl lock-session 2>/dev/null || qdbus6 org.kde.kscreenlocker /Main org.kde.kscreenlocker.lock 2>/dev/null"],
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True
+            )
+
+    @Slot()
+    def suspendSystem(self):
+        """Sistemi uyku moduna / askıya al."""
+        if IS_WINDOWS:
+            subprocess.Popen("rundll32.exe powrprof.dll,SetSuspendState 0,1,0", shell=True)
+        else:
+            subprocess.Popen(
+                ["systemctl", "suspend"],
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True
+            )
+
+    @Slot()
+    def logoutUser(self):
+        """Oturumu kapat."""
+        if IS_WINDOWS:
+            subprocess.Popen("shutdown /l", shell=True)
+        else:
+            subprocess.Popen(
+                ["bash", "-c", "qdbus6 org.kde.Shutdown /Shutdown logout 2>/dev/null || loginctl terminate-user $USER"],
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True
+            )
+
+    @Slot()
+    def restartPlasma(self):
+        """KDE Plasma kabuğunu yeniden başlat."""
+        if not IS_WINDOWS:
+            subprocess.Popen(
+                ["bash", "-c", "kquitapp6 plasmashell 2>/dev/null || killall plasmashell 2>/dev/null; sleep 0.4; kstart plasmashell >/dev/null 2>&1 &"],
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True
+            )
+
+    @Slot(str, result=str)
+    def listProcesses(self, query=""):
+        """Çalışan süreçleri filtrele (kill komutu için)."""
+        if not query:
+            return "[]"
+        query_lower = query.lower().strip()
+        results = []
+        try:
+            if IS_WINDOWS:
+                p = subprocess.run(["tasklist", "/FO", "CSV", "/NH"], capture_output=True, text=True, timeout=2)
+                for line in p.stdout.splitlines():
+                    parts = line.strip().split('","')
+                    if len(parts) >= 2:
+                        name = parts[0].strip('"')
+                        pid = parts[1].strip('"')
+                        if query_lower in name.lower():
+                            results.append({"name": name, "pid": pid})
+                            if len(results) >= 8:
+                                break
+            else:
+                p = subprocess.run(["ps", "-eo", "pid,comm", "--sort=-%cpu"], capture_output=True, text=True, timeout=2)
+                lines = p.stdout.splitlines()[1:]
+                for line in lines:
+                    parts = line.strip().split(None, 1)
+                    if len(parts) == 2:
+                        pid, name = parts[0], parts[1]
+                        if query_lower in name.lower() and name.lower() not in ["ps", "bash", "python", "python3"]:
+                            results.append({"name": name, "pid": pid})
+                            if len(results) >= 8:
+                                break
+        except Exception:
+            pass
+        return json.dumps(results)
+
+    @Slot(str, result=bool)
+    def killProcess(self, pid):
+        """PID'si verilen süreci sonlandır."""
+        try:
+            p = int(pid)
+            if IS_WINDOWS:
+                subprocess.run(["taskkill", "/F", "/PID", str(p)], check=False)
+            else:
+                os.kill(p, signal.SIGTERM)
+            return True
+        except Exception:
+            return False
 
 
 class AppIconProvider(QQuickImageProvider):
