@@ -47,7 +47,7 @@ Window {
     property string textFont: "Inter"
     property int cardWidth: 680
     property int rowHeight: 48
-    property int headerHeight: 84
+    property int headerHeight: 90
     property int cpuPercent: 0
     property int gpuPercent: 0
     property int sysVolume: 50
@@ -1654,20 +1654,27 @@ Window {
                 }
             }
 
-            // ── Apple Spotlight Style Frosted Glass Search Pill Bar ──
-            Rectangle {
-                id: searchPill
+            // ── Apple Spotlight Style Frosted Glass Search Pill Bar (Eşit Üst/Alt Mesafeli) ──
+            Item {
+                id: searchPillContainer
                 anchors.top: topMetricsBar.bottom
-                anchors.topMargin: 8
+                anchors.bottom: parent.bottom
                 anchors.left: parent.left
                 anchors.right: parent.right
-                anchors.leftMargin: 16
-                anchors.rightMargin: 16
-                height: 42
-                radius: 12
-                color: searchInput.activeFocus ? Qt.rgba(1, 1, 1, 0.12) : Qt.rgba(1, 1, 1, 0.07)
-                border.color: searchInput.activeFocus ? Qt.rgba(255, 255, 255, 0.28) : Qt.rgba(255, 255, 255, 0.10)
-                border.width: searchInput.activeFocus ? 1.2 : 1
+                z: 5
+
+                Rectangle {
+                    id: searchPill
+                    anchors.verticalCenter: parent.verticalCenter
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.leftMargin: 16
+                    anchors.rightMargin: 16
+                    height: 42
+                    radius: 12
+                    color: searchInput.activeFocus ? Qt.rgba(1, 1, 1, 0.12) : Qt.rgba(1, 1, 1, 0.07)
+                    border.color: searchInput.activeFocus ? Qt.rgba(255, 255, 255, 0.28) : Qt.rgba(255, 255, 255, 0.10)
+                    border.width: searchInput.activeFocus ? 1.2 : 1
 
                 Behavior on border.color { ColorAnimation { duration: 120 } }
                 Behavior on color { ColorAnimation { duration: 120 } }
@@ -1818,6 +1825,7 @@ Window {
                 }
             }
         }
+    }
 
         Rectangle {
             width: parent.width
