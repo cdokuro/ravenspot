@@ -495,6 +495,95 @@ Window {
         var query = root.filterText.trim()
 
         if (query) {
+            // Everything tarzı anlık dosya ve dizin araması (* öneki)
+            if (query.startsWith("*")) {
+                var fileQuery = query.substring(1).trim()
+                if (!fileQuery) {
+                    rows.push({
+                        itemId: "__file_search_hint__",
+                        kind: "action",
+                        icon: "󰉋",
+                        iconName: "system-search",
+                        iconFont: "",
+                        appIcon: "",
+                        appId: "",
+                        label: "Dosya veya Klasör Ara (* <isim>)",
+                        target: "",
+                        detail: "Everything tarzı anlık dosya ve dizin araması için arama kelimesini yazın",
+                        path: "Everything Dosya Araması",
+                        childCount: 0,
+                        action: "",
+                        provider: "none",
+                        value: "",
+                        desktop: "",
+                        disabled: true,
+                        score: 0,
+                        section: ""
+                    })
+                } else {
+                    try {
+                        var fileResults = JSON.parse(Shell.searchFiles(fileQuery) || "[]")
+                        for (var fi = 0; fi < fileResults.length; fi++) {
+                            var f = fileResults[fi]
+                            var desc = (f.dir || "")
+                            if (f.size) desc += (desc ? "  •  " : "") + f.size
+                            if (f.date) desc += (desc ? "  •  " : "") + f.date
+                            rows.push({
+                                itemId: "__file_" + fi + "__",
+                                kind: "action",
+                                icon: f.icon || (f.isDir ? "󰝰" : "󰈙"),
+                                iconName: f.iconName || (f.isDir ? "folder" : "text-plain"),
+                                iconFont: "",
+                                appIcon: "",
+                                appId: "",
+                                label: f.name,
+                                target: "",
+                                detail: desc,
+                                path: f.dir || "",
+                                childCount: 0,
+                                action: "",
+                                provider: "file-item",
+                                value: f.path,
+                                desktop: "",
+                                disabled: false,
+                                score: fi,
+                                section: "",
+                                filePath: f.path,
+                                isDir: !!f.isDir
+                            })
+                        }
+                        if (fileResults.length === 0) {
+                            rows.push({
+                                itemId: "__no_files__",
+                                kind: "action",
+                                icon: "󰅙",
+                                iconName: "edit-find",
+                                iconFont: "",
+                                appIcon: "",
+                                appId: "",
+                                label: "Eşleşen dosya veya klasör bulunamadı",
+                                target: "",
+                                detail: "'" + fileQuery + "' için dosya bulunamadı",
+                                path: "Dosya Arama",
+                                childCount: 0,
+                                action: "",
+                                provider: "none",
+                                value: "",
+                                desktop: "",
+                                disabled: true,
+                                score: 0,
+                                section: ""
+                            })
+                        }
+                    } catch (e) {
+                        console.log("Dosya arama hatası:", e)
+                    }
+                }
+                for (var m = 0; m < rows.length; m++) displayModel.append(rows[m])
+                settleCursor()
+                return
+            }
+
             var currentRows = []
             var drilldownRows = []
             for (var i = 0; i < root.itemOrder.length; i++) {
@@ -1742,7 +1831,7 @@ Window {
                     anchors.right: clearBtn.visible ? clearBtn.left : escBadge.left
                     anchors.rightMargin: 8
                     anchors.verticalCenter: parent.verticalCenter
-                    text: root.activeMenu === "root" ? "RavenSpot'ta ara veya komut yaz..." : "Bu kategoride ara..."
+                    text: root.activeMenu === "root" ? "RavenSpot'ta ara veya komut yaz (* dosya ara)..." : "Bu kategoride ara..."
                     color: root.fgDim
                     opacity: 0.55
                     font.pixelSize: 14

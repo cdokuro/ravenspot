@@ -17,7 +17,7 @@ import socket
 import subprocess
 import sys
 
-__version__ = "0.2.4"
+__version__ = "0.2.5"
 
 # ── Platform Path & IPC Definitions ───────────────────────────
 IS_WINDOWS = sys.platform == "win32"
@@ -361,21 +361,48 @@ class Shell(QObject):
             de = cp["Desktop Entry"]
             if de.get("Type", "Application") != "Application":
                 continue
-            if de.get("NoDisplay", "false").lower() == "true":
+            is_kcm = name.startswith("kcm_")
+            if de.get("NoDisplay", "false").lower() == "true" and not is_kcm:
                 continue
             if de.get("Hidden", "false").lower() == "true":
                 continue
-            label = de.get("Name", name[:-8])
+
+            # Bilingual support for label & aliases
+            label_tr = de.get("Name[tr]", "")
+            label_en = de.get("Name", "")
+            label = label_tr if label_tr else label_en
             if not label:
-                continue
+                label = name[:-8]
+
             aliases = []
+            if label_en and label_en != label:
+                aliases.append(label_en)
+            if label_tr and label_tr != label:
+                aliases.append(label_tr)
             gn = de.get("GenericName", "")
             if gn:
                 aliases.append(gn)
+            gn_tr = de.get("GenericName[tr]", "")
+            if gn_tr:
+                aliases.append(gn_tr)
             kw = de.get("Keywords", "")
             if kw:
                 aliases.extend(k.strip() for k in kw.replace(";", " ").split() if k.strip())
-            cat = self._categorize_app(de.get("Categories", ""))
+            kw_tr = de.get("Keywords[tr]", "")
+            if kw_tr:
+                aliases.extend(k.strip() for k in kw_tr.replace(";", " ").split() if k.strip())
+            comment = de.get("Comment", "")
+            if comment:
+                aliases.append(comment)
+            comment_tr = de.get("Comment[tr]", "")
+            if comment_tr:
+                aliases.append(comment_tr)
+            if is_kcm:
+                aliases.extend(["settings", "ayarlar", "setup", "kcm", "systemsettings"])
+                cat = "system"
+            else:
+                cat = self._categorize_app(de.get("Categories", ""))
+
             apps.append({
                 "id": name[:-8],
                 "label": label,
@@ -746,6 +773,170 @@ class Shell(QObject):
             subprocess.Popen(["xdg-open", expanded])
         except Exception:
             pass
+
+    @Slot(str, result=str)
+    def searchFiles(self, pattern):
+        """Everything tarzı anlık dosya ve dizin arama."""
+        pattern = pattern.strip()
+        if not pattern:
+            return "[]"
+
+        results = []
+        seen = set()
+        limit = 35
+
+        # 1. Linux: fd in $HOME (blazing fast, fresh)
+        if not IS_WINDOWS and shutil.which("fd"):
+            try:
+                cmd = [
+                    "fd", "-i", "-a", "--max-results", str(limit),
+                    "--exclude", ".git", "--exclude", "node_modules",
+                    "--exclude", ".cache", "--exclude", ".local/share/Trash",
+                    pattern, os.path.expanduser("~")
+                ]
+                p = subprocess.run(cmd, capture_output=True, text=True, timeout=1.5)
+                for line in p.stdout.splitlines():
+                    path = line.strip()
+                    if path and path not in seen:
+                        seen.add(path)
+                        results.append(path)
+            except Exception:
+                pass
+
+        # 2. Linux: plocate fallback for system-wide / fast disk indexing
+        if not IS_WINDOWS and len(results) < limit and shutil.which("plocate"):
+            try:
+                cmd = ["plocate", "-i", "-l", str(limit - len(results)), pattern]
+                p = subprocess.run(cmd, capture_output=True, text=True, timeout=1.0)
+                for line in p.stdout.splitlines():
+                    path = line.strip()
+                    if path and path not in seen:
+                        seen.add(path)
+                        results.append(path)
+            except Exception:
+                pass
+
+        # 3. Windows fallback
+        if IS_WINDOWS:
+            if shutil.which("es.exe") or shutil.which("es"):
+                try:
+                    cmd = ["es.exe", "-n", str(limit), pattern]
+                    p = subprocess.run(cmd, capture_output=True, text=True, timeout=1.5)
+                    for line in p.stdout.splitlines():
+                        path = line.strip()
+                        if path and path not in seen:
+                            seen.add(path)
+                            results.append(path)
+                except Exception:
+                    pass
+            if not results:
+                user_dirs = [
+                    os.path.expanduser("~/Documents"),
+                    os.path.expanduser("~/Downloads"),
+                    os.path.expanduser("~/Desktop"),
+                    os.path.expanduser("~/Pictures")
+                ]
+                pat_lower = pattern.lower()
+                for u_dir in user_dirs:
+                    if not os.path.isdir(u_dir):
+                        continue
+                    try:
+                        for root_dir, dirs, files in os.walk(u_dir):
+                            for fn in files + dirs:
+                                if pat_lower in fn.lower():
+                                    full_p = os.path.join(root_dir, fn)
+                                    if full_p not in seen:
+                                        seen.add(full_p)
+                                        results.append(full_p)
+                                        if len(results) >= limit:
+                                            break
+                            if len(results) >= limit:
+                                break
+                    except Exception:
+                        pass
+
+        import datetime
+        items = []
+        home_dir = os.path.expanduser("~")
+        for full_path in results:
+            try:
+                is_dir = os.path.isdir(full_path)
+                basename = os.path.basename(full_path.rstrip(os.sep))
+                dir_path = os.path.dirname(full_path)
+                short_dir = dir_path.replace(home_dir, "~") if home_dir else dir_path
+
+                size_str = ""
+                mod_str = ""
+                try:
+                    st = os.stat(full_path)
+                    if not is_dir:
+                        sz = st.st_size
+                        for unit in ["B", "KB", "MB", "GB"]:
+                            if sz < 1024.0:
+                                size_str = f"{sz:.1f} {unit}" if unit != "B" else f"{int(sz)} B"
+                                break
+                            sz /= 1024.0
+                        else:
+                            size_str = f"{sz:.1f} TB"
+                    dt = datetime.datetime.fromtimestamp(st.st_mtime)
+                    mod_str = dt.strftime("%d.%m.%Y %H:%M")
+                except OSError:
+                    pass
+
+                # Icon determination
+                if is_dir:
+                    icon_name = "folder"
+                    icon_glyph = "󰝰"
+                else:
+                    ext = os.path.splitext(basename)[1].lower()
+                    if ext in (".png", ".jpg", ".jpeg", ".webp", ".svg", ".gif", ".ico", ".bmp"):
+                        icon_name = "image-x-generic"
+                        icon_glyph = "󰋩"
+                    elif ext in (".mp4", ".mkv", ".mov", ".avi", ".webm", ".flv"):
+                        icon_name = "video-x-generic"
+                        icon_glyph = "󰕼"
+                    elif ext in (".mp3", ".flac", ".wav", ".ogg", ".m4a", ".aac"):
+                        icon_name = "audio-x-generic"
+                        icon_glyph = "󰕾"
+                    elif ext in (".pdf",):
+                        icon_name = "application-pdf"
+                        icon_glyph = "󰈦"
+                    elif ext in (".zip", ".tar", ".gz", ".xz", ".7z", ".rar", ".bz2", ".zst"):
+                        icon_name = "package-x-generic"
+                        icon_glyph = "󰛫"
+                    elif ext in (".doc", ".docx", ".odt", ".rtf"):
+                        icon_name = "application-msword"
+                        icon_glyph = "󰈬"
+                    elif ext in (".xls", ".xlsx", ".ods", ".csv"):
+                        icon_name = "application-vnd.ms-excel"
+                        icon_glyph = "󰈛"
+                    elif ext in (".ppt", ".pptx", ".odp"):
+                        icon_name = "application-vnd.ms-powerpoint"
+                        icon_glyph = "󰈧"
+                    elif ext in (".py", ".js", ".ts", ".html", ".css", ".cpp", ".c", ".rs", ".json", ".qml", ".sh", ".bash"):
+                        icon_name = "text-x-generic"
+                        icon_glyph = "󰅩"
+                    elif ext in (".desktop",):
+                        icon_name = "system-run"
+                        icon_glyph = "󰀻"
+                    else:
+                        icon_name = "text-plain"
+                        icon_glyph = "󰈙"
+
+                items.append({
+                    "name": basename,
+                    "path": full_path,
+                    "dir": short_dir,
+                    "isDir": is_dir,
+                    "size": size_str,
+                    "date": mod_str,
+                    "icon": icon_glyph,
+                    "iconName": icon_name
+                })
+            except Exception:
+                pass
+
+        return json.dumps(items)
 
     @Slot(str, result=str)
     def getAppActions(self, desktop):

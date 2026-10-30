@@ -13,8 +13,27 @@ class TestKRunnerActions(unittest.TestCase):
         cls.shell = bridge.Shell()
 
     def test_version_bump(self):
-        self.assertEqual(self.shell.version, "0.2.4")
-        self.assertEqual(bridge.__version__, "0.2.4")
+        self.assertEqual(self.shell.version, "0.2.5")
+        self.assertEqual(bridge.__version__, "0.2.5")
+
+    def test_search_files(self):
+        # Empty query returns empty array
+        self.assertEqual(self.shell.searchFiles(""), "[]")
+        # Search for bridge.py or similar known file
+        res = json.loads(self.shell.searchFiles("bridge.py"))
+        self.assertIsInstance(res, list)
+        if res:
+            first = res[0]
+            self.assertIn("name", first)
+            self.assertIn("path", first)
+            self.assertIn("isDir", first)
+
+    def test_kcm_indexing(self):
+        # Search for shortcuts or kcm_keys in apps
+        apps_json = self.shell.listApps()
+        apps = json.loads(apps_json)
+        kcm_items = [a for a in apps if "kcm" in a.get("id", "") or "kcm" in a.get("desktop", "")]
+        self.assertTrue(len(kcm_items) > 0, "KDE KCM settings modules should be indexed")
 
     def test_list_processes_empty(self):
         res = self.shell.listProcesses("")
