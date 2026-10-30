@@ -17,7 +17,7 @@ import socket
 import subprocess
 import sys
 
-__version__ = "0.2.5"
+__version__ = "0.2.6"
 
 # ── Platform Path & IPC Definitions ───────────────────────────
 IS_WINDOWS = sys.platform == "win32"
@@ -678,8 +678,8 @@ class Shell(QObject):
 
     # ── Provider: files (downloads / user dirs) ───────────────────
     @Slot(str, result=str)
-    def listFolderFiles(self, folder_name="downloads"):
-        import datetime, mimetypes
+    def getFolderPath(self, folder_name="downloads"):
+        """Kullanıcının standart dizinlerinden birinin gerçek yolunu döndür."""
         home = os.path.expanduser("~")
         mapping = {
             "downloads": ["İndirilenler", "Downloads"],
@@ -688,13 +688,58 @@ class Shell(QObject):
             "pictures": ["Resimler", "Pictures"],
             "videos": ["Videolar", "Videos"],
             "music": ["Müzik", "Music"],
+            "wallpapers": [".local/share/wallpapers", "Resimler/Wallpapers", "Pictures/Wallpapers", "Wallpapers"],
         }
-        target_dir = None
-        for candidate in mapping.get(folder_name, [folder_name]):
-            p = os.path.join(home, candidate)
+        for candidate in mapping.get(folder_name.lower(), [folder_name]):
+            p = os.path.join(home, candidate) if not os.path.isabs(candidate) else candidate
             if os.path.isdir(p):
-                target_dir = p
-                break
+                return p
+        p = os.path.join(home, folder_name)
+        return p if os.path.isdir(p) else ""
+
+    @Slot(str, result=bool)
+    def isDirectory(self, path):
+        """Yolun bir klasör olup olmadığını kontrol et."""
+        if not path:
+            return False
+        return os.path.isdir(os.path.expanduser(path))
+
+    @Slot(str, str, str, str, result=str)
+    def resolveItemPath(self, item_id="", provider="", action="", value=""):
+        """Herhangi bir menü öğesi veya eylemin temsil ettiği dosya/klasör yolunu tespit et."""
+        if value:
+            exp = os.path.expanduser(value)
+            if os.path.exists(exp):
+                return exp
+
+        if provider and provider.startswith("files-"):
+            folder_key = provider[6:]
+            p = self.getFolderPath(folder_key)
+            if p:
+                return p
+
+        known_folders = ["downloads", "desktop", "documents", "pictures", "videos", "music", "wallpapers"]
+        low_id = item_id.lower() if item_id else ""
+        for k in known_folders:
+            if low_id == k or low_id.endswith("." + k) or low_id.startswith(k + "."):
+                p = self.getFolderPath(k)
+                if p:
+                    return p
+
+        if action:
+            import re
+            matches = re.findall(r'(?:~|/)[^\s\'";]+', action)
+            for m in matches:
+                exp = os.path.expanduser(m)
+                if os.path.exists(exp):
+                    return exp
+
+        return ""
+
+    @Slot(str, result=str)
+    def listFolderFiles(self, folder_name="downloads"):
+        import datetime, mimetypes
+        target_dir = self.getFolderPath(folder_name)
         if not target_dir:
             return "[]"
 

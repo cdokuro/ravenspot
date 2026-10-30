@@ -1151,6 +1151,12 @@ Window {
         root.contextRow = rowItem
         contextMenuModel.clear()
 
+        var resolvedPath = rowItem.filePath || ""
+        if (!resolvedPath) {
+            resolvedPath = Shell.resolveItemPath(rowItem.itemId || "", rowItem.provider || "", rowItem.action || "", rowItem.value || "")
+        }
+        var isDir = (rowItem.isDir !== undefined && rowItem.isDir !== null) ? !!rowItem.isDir : (resolvedPath ? Shell.isDirectory(resolvedPath) : false)
+
         if (rowItem.kind === "app" || (rowItem.desktop && rowItem.desktop.length > 0)) {
             // 1. Başlat
             contextMenuModel.append({
@@ -1176,7 +1182,7 @@ Window {
 
             // 3. Konumu Aç (Dolphin'de Göster)
             contextMenuModel.append({
-                label: "Dolphin'de Göster",
+                label: "Dosya Yolunu Aç (Dolphin)",
                 icon: "󰉋",
                 actionType: "openLocation",
                 actionPayload: rowItem.desktop,
@@ -1214,47 +1220,65 @@ Window {
                 actionPayload: rowItem.desktop,
                 isDanger: false
             })
-        } else if (rowItem.provider === "file-item" || (rowItem.filePath && rowItem.filePath.length > 0)) {
-            // 1. Aç
+        } else if (resolvedPath && resolvedPath.length > 0) {
+            // Dosya veya klasör yolu olan tüm öğeler (Downloads, dosya aramaları, özel yollar vb.)
+            if (rowItem.kind === "menu" || rowItem.kind === "link") {
+                // Downloads gibi bir kategori/menü öğesi ise önce "Menüde Aç"
+                contextMenuModel.append({
+                    label: "Menüde Aç",
+                    icon: "",
+                    actionType: "activateCurrent",
+                    actionPayload: "",
+                    isDanger: false
+                })
+            } else if (!isDir) {
+                // Normal dosya ise "Dosyayı Aç"
+                contextMenuModel.append({
+                    label: "Dosyayı Aç",
+                    icon: "",
+                    actionType: "openPath",
+                    actionPayload: resolvedPath,
+                    isDanger: false
+                })
+            }
+
+            // Dosya Yolunu Aç (Dolphin ile klasörü doğrudan aç)
             contextMenuModel.append({
-                label: rowItem.isDir ? "Klasörü Aç" : "Dosyayı Aç",
-                icon: "",
-                actionType: "openPath",
-                actionPayload: rowItem.filePath,
-                isDanger: false
-            })
-            // 2. Dolphin'de Göster
-            contextMenuModel.append({
-                label: "Dolphin'de Göster",
+                label: isDir ? "Dosya Yolunu Aç (Dolphin)" : "İçeren Klasörü Aç (Dolphin)",
                 icon: "󰉋",
-                actionType: "openLocation",
-                actionPayload: rowItem.filePath,
+                actionType: isDir ? "openPath" : "openLocation",
+                actionPayload: resolvedPath,
                 isDanger: false
             })
-            // 3. Terminalde Aç
+
+            // Terminalde Aç
             contextMenuModel.append({
                 label: "Terminalde Aç",
                 icon: "",
                 actionType: "openInTerminal",
-                actionPayload: rowItem.filePath,
+                actionPayload: resolvedPath,
                 isDanger: false
             })
-            // 4. Yolu Kopyala
+
+            // Dosya Yolunu Kopyala
             contextMenuModel.append({
                 label: "Dosya Yolunu Kopyala",
                 icon: "󰅇",
                 actionType: "copyPath",
-                actionPayload: rowItem.filePath,
+                actionPayload: resolvedPath,
                 isDanger: false
             })
-            // 5. Çöp Kutusuna Taşı
-            contextMenuModel.append({
-                label: "Çöp Kutusuna Taşı",
-                icon: "",
-                actionType: "moveToTrash",
-                actionPayload: rowItem.filePath,
-                isDanger: true
-            })
+
+            // Çöp Kutusuna Taşı (sadece dosya-öğesi ise, ana menü kategorileri hariç)
+            if (rowItem.provider === "file-item" || (rowItem.filePath && rowItem.kind !== "menu")) {
+                contextMenuModel.append({
+                    label: "Çöp Kutusuna Taşı",
+                    icon: "",
+                    actionType: "moveToTrash",
+                    actionPayload: resolvedPath,
+                    isDanger: true
+                })
+            }
         } else {
             // Genel menü öğeleri
             contextMenuModel.append({

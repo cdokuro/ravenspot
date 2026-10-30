@@ -13,8 +13,22 @@ class TestKRunnerActions(unittest.TestCase):
         cls.shell = bridge.Shell()
 
     def test_version_bump(self):
-        self.assertEqual(self.shell.version, "0.2.5")
-        self.assertEqual(bridge.__version__, "0.2.5")
+        self.assertEqual(self.shell.version, "0.2.6")
+        self.assertEqual(bridge.__version__, "0.2.6")
+
+    def test_resolve_item_path(self):
+        # Test downloads folder resolution
+        p = self.shell.resolveItemPath("downloads", "files-downloads", "", "")
+        self.assertTrue(len(p) > 0, "Downloads path should be resolved")
+        self.assertTrue(self.shell.isDirectory(p), "Resolved downloads path should be a directory")
+
+        # Test folder path getter
+        dl = self.shell.getFolderPath("downloads")
+        self.assertTrue(len(dl) > 0)
+
+        # Test action with file path
+        act_p = self.shell.resolveItemPath("", "", f"xdg-open {dl}", "")
+        self.assertEqual(act_p, dl)
 
     def test_search_files(self):
         # Empty query returns empty array
