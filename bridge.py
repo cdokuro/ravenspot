@@ -17,7 +17,7 @@ import socket
 import subprocess
 import sys
 
-__version__ = "0.2.11"
+__version__ = "0.2.12"
 
 # ── Platform Path & IPC Definitions ───────────────────────────
 IS_WINDOWS = sys.platform == "win32"
@@ -1419,6 +1419,20 @@ class Shell(QObject):
             if shutil.which("amdgpu_top"):
                 subprocess.Popen(["amdgpu_top", "--gui"], start_new_session=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
                 return
+
+        # 2. CPU için özel donanım analiz araçları (CPU-X, Mission Center)
+        if section in ("cpu", "islemci"):
+            for cpu_tool in ["cpu-x", "mission-center"]:
+                if shutil.which(cpu_tool):
+                    subprocess.Popen([cpu_tool], start_new_session=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                    return
+
+        # 3. RAM için özel donanım analiz araçları (Mission Center, CPU-X)
+        if section in ("ram", "bellek"):
+            for ram_tool in ["mission-center", "cpu-x"]:
+                if shutil.which(ram_tool):
+                    subprocess.Popen([ram_tool], start_new_session=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                    return
 
         # 2. KDE Plasma Sistem Monitörü (plasma-systemmonitor)
         if shutil.which("plasma-systemmonitor"):
