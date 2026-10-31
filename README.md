@@ -16,6 +16,8 @@ RavenSpot brings the speed and elegance of macOS Spotlight and Raycast combined 
   - **Process Killer**: Type `kill <name>` to scan running processes and terminate matching PIDs with one keystroke.
   - **Path & Directory Navigator**: Enter paths starting with `~` or `/` (`~/Downloads`, `/etc`) to open directly in Dolphin or Konsole.
   - **Audio & Volume Commands**: Instant volume control with `ses 70`, `vol 50`, or `mute`/`sessiz`.
+- 🗲 **System Power 2-Column Grid**: Opening the `System` category displays an ergonomic 2-column card grid for power actions: Reboot, Shutdown, Lock, Logout, Suspend, and Screensaver with arrow key 2D navigation.
+- 🔄 **Live CachyOS / Arch Update Badge**: Status badge in the header shows live pending update counts (red badge) or up-to-date status (green badge) with single-click interactive terminal updater.
 - ⚡ **Instant Fuzzy Search**: Search applications, settings, actions, and custom triggers in milliseconds.
 - 🗂️ **Categorized Apps**: Categorized FreeDesktop applications (Linux) & Start Menu shortcuts (Windows) with live badge counts.
 - 🍬 **Candy Icon Theme**: Bundled gradient Candy icons for native vibrancy and crisp scaling across platforms.
@@ -36,6 +38,7 @@ RavenSpot brings the speed and elegance of macOS Spotlight and Raycast combined 
 
 | Key | Platform | Action |
 |---|---|---|
+| **`Meta`** (Alone) | Linux (KDE) | **Open / Toggle RavenSpot** |
 | **`Meta + Space`** | Linux (KDE) | **Open / Toggle RavenSpot** |
 | **`Alt + Space` / `Win + Space`** | Windows 11 | **Open / Toggle RavenSpot** |
 | **`Right-Click`** | All | Context menu for applications and files |
@@ -76,29 +79,18 @@ build.bat
 
 ### 🐧 Linux (KDE Plasma 6 / CachyOS)
 
-#### Requirements
-- Linux with KDE Plasma 6 (Wayland session)
-- Python 3 with `PySide6`
-- `layer-shell-qt` (or `layer-shell-qt6`)
-- Nerd Font (e.g., `MesloLGS Nerd Font`, `JetBrainsMono Nerd Font`)
-
-#### Quick Install
+#### Quick Install (Automated & Interactive)
+Run the automated installer script:
 ```bash
-# 1. Clone the repository
-git clone https://github.com/cdokuro/ravenspot.git ~/.local/share/ravenspot
-
-# 2. Link executable wrapper
-mkdir -p ~/.local/bin
-ln -sf ~/.local/share/ravenspot/bridge.py ~/.local/bin/ravenspot
-chmod +x ~/.local/share/ravenspot/bridge.py
-
-# 3. Install desktop launcher and global shortcut
-cp ~/.local/share/ravenspot/ravenspot.desktop ~/.local/share/applications/
-kbuildsycoca6 --noincremental
-
-# 4. Bind Meta+Space in KDE Shortcuts (if not automatic)
-# System Settings -> Shortcuts -> RavenSpot -> Launch: Meta+Space
+git clone https://github.com/cdokuro/ravenspot.git
+cd ravenspot
+./install.sh
 ```
+The installer will set up RavenSpot, configure the resident systemd daemon, map the solitary `Meta` key, and interactively ask if you'd like to install the optional telemetry tools:
+- **`lact`**: Advanced AMD Radeon GPU (RX 7000/9000 series, RX 9070 XT) clocks, VRAM/Hotspot thermals, and fan curves.
+- **`cpu-x`**: Comprehensive CPU & DDR5 RAM timings, SPD details, and benchmarks (CPU-Z alternative for Linux).
+- **`mission-center`**: Modern Windows 11 Performance Tab interface.
+- **`amdgpu_top`**: Live real-time AMD GPU compute engine telemetry.
 
 ---
 

@@ -53,6 +53,7 @@ Window {
     property int sysVolume: 50
     property bool sysMuted: false
     property var sysMonitor: ({ "ram_text": "--", "ram_pct": 0, "disk_text": "--", "disk_pct": 0, "temp": "--", "uptime": "--" })
+    property var sysUpdateInfo: null
     property int footerHeight: 38
 
     property int themeVersion: 1
@@ -1429,6 +1430,7 @@ Window {
             root.sysVolume = ainfo.volume
             root.sysMuted = ainfo.muted
         }
+        root.sysUpdateInfo = Shell.getUpdateInfo()
 
         root.canCloseOnInactive = false
         root.visible = true
@@ -1484,6 +1486,8 @@ Window {
             root.sysVolume = vol
             root.sysMuted = muted
             root.sysMonitor = Shell.getSysMonitorInfo()
+        root.sysUpdateInfo = Shell.getUpdateInfo()
+            root.sysUpdateInfo = Shell.getUpdateInfo()
         }
         function onThemeChanged() {
             root.syncTheme()
@@ -1548,7 +1552,12 @@ Window {
         id: card
         objectName: "card"
         width: root.cardWidth
-        height: Math.min(headerHeight + 1 + displayModel.count * rowHeight + 12 + footerHeight, 720)
+        height: {
+            var contentH = (root.activeMenu === "system" && !root.filterText.length)
+                ? Math.ceil(displayModel.count / 2) * 64 + 18
+                : displayModel.count * rowHeight + 12
+            return Math.min(headerHeight + 1 + contentH + footerHeight, 720)
+        }
         anchors.centerIn: parent
         color: root.bgColor
         border.color: root.bgBorder
@@ -1633,9 +1642,25 @@ Window {
                         openContextMenu(displayModel.get(root.selectedIndex), root.width / 2, 180)
                         event.accepted = true
                     }
-                } else if ((event.key === Qt.Key_Backspace || event.key === Qt.Key_Left) && !root.filterText.length) {
+                } else if (event.key === Qt.Key_Backspace && !root.filterText.length) {
                     goBack()
                     event.accepted = true
+                } else if (event.key === Qt.Key_Left && !root.filterText.length) {
+                    if (root.activeMenu === "system" && (root.selectedIndex % 2 === 1)) {
+                        select(-1)
+                        event.accepted = true
+                    } else {
+                        goBack()
+                        event.accepted = true
+                    }
+                } else if (event.key === Qt.Key_Right && !root.filterText.length) {
+                    if (root.activeMenu === "system" && (root.selectedIndex % 2 === 0) && (root.selectedIndex + 1 < displayModel.count)) {
+                        select(1)
+                        event.accepted = true
+                    } else {
+                        activateIndex(root.selectedIndex)
+                        event.accepted = true
+                    }
                 } else if (event.key === Qt.Key_F) {
                     if (root.activeMenu === "appearance.colorscheme" && root.filterText.length === 0) {
                         var curIndex = root.selectedIndex
@@ -1651,9 +1676,19 @@ Window {
                         }
                     }
                 } else if (event.key === Qt.Key_Up) {
-                    select(-1); event.accepted = true
+                    if (root.activeMenu === "system" && !root.filterText.length) {
+                        select(-2)
+                    } else {
+                        select(-1)
+                    }
+                    event.accepted = true
                 } else if (event.key === Qt.Key_Down) {
-                    select(1); event.accepted = true
+                    if (root.activeMenu === "system" && !root.filterText.length) {
+                        select(2)
+                    } else {
+                        select(1)
+                    }
+                    event.accepted = true
                 } else if (event.key === Qt.Key_PageUp) {
                     select(-6); event.accepted = true
                 } else if (event.key === Qt.Key_PageDown) {
@@ -1702,55 +1737,32 @@ Window {
                 height: 20
                 z: 5
 
-                // Sol: RavenSpot Logo & Başlık (Modern, Estetik Tipografi)
+                // Sol: RavenSpot Başlığı (Sadece Metin, Saf & Estetik Tipografi)
                 Row {
                     id: brandHeaderRow
                     anchors.left: parent.left
                     anchors.verticalCenter: parent.verticalCenter
-                    spacing: 7
+                    spacing: 0
                     z: 10
 
-                    Rectangle {
-                        width: 20
-                        height: 20
-                        radius: 5
-                        color: Qt.rgba(root.selFg.r, root.selFg.g, root.selFg.b, 0.14)
-                        border.color: Qt.rgba(root.selFg.r, root.selFg.g, root.selFg.b, 0.28)
-                        border.width: 1
+                    Text {
+                        text: "Raven"
+                        color: root.fgColor
+                        font.pixelSize: 13
+                        font.family: "Fira Sans, Inter, sans-serif"
+                        font.weight: Font.Bold
+                        font.letterSpacing: 0.8
                         anchors.verticalCenter: parent.verticalCenter
-
-                        Text {
-                            anchors.centerIn: parent
-                            text: "󰿅"
-                            color: root.selFg
-                            font.pixelSize: 12
-                            font.family: root.iconFont
-                        }
                     }
 
-                    Row {
-                        spacing: 0
+                    Text {
+                        text: "Spot"
+                        color: root.selFg
+                        font.pixelSize: 13
+                        font.family: "Fira Sans, Inter, sans-serif"
+                        font.weight: Font.DemiBold
+                        font.letterSpacing: 0.8
                         anchors.verticalCenter: parent.verticalCenter
-
-                        Text {
-                            text: "Raven"
-                            color: root.fgColor
-                            font.pixelSize: 12
-                            font.family: "Fira Sans, Inter, sans-serif"
-                            font.weight: Font.Bold
-                            font.letterSpacing: 0.6
-                            anchors.verticalCenter: parent.verticalCenter
-                        }
-
-                        Text {
-                            text: "Spot"
-                            color: root.selFg
-                            font.pixelSize: 12
-                            font.family: "Fira Sans, Inter, sans-serif"
-                            font.weight: Font.DemiBold
-                            font.letterSpacing: 0.6
-                            anchors.verticalCenter: parent.verticalCenter
-                        }
                     }
                 }
 
@@ -1865,6 +1877,57 @@ Window {
                         font.family: root.textFont
                         font.weight: Font.Bold
                         anchors.verticalCenter: parent.verticalCenter
+                    }
+                }
+
+                // Sağ: CachyOS Canlı Güncelleme Rozeti (Photo 2 & Photo 3)
+                Rectangle {
+                    id: cachyUpdateBadge
+                    anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
+                    height: 20
+                    width: updateContentRow.width + 10
+                    radius: 5
+                    color: updateBadgeMouse.containsMouse ? Qt.rgba(1, 1, 1, 0.12) : Qt.rgba(1, 1, 1, 0.05)
+                    border.color: (root.sysUpdateInfo && root.sysUpdateInfo.has_updates) ? "#ff5252" : Qt.rgba(root.bgBorder.r, root.bgBorder.g, root.bgBorder.b, 0.25)
+                    border.width: 1
+                    z: 10
+
+                    Row {
+                        id: updateContentRow
+                        spacing: 5
+                        anchors.centerIn: parent
+
+                        Image {
+                            width: 14
+                            height: 14
+                            sourceSize.width: 14
+                            sourceSize.height: 14
+                            source: (root.sysUpdateInfo && root.sysUpdateInfo.icon_path) ? "file://" + root.sysUpdateInfo.icon_path : "file:///usr/share/icons/hicolor/scalable/apps/cachy-update-blue.svg"
+                            anchors.verticalCenter: parent.verticalCenter
+                        }
+
+                        Text {
+                            text: (root.sysUpdateInfo && root.sysUpdateInfo.has_updates) ? (root.sysUpdateInfo.count > 0 ? root.sysUpdateInfo.count + " Güncelleme" : "Güncelle") : "Güncel"
+                            color: (root.sysUpdateInfo && root.sysUpdateInfo.has_updates) ? "#ff5252" : root.fgDim
+                            font.pixelSize: 10
+                            font.family: root.textFont
+                            font.weight: Font.DemiBold
+                            anchors.verticalCenter: parent.verticalCenter
+                        }
+                    }
+
+                    MouseArea {
+                        id: updateBadgeMouse
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: {
+                            Shell.playCreamy()
+                            root.opened = false
+                            Shell.launchUpdate()
+                            Qt.callLater(closeMenu)
+                        }
                     }
                 }
             }
@@ -2076,6 +2139,7 @@ Window {
         // Sonuç listesi
         ListView {
             id: resultList
+            visible: root.activeMenu !== "system" || root.filterText.length > 0
             anchors.top: parent.top
             anchors.topMargin: headerHeight + 1 + 6
             anchors.left: parent.left
@@ -2267,6 +2331,112 @@ Window {
             }
         }
 
+        // ── 2 Sütunlu Sistem Güç Eylemleri Izgarası (Grid View) ──
+        GridView {
+            id: systemGridView
+            visible: root.activeMenu === "system" && !root.filterText.length
+            anchors.top: parent.top
+            anchors.topMargin: headerHeight + 1 + 10
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.leftMargin: 16
+            anchors.rightMargin: 16
+            anchors.bottom: footerMonitorBar.top
+            anchors.bottomMargin: 8
+            clip: true
+            model: displayModel
+            cellWidth: width / 2
+            cellHeight: 64
+            currentIndex: root.selectedIndex
+
+            delegate: Item {
+                width: systemGridView.cellWidth
+                height: systemGridView.cellHeight
+
+                Rectangle {
+                    id: gridCard
+                    anchors.fill: parent
+                    anchors.margins: 4
+                    radius: 10
+                    color: (index === root.selectedIndex) ? root.selBg : (gridMouse.containsMouse ? Qt.rgba(1, 1, 1, 0.10) : Qt.rgba(1, 1, 1, 0.05))
+                    border.color: (index === root.selectedIndex) ? Qt.rgba(root.selFg.r, root.selFg.g, root.selFg.b, 0.3) : Qt.rgba(root.bgBorder.r, root.bgBorder.g, root.bgBorder.b, 0.20)
+                    border.width: 1
+
+                    Row {
+                        anchors.fill: parent
+                        anchors.leftMargin: 12
+                        anchors.rightMargin: 12
+                        spacing: 12
+
+                        // İkon Kutusu
+                        Rectangle {
+                            width: 38
+                            height: 38
+                            radius: 8
+                            color: (index === root.selectedIndex) ? Qt.rgba(255, 255, 255, 0.2) : Qt.rgba(1, 1, 1, 0.08)
+                            anchors.verticalCenter: parent.verticalCenter
+
+                            Text {
+                                anchors.centerIn: parent
+                                text: model.icon || ""
+                                font.family: root.iconFont
+                                font.pixelSize: 18
+                                color: (index === root.selectedIndex) ? root.selFg : (
+                                    model.itemId === "system.shutdown" ? "#ff5252" :
+                                    model.itemId === "system.reboot" ? "#ffa726" :
+                                    model.itemId === "system.lock" ? "#42a5f5" :
+                                    model.itemId === "system.logout" ? "#ab47bc" :
+                                    model.itemId === "system.suspend" ? "#26c6da" : root.fgColor
+                                )
+                            }
+                        }
+
+                        // Metin Başlığı ve Açıklaması
+                        Column {
+                            anchors.verticalCenter: parent.verticalCenter
+                            spacing: 2
+                            width: parent.width - 52
+
+                            Text {
+                                text: model.label
+                                font.family: root.textFont
+                                font.pixelSize: 13
+                                font.weight: Font.Bold
+                                color: (index === root.selectedIndex) ? root.selFg : root.fgColor
+                                elide: Text.ElideRight
+                                width: parent.width
+                            }
+
+                            Text {
+                                text: model.detail || model.description || ""
+                                font.family: root.textFont
+                                font.pixelSize: 10
+                                color: (index === root.selectedIndex) ? Qt.rgba(root.selFg.r, root.selFg.g, root.selFg.b, 0.8) : root.fgDim
+                                elide: Text.ElideRight
+                                width: parent.width
+                                visible: text.length > 0
+                            }
+                        }
+                    }
+
+                    MouseArea {
+                        id: gridMouse
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onPositionChanged: {
+                            if (root.selectedIndex !== index) {
+                                root.selectedIndex = index
+                            }
+                        }
+                        onClicked: {
+                            activateIndex(index)
+                        }
+                    }
+                }
+            }
+        }
+
         // ── Özel kaydırma çubuğu ─────────────────────────────
         // Sabit ~1cm boyutlu, parlak altın sarısı, fareyle tutulup sürüklenebilir.
         // Qt'nin hazır ScrollBar'ı custom tema altında thumb genişliğini 0 yapıyordu;
@@ -2280,7 +2450,7 @@ Window {
             anchors.right: parent.right
             anchors.rightMargin: 3
             width: 6
-            visible: (resultList.contentHeight - resultList.height) > 16
+            visible: (root.activeMenu !== "system" || root.filterText.length > 0) && (resultList.contentHeight - resultList.height) > 16
 
             // Arka plan rayı (çok hafif, tutulabilirlik hissi verir)
             Rectangle {
@@ -2753,7 +2923,9 @@ Window {
             root.sysVolume = ainfo.volume
             root.sysMuted = ainfo.muted
         }
+        root.sysUpdateInfo = Shell.getUpdateInfo()
         root.sysMonitor = Shell.getSysMonitorInfo()
+        root.sysUpdateInfo = Shell.getUpdateInfo()
         if (!Shell.startHidden) {
             openMenu("root")
         } else {

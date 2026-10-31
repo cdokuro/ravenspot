@@ -17,7 +17,7 @@ import socket
 import subprocess
 import sys
 
-__version__ = "0.2.13"
+__version__ = "0.2.14"
 
 # ── Platform Path & IPC Definitions ───────────────────────────
 IS_WINDOWS = sys.platform == "win32"
@@ -1398,6 +1398,69 @@ class Shell(QObject):
             "temp": f"{temp_c}°C" if temp_c else "--",
             "uptime": up_text or "--"
         }
+
+    @Slot(result="QVariantMap")
+    def getUpdateInfo(self):
+        """
+        CachyOS / Arch güncelleme durumunu döndürür.
+        Photo 2: cachy-update_updates-available-blue.svg (Kırmızı ok + güncelleme adedi)
+        Photo 3: cachy-update-blue.svg (Yeşil tik + sistem güncel)
+        """
+        statedir = os.path.expanduser("~/.local/state/arch-update")
+        tray_file = os.path.join(statedir, "tray_icon")
+        notif_file = f"/run/user/{os.getuid()}/arch-update/notif_param" if not IS_WINDOWS else ""
+
+        has_updates = False
+        count = 0
+        icon_path = "/usr/share/icons/hicolor/scalable/apps/cachy-update-blue.svg"
+        tooltip = "Sisteminiz Güncel (CachyOS)"
+
+        if os.path.exists(tray_file):
+            try:
+                with open(tray_file, "r") as f:
+                    val = f.read().strip()
+                    if "updates-available" in val:
+                        has_updates = True
+            except Exception:
+                pass
+
+        if notif_file and os.path.exists(notif_file):
+            try:
+                with open(notif_file, "r") as f:
+                    c = f.read().strip()
+                    if c.isdigit():
+                        count = int(c)
+                        if count > 0:
+                            has_updates = True
+            except Exception:
+                pass
+
+        if has_updates:
+            icon_path = "/usr/share/icons/hicolor/scalable/apps/cachy-update_updates-available-blue.svg"
+            cnt_str = f" ({count})" if count > 0 else ""
+            tooltip = f"Güncellemeler Mevcut{cnt_str} — Tıkla ve Güncelle"
+        else:
+            icon_path = "/usr/share/icons/hicolor/scalable/apps/cachy-update-blue.svg"
+            tooltip = "Sisteminiz Güncel (CachyOS)"
+
+        return {
+            "has_updates": has_updates,
+            "count": count,
+            "icon_path": icon_path,
+            "tooltip": tooltip
+        }
+
+    @Slot()
+    def launchUpdate(self):
+        """Güncelleme aracını ayrık (detached) çalıştır."""
+        for term in ["konsole", "alacritty", "kitty", "xterm"]:
+            if shutil.which(term):
+                if shutil.which("arch-update"):
+                    subprocess.Popen([term, "-e", "arch-update"], start_new_session=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                    return
+                elif shutil.which("cachyos-rate-mirrors"):
+                    subprocess.Popen([term, "-e", "bash", "-c", "sudo pacman -Syu"], start_new_session=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                    return
 
     @Slot(str)
     def openSystemMonitor(self, section: str = "overview"):

@@ -13,8 +13,17 @@ class TestKRunnerActions(unittest.TestCase):
         cls.shell = bridge.Shell()
 
     def test_version_bump(self):
-        self.assertEqual(self.shell.version, "0.2.13")
-        self.assertEqual(bridge.__version__, "0.2.13")
+        self.assertEqual(self.shell.version, "0.2.14")
+        self.assertEqual(bridge.__version__, "0.2.14")
+
+    def test_update_info(self):
+        self.assertTrue(hasattr(self.shell, "getUpdateInfo"))
+        self.assertTrue(hasattr(self.shell, "launchUpdate"))
+        info = self.shell.getUpdateInfo()
+        self.assertIsInstance(info, dict)
+        self.assertIn("has_updates", info)
+        self.assertIn("icon_path", info)
+        self.assertIn("tooltip", info)
 
     def test_resolve_item_path(self):
         # Test downloads folder resolution
