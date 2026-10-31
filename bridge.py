@@ -1565,13 +1565,14 @@ class Shell(QObject):
         Kullanıcı hızını maksimize etmek için ayrık (detached) ve gecikmesiz çalıştırır.
         """
         section = (section or "overview").strip().lower()
+        print(f"ravenspot: openSystemMonitor çağrıldı -> {section}", flush=True)
 
-        # 1. GPU için özel GUI araçları varsa (LACT, amdgpu_top, CoreCtrl vb.)
+        # 1. GPU için özel GUI araçları varsa (LACT, amdgpu_top, CoreCtrl, NVIDIA Settings vb.)
         if section in ("gpu", "ekrankarti", "ekran-karti"):
             if shutil.which("lact"):
                 subprocess.Popen(["lact", "gui"], start_new_session=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
                 return
-            for gpu_tool in ["lact-gui", "corectrl"]:
+            for gpu_tool in ["lact-gui", "corectrl", "nvidia-settings"]:
                 if shutil.which(gpu_tool):
                     subprocess.Popen([gpu_tool], start_new_session=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
                     return
