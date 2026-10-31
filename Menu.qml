@@ -661,43 +661,43 @@ Window {
             var sysActions = [
                 {
                     triggers: ["kapat", "shutdown", "poweroff", "power off", "sistemi kapat"],
-                    label: "Sistemi Kapat",
-                    detail: "Bilgisayarı hemen kapat",
+                    label: "Shutdown",
+                    detail: "Power off the computer immediately",
                     icon: "󰐥",
                     actionId: "poweroff"
                 },
                 {
                     triggers: ["yeniden başlat", "reboot", "restart", "yeniden baslat"],
-                    label: "Yeniden Başlat",
-                    detail: "Bilgisayarı yeniden başlat",
+                    label: "Reboot",
+                    detail: "Restart the computer",
                     icon: "󰜉",
                     actionId: "reboot"
                 },
                 {
                     triggers: ["kilitle", "lock", "lock screen", "ekranı kilitle", "ekrani kilitle"],
-                    label: "Ekranı Kilitle",
-                    detail: "Oturumu anında kilitle",
+                    label: "Lock Screen",
+                    detail: "Lock current session immediately",
                     icon: "󰌾",
                     actionId: "lock"
                 },
                 {
                     triggers: ["uyut", "sleep", "suspend", "uyku", "askıya al", "askiya al"],
-                    label: "Askıya Al (Uyku Modu)",
-                    detail: "Sistemi askıya al",
+                    label: "Suspend (Sleep)",
+                    detail: "Suspend system to RAM",
                     icon: "󰒲",
                     actionId: "sleep"
                 },
                 {
                     triggers: ["çıkış", "cikis", "logout", "log out", "oturum kapat"],
-                    label: "Oturumu Kapat",
-                    detail: "Mevcut kullanıcı oturumunu sonlandır",
+                    label: "Log Out",
+                    detail: "End current user session",
                     icon: "󰗽",
                     actionId: "logout"
                 },
                 {
                     triggers: ["restart plasma", "plasma restart", "kwin restart"],
-                    label: "KDE Plasma'yı Yeniden Başlat",
-                    detail: "Masaüstü kabuğunu tazeleyerek yeniden başlat",
+                    label: "Restart KDE Plasma",
+                    detail: "Refresh and restart desktop shell",
                     icon: "󰑐",
                     actionId: "restart_plasma"
                 }
@@ -1206,15 +1206,15 @@ Window {
         var isDir = (rowItem.isDir !== undefined && rowItem.isDir !== null) ? !!rowItem.isDir : (resolvedPath ? Shell.isDirectory(resolvedPath) : false)
 
         if (rowItem.kind === "app" || (rowItem.desktop && rowItem.desktop.length > 0)) {
-            // 1. Başlat
+            // 1. Launch
             contextMenuModel.append({
-                label: "Başlat",
+                label: "Launch",
                 icon: "",
                 actionType: "launchApp",
                 actionPayload: rowItem.desktop,
                 isDanger: false
             })
-            // 2. .desktop Actions (KDE Kickoff'taki gibi: Yeni Gizli Pencere, Yeni Pencere vb.)
+            // 2. .desktop Actions
             try {
                 var acts = JSON.parse(Shell.getAppActions(rowItem.desktop) || "[]")
                 for (var i = 0; i < acts.length; i++) {
@@ -1228,17 +1228,17 @@ Window {
                 }
             } catch(e) {}
 
-            // 3. Konumu Aç (Dolphin'de Göster)
+            // 3. Open Location (Dolphin)
             contextMenuModel.append({
-                label: "Dosya Yolunu Aç (Dolphin)",
+                label: "Open Location (Dolphin)",
                 icon: "󰉋",
                 actionType: "openLocation",
                 actionPayload: rowItem.desktop,
                 isDanger: false
             })
-            // 4. Terminalde Çalıştır
+            // 4. Run in Terminal
             contextMenuModel.append({
-                label: "Terminalde Çalıştır",
+                label: "Run in Terminal",
                 icon: "",
                 actionType: "runInTerminal",
                 actionPayload: rowItem.desktop,
@@ -1246,43 +1246,41 @@ Window {
             })
             // 5. Discover
             contextMenuModel.append({
-                label: "Yazılım Merkezinde Aç",
+                label: "Open in Software Center",
                 icon: "󰀻",
                 actionType: "openInDiscover",
                 actionPayload: rowItem.desktop,
                 isDanger: false
             })
-            // 6. Düzenle
+            // 6. Edit
             contextMenuModel.append({
-                label: "Uygulamayı Düzenle",
+                label: "Edit Application",
                 icon: "",
                 actionType: "editDesktop",
                 actionPayload: rowItem.desktop,
                 isDanger: false
             })
-            // 7. Yolu Kopyala
+            // 7. Copy Path
             contextMenuModel.append({
-                label: "Dosya Yolunu Kopyala",
+                label: "Copy File Path",
                 icon: "󰅇",
                 actionType: "copyPath",
                 actionPayload: rowItem.desktop,
                 isDanger: false
             })
         } else if (resolvedPath && resolvedPath.length > 0) {
-            // Dosya veya klasör yolu olan tüm öğeler (Downloads, dosya aramaları, özel yollar vb.)
+            // All file or folder items
             if (rowItem.kind === "menu" || rowItem.kind === "link") {
-                // Downloads gibi bir kategori/menü öğesi ise önce "Menüde Aç"
                 contextMenuModel.append({
-                    label: "Menüde Aç",
+                    label: "Open in Menu",
                     icon: "",
                     actionType: "activateCurrent",
                     actionPayload: "",
                     isDanger: false
                 })
             } else if (!isDir) {
-                // Normal dosya ise "Dosyayı Aç"
                 contextMenuModel.append({
-                    label: "Dosyayı Aç",
+                    label: "Open File",
                     icon: "",
                     actionType: "openPath",
                     actionPayload: resolvedPath,
@@ -1290,37 +1288,37 @@ Window {
                 })
             }
 
-            // Dosya Yolunu Aç (Dolphin ile klasörü doğrudan aç)
+            // Open Location
             contextMenuModel.append({
-                label: isDir ? "Dosya Yolunu Aç (Dolphin)" : "İçeren Klasörü Aç (Dolphin)",
+                label: isDir ? "Open Location (Dolphin)" : "Open Containing Folder (Dolphin)",
                 icon: "󰉋",
                 actionType: isDir ? "openPath" : "openLocation",
                 actionPayload: resolvedPath,
                 isDanger: false
             })
 
-            // Terminalde Aç
+            // Open in Terminal
             contextMenuModel.append({
-                label: "Terminalde Aç",
+                label: "Open in Terminal",
                 icon: "",
                 actionType: "openInTerminal",
                 actionPayload: resolvedPath,
                 isDanger: false
             })
 
-            // Dosya Yolunu Kopyala
+            // Copy File Path
             contextMenuModel.append({
-                label: "Dosya Yolunu Kopyala",
+                label: "Copy File Path",
                 icon: "󰅇",
                 actionType: "copyPath",
                 actionPayload: resolvedPath,
                 isDanger: false
             })
 
-            // Çöp Kutusuna Taşı (sadece dosya-öğesi ise, ana menü kategorileri hariç)
+            // Move to Trash
             if (rowItem.provider === "file-item" || (rowItem.filePath && rowItem.kind !== "menu")) {
                 contextMenuModel.append({
-                    label: "Çöp Kutusuna Taşı",
+                    label: "Move to Trash",
                     icon: "",
                     actionType: "moveToTrash",
                     actionPayload: resolvedPath,
@@ -1328,9 +1326,9 @@ Window {
                 })
             }
         } else {
-            // Genel menü öğeleri
+            // General menu items
             contextMenuModel.append({
-                label: "Seç / Çalıştır",
+                label: "Select / Execute",
                 icon: "",
                 actionType: "activateCurrent",
                 actionPayload: "",
@@ -1339,7 +1337,7 @@ Window {
             var toCopy = rowItem.action || rowItem.value || rowItem.label || ""
             if (toCopy) {
                 contextMenuModel.append({
-                    label: "Metni / Komutu Kopyala",
+                    label: "Copy Action / Text",
                     icon: "󰅇",
                     actionType: "copyPath",
                     actionPayload: toCopy,
