@@ -2015,6 +2015,10 @@ def main():
     app.aboutToQuit.connect(shell.cleanup)
 
     engine = QQmlApplicationEngine()
+    if not IS_WINDOWS:
+        for p in ("/usr/lib/qt6/qml", "/usr/lib64/qt6/qml", "/usr/local/lib/qt6/qml"):
+            if os.path.isdir(p) and p not in engine.importPathList():
+                engine.addImportPath(p)
     engine.addImageProvider("appicon", AppIconProvider(shell))
     engine.addImageProvider("themeicon", ThemeIconProvider())
     ctx = engine.rootContext()
