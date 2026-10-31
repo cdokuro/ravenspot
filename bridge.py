@@ -17,7 +17,7 @@ import socket
 import subprocess
 import sys
 
-__version__ = "0.2.10"
+__version__ = "0.2.11"
 
 # ── Platform Path & IPC Definitions ───────────────────────────
 IS_WINDOWS = sys.platform == "win32"
@@ -1409,7 +1409,10 @@ class Shell(QObject):
 
         # 1. GPU için özel GUI araçları varsa (LACT, amdgpu_top, CoreCtrl vb.)
         if section in ("gpu", "ekrankarti", "ekran-karti"):
-            for gpu_tool in ["lact", "lact-gui", "corectrl"]:
+            if shutil.which("lact"):
+                subprocess.Popen(["lact", "gui"], start_new_session=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                return
+            for gpu_tool in ["lact-gui", "corectrl"]:
                 if shutil.which(gpu_tool):
                     subprocess.Popen([gpu_tool], start_new_session=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
                     return
