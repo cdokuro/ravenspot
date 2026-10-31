@@ -17,7 +17,7 @@ import socket
 import subprocess
 import sys
 
-__version__ = "0.2.8"
+__version__ = "0.2.9"
 
 # ── Platform Path & IPC Definitions ───────────────────────────
 IS_WINDOWS = sys.platform == "win32"
@@ -1398,6 +1398,67 @@ class Shell(QObject):
             "temp": f"{temp_c}°C" if temp_c else "--",
             "uptime": up_text or "--"
         }
+
+    @Slot(str)
+    def openSystemMonitor(self, section: str = "overview"):
+        """
+        Sistem izleme penceresini ilgili sekmede açar (GPU, CPU, RAM, Disk, Isı vb.).
+        Kullanıcı hızını maksimize etmek için ayrık (detached) ve gecikmesiz çalıştırır.
+        """
+        section = (section or "overview").strip().lower()
+
+        # 1. GPU için özel GUI araçları varsa (LACT, CoreCtrl vb.)
+        if section in ("gpu", "ekrankarti", "ekran-karti"):
+            for gpu_tool in ["lact-gui", "corectrl"]:
+                if shutil.which(gpu_tool):
+                    subprocess.Popen([gpu_tool], start_new_session=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                    return
+
+        # 2. KDE Plasma Sistem Monitörü (plasma-systemmonitor)
+        if shutil.which("plasma-systemmonitor"):
+            page_id = "overview.page"
+            if section in ("gpu", "cpu", "ram", "temp", "isi"):
+                page_id = "history.page"
+            elif section in ("proc", "process", "processes"):
+                page_id = "processes.page"
+            elif section in ("app", "apps", "applications"):
+                page_id = "applications.page"
+            elif section in ("disk", "uptime", "sure"):
+                page_id = "overview.page"
+
+            subprocess.Popen(
+                ["plasma-systemmonitor", "--page-id", page_id],
+                start_new_session=True,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL
+            )
+            return
+
+        # 3. KInfoCenter modülleri
+        if section in ("temp", "isi") and shutil.which("kinfocenter"):
+            subprocess.Popen(["kinfocenter", "kcm_sensors"], start_new_session=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            return
+
+        # 4. Alternatif GUI/Terminal monitörleri (btop, htop)
+        for term in ["konsole", "alacritty", "kitty", "xterm"]:
+            if shutil.which(term) and shutil.which("btop"):
+                subprocess.Popen([term, "-e", "btop"], start_new_session=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                return
+            elif shutil.which(term) and shutil.which("htop"):
+                subprocess.Popen([term, "-e", "htop"], start_new_session=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                return
+
+        # 5. Windows için Task Manager / Resource Monitor
+        if IS_WINDOWS:
+            if section in ("ram", "disk", "cpu"):
+                subprocess.Popen(["resmon.exe"], start_new_session=True)
+            else:
+                subprocess.Popen(["taskmgr.exe"], start_new_session=True)
+            return
+
+        # Fallback: kinfocenter
+        if shutil.which("kinfocenter"):
+            subprocess.Popen(["kinfocenter"], start_new_session=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
     @Slot(result=str)
     def getActiveOutputName(self):

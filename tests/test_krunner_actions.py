@@ -13,8 +13,8 @@ class TestKRunnerActions(unittest.TestCase):
         cls.shell = bridge.Shell()
 
     def test_version_bump(self):
-        self.assertEqual(self.shell.version, "0.2.8")
-        self.assertEqual(bridge.__version__, "0.2.8")
+        self.assertEqual(self.shell.version, "0.2.9")
+        self.assertEqual(bridge.__version__, "0.2.9")
 
     def test_resolve_item_path(self):
         # Test downloads folder resolution
@@ -71,6 +71,19 @@ class TestKRunnerActions(unittest.TestCase):
         for slot in slots:
             self.assertTrue(hasattr(self.shell, slot), f"Missing slot: {slot}")
 
+
+    def test_open_system_monitor(self):
+        # Verify method exists and runs without raising exceptions
+        self.assertTrue(hasattr(self.shell, "openSystemMonitor"))
+        try:
+            # Test that it safely handles calls without errors
+            # (Note: we don't assert processes, just verify no crash or unhandled exceptions)
+            self.shell.openSystemMonitor("gpu")
+            self.shell.openSystemMonitor("cpu")
+            self.shell.openSystemMonitor("ram")
+            self.shell.openSystemMonitor("disk")
+        except Exception as e:
+            self.fail(f"openSystemMonitor raised exception: {e}")
 
 if __name__ == "__main__":
     unittest.main()

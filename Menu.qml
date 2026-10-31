@@ -908,7 +908,29 @@ Window {
             // 7. Terminal komut modu ('>' öneki)
             if (query.startsWith(">")) {
                 var termCmd = query.substring(1).trim()
-                if (termCmd) {
+                if (!termCmd) {
+                    rows.push({
+                        itemId: "__term_hint__",
+                        kind: "action",
+                        icon: "",
+                        iconName: "utilities-terminal",
+                        iconFont: "",
+                        appIcon: "",
+                        appId: "",
+                        label: "Terminal Komutu Çalıştır...",
+                        target: "",
+                        detail: "Örn: > htop veya > btop",
+                        path: "Terminal",
+                        childCount: 0,
+                        action: "konsole",
+                        provider: "",
+                        value: "",
+                        desktop: "",
+                        disabled: false,
+                        score: -99999,
+                        section: ""
+                    })
+                } else {
                     rows.unshift({
                         itemId: "__term__",
                         kind: "action",
@@ -1668,7 +1690,7 @@ Window {
                 }
             }
 
-            // ── Üst Bar: Ses Kontrol Paneli (Mute + Slider) ──
+            // ── Üst Bar: Ses Kontrol Paneli (Mute + Slider) & RavenSpot Başlığı ──
             Item {
                 id: topMetricsBar
                 anchors.left: parent.left
@@ -1679,6 +1701,48 @@ Window {
                 anchors.topMargin: 8
                 height: 20
                 z: 5
+
+                // Sol: RavenSpot Logo & Başlık (Modern, Estetik Tipografi)
+                Row {
+                    id: brandHeaderRow
+                    anchors.left: parent.left
+                    anchors.verticalCenter: parent.verticalCenter
+                    spacing: 6
+                    z: 10
+
+                    Text {
+                        text: ""
+                        color: root.selFg
+                        font.pixelSize: 13
+                        font.family: root.iconFont
+                        anchors.verticalCenter: parent.verticalCenter
+                    }
+
+                    Row {
+                        spacing: 0
+                        anchors.verticalCenter: parent.verticalCenter
+
+                        Text {
+                            text: "Raven"
+                            color: root.fgColor
+                            font.pixelSize: 12
+                            font.family: "Fira Sans, Inter, sans-serif"
+                            font.weight: Font.Bold
+                            font.letterSpacing: 0.6
+                            anchors.verticalCenter: parent.verticalCenter
+                        }
+
+                        Text {
+                            text: "Spot"
+                            color: root.selFg
+                            font.pixelSize: 12
+                            font.family: "Fira Sans, Inter, sans-serif"
+                            font.weight: Font.DemiBold
+                            font.letterSpacing: 0.6
+                            anchors.verticalCenter: parent.verticalCenter
+                        }
+                    }
+                }
 
                 // Orta: Ses Kontrol Paneli (Mute butonu + Ses Slider)
                 Row {
@@ -1895,7 +1959,7 @@ Window {
                         anchors.right: clearBtn.visible ? clearBtn.left : escBadge.left
                         anchors.rightMargin: 8
                         anchors.verticalCenter: parent.verticalCenter
-                        text: root.activeMenu === "root" ? "RavenSpot'ta ara veya komut yaz (* dosya ara)..." : "Bu kategoride ara..."
+                        text: root.activeMenu === "root" ? "> komut çalıştır, * dosya ara, = hesapla..." : "Bu kategoride ara..."
                         color: root.fgDim
                         opacity: 0.55
                         font.pixelSize: 14
@@ -2285,173 +2349,305 @@ Window {
 
             Row {
                 anchors.centerIn: parent
-                spacing: 16
+                spacing: 8
 
                 // CPU
-                Row {
-                    spacing: 5
+                Rectangle {
+                    height: 22
+                    width: cpuRow.width + 12
+                    radius: 5
+                    color: cpuMouse.containsMouse ? Qt.rgba(1, 1, 1, 0.10) : "transparent"
                     anchors.verticalCenter: parent.verticalCenter
-                    Text {
-                        text: ""
-                        color: root.cpuColor
-                        font.pixelSize: 13
-                        font.family: root.iconFont
-                        anchors.verticalCenter: parent.verticalCenter
+
+                    Row {
+                        id: cpuRow
+                        spacing: 5
+                        anchors.centerIn: parent
+                        Text {
+                            text: ""
+                            color: root.cpuColor
+                            font.pixelSize: 13
+                            font.family: root.iconFont
+                            anchors.verticalCenter: parent.verticalCenter
+                        }
+                        Text {
+                            text: "CPU"
+                            color: root.cpuColor
+                            font.pixelSize: 12
+                            font.family: root.textFont
+                            font.weight: Font.DemiBold
+                            anchors.verticalCenter: parent.verticalCenter
+                        }
+                        Text {
+                            text: root.cpuPercent + "%"
+                            color: root.fgDim
+                            font.pixelSize: 12
+                            font.family: root.textFont
+                            anchors.verticalCenter: parent.verticalCenter
+                        }
                     }
-                    Text {
-                        text: "CPU"
-                        color: root.cpuColor
-                        font.pixelSize: 12
-                        font.family: root.textFont
-                        font.weight: Font.DemiBold
-                        anchors.verticalCenter: parent.verticalCenter
-                    }
-                    Text {
-                        text: root.cpuPercent + "%"
-                        color: root.fgDim
-                        font.pixelSize: 12
-                        font.family: root.textFont
-                        anchors.verticalCenter: parent.verticalCenter
+
+                    MouseArea {
+                        id: cpuMouse
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: {
+                            Shell.playCreamy()
+                            root.opened = false
+                            Shell.openSystemMonitor("cpu")
+                            Qt.callLater(closeMenu)
+                        }
                     }
                 }
 
                 // GPU
-                Row {
-                    spacing: 5
+                Rectangle {
+                    height: 22
+                    width: gpuRow.width + 12
+                    radius: 5
+                    color: gpuMouse.containsMouse ? Qt.rgba(1, 1, 1, 0.10) : "transparent"
                     anchors.verticalCenter: parent.verticalCenter
-                    Text {
-                        text: "󰢮"
-                        color: root.gpuColor
-                        font.pixelSize: 13
-                        font.family: root.iconFont
-                        anchors.verticalCenter: parent.verticalCenter
+
+                    Row {
+                        id: gpuRow
+                        spacing: 5
+                        anchors.centerIn: parent
+                        Text {
+                            text: "󰢮"
+                            color: root.gpuColor
+                            font.pixelSize: 13
+                            font.family: root.iconFont
+                            anchors.verticalCenter: parent.verticalCenter
+                        }
+                        Text {
+                            text: "GPU"
+                            color: root.gpuColor
+                            font.pixelSize: 12
+                            font.family: root.textFont
+                            font.weight: Font.DemiBold
+                            anchors.verticalCenter: parent.verticalCenter
+                        }
+                        Text {
+                            text: root.gpuPercent + "%"
+                            color: root.fgDim
+                            font.pixelSize: 12
+                            font.family: root.textFont
+                            anchors.verticalCenter: parent.verticalCenter
+                        }
                     }
-                    Text {
-                        text: "GPU"
-                        color: root.gpuColor
-                        font.pixelSize: 12
-                        font.family: root.textFont
-                        font.weight: Font.DemiBold
-                        anchors.verticalCenter: parent.verticalCenter
-                    }
-                    Text {
-                        text: root.gpuPercent + "%"
-                        color: root.fgDim
-                        font.pixelSize: 12
-                        font.family: root.textFont
-                        anchors.verticalCenter: parent.verticalCenter
+
+                    MouseArea {
+                        id: gpuMouse
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: {
+                            Shell.playCreamy()
+                            root.opened = false
+                            Shell.openSystemMonitor("gpu")
+                            Qt.callLater(closeMenu)
+                        }
                     }
                 }
 
                 // RAM
-                Row {
-                    spacing: 5
+                Rectangle {
+                    height: 22
+                    width: ramRow.width + 12
+                    radius: 5
+                    color: ramMouse.containsMouse ? Qt.rgba(1, 1, 1, 0.10) : "transparent"
                     anchors.verticalCenter: parent.verticalCenter
-                    Text {
-                        text: "󰘚"
-                        color: root.bgBorder
-                        font.pixelSize: 13
-                        font.family: root.iconFont
-                        anchors.verticalCenter: parent.verticalCenter
+
+                    Row {
+                        id: ramRow
+                        spacing: 5
+                        anchors.centerIn: parent
+                        Text {
+                            text: "󰘚"
+                            color: root.bgBorder
+                            font.pixelSize: 13
+                            font.family: root.iconFont
+                            anchors.verticalCenter: parent.verticalCenter
+                        }
+                        Text {
+                            text: "RAM"
+                            color: root.bgBorder
+                            font.pixelSize: 12
+                            font.family: root.textFont
+                            font.weight: Font.DemiBold
+                            anchors.verticalCenter: parent.verticalCenter
+                        }
+                        Text {
+                            text: (root.sysMonitor ? root.sysMonitor.ram_text : "--") + " (" + (root.sysMonitor ? root.sysMonitor.ram_pct : 0) + "%)"
+                            color: root.fgDim
+                            font.pixelSize: 12
+                            font.family: root.textFont
+                            anchors.verticalCenter: parent.verticalCenter
+                        }
                     }
-                    Text {
-                        text: "RAM"
-                        color: root.bgBorder
-                        font.pixelSize: 12
-                        font.family: root.textFont
-                        font.weight: Font.DemiBold
-                        anchors.verticalCenter: parent.verticalCenter
-                    }
-                    Text {
-                        text: (root.sysMonitor ? root.sysMonitor.ram_text : "--") + " (" + (root.sysMonitor ? root.sysMonitor.ram_pct : 0) + "%)"
-                        color: root.fgDim
-                        font.pixelSize: 12
-                        font.family: root.textFont
-                        anchors.verticalCenter: parent.verticalCenter
+
+                    MouseArea {
+                        id: ramMouse
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: {
+                            Shell.playCreamy()
+                            root.opened = false
+                            Shell.openSystemMonitor("ram")
+                            Qt.callLater(closeMenu)
+                        }
                     }
                 }
 
                 // Disk (Root /)
-                Row {
-                    spacing: 5
+                Rectangle {
+                    height: 22
+                    width: diskRow.width + 12
+                    radius: 5
+                    color: diskMouse.containsMouse ? Qt.rgba(1, 1, 1, 0.10) : "transparent"
                     anchors.verticalCenter: parent.verticalCenter
-                    Text {
-                        text: "󰋊"
-                        color: root.bgBorder
-                        font.pixelSize: 13
-                        font.family: root.iconFont
-                        anchors.verticalCenter: parent.verticalCenter
+
+                    Row {
+                        id: diskRow
+                        spacing: 5
+                        anchors.centerIn: parent
+                        Text {
+                            text: "󰋊"
+                            color: root.bgBorder
+                            font.pixelSize: 13
+                            font.family: root.iconFont
+                            anchors.verticalCenter: parent.verticalCenter
+                        }
+                        Text {
+                            text: "Disk"
+                            color: root.bgBorder
+                            font.pixelSize: 12
+                            font.family: root.textFont
+                            font.weight: Font.DemiBold
+                            anchors.verticalCenter: parent.verticalCenter
+                        }
+                        Text {
+                            text: (root.sysMonitor ? root.sysMonitor.disk_text : "--") + " (" + (root.sysMonitor ? root.sysMonitor.disk_pct : 0) + "%)"
+                            color: root.fgDim
+                            font.pixelSize: 12
+                            font.family: root.textFont
+                            anchors.verticalCenter: parent.verticalCenter
+                        }
                     }
-                    Text {
-                        text: "Disk"
-                        color: root.bgBorder
-                        font.pixelSize: 12
-                        font.family: root.textFont
-                        font.weight: Font.DemiBold
-                        anchors.verticalCenter: parent.verticalCenter
-                    }
-                    Text {
-                        text: (root.sysMonitor ? root.sysMonitor.disk_text : "--") + " (" + (root.sysMonitor ? root.sysMonitor.disk_pct : 0) + "%)"
-                        color: root.fgDim
-                        font.pixelSize: 12
-                        font.family: root.textFont
-                        anchors.verticalCenter: parent.verticalCenter
+
+                    MouseArea {
+                        id: diskMouse
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: {
+                            Shell.playCreamy()
+                            root.opened = false
+                            Shell.openSystemMonitor("disk")
+                            Qt.callLater(closeMenu)
+                        }
                     }
                 }
 
                 // Sıcaklık
-                Row {
-                    spacing: 5
+                Rectangle {
+                    height: 22
+                    width: tempRow.width + 12
+                    radius: 5
+                    color: tempMouse.containsMouse ? Qt.rgba(1, 1, 1, 0.10) : "transparent"
                     anchors.verticalCenter: parent.verticalCenter
-                    Text {
-                        text: ""
-                        color: root.cpuColor
-                        font.pixelSize: 13
-                        font.family: root.iconFont
-                        anchors.verticalCenter: parent.verticalCenter
+
+                    Row {
+                        id: tempRow
+                        spacing: 5
+                        anchors.centerIn: parent
+                        Text {
+                            text: ""
+                            color: root.cpuColor
+                            font.pixelSize: 13
+                            font.family: root.iconFont
+                            anchors.verticalCenter: parent.verticalCenter
+                        }
+                        Text {
+                            text: "Isı"
+                            color: root.cpuColor
+                            font.pixelSize: 12
+                            font.family: root.textFont
+                            font.weight: Font.DemiBold
+                            anchors.verticalCenter: parent.verticalCenter
+                        }
+                        Text {
+                            text: root.sysMonitor ? root.sysMonitor.temp : "--"
+                            color: root.fgDim
+                            font.pixelSize: 12
+                            font.family: root.textFont
+                            anchors.verticalCenter: parent.verticalCenter
+                        }
                     }
-                    Text {
-                        text: "Isı"
-                        color: root.cpuColor
-                        font.pixelSize: 12
-                        font.family: root.textFont
-                        font.weight: Font.DemiBold
-                        anchors.verticalCenter: parent.verticalCenter
-                    }
-                    Text {
-                        text: root.sysMonitor ? root.sysMonitor.temp : "--"
-                        color: root.fgDim
-                        font.pixelSize: 12
-                        font.family: root.textFont
-                        anchors.verticalCenter: parent.verticalCenter
+
+                    MouseArea {
+                        id: tempMouse
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: {
+                            Shell.playCreamy()
+                            root.opened = false
+                            Shell.openSystemMonitor("temp")
+                            Qt.callLater(closeMenu)
+                        }
                     }
                 }
 
                 // Uptime
-                Row {
-                    spacing: 5
+                Rectangle {
+                    height: 22
+                    width: uptimeRow.width + 12
+                    radius: 5
+                    color: uptimeMouse.containsMouse ? Qt.rgba(1, 1, 1, 0.10) : "transparent"
                     anchors.verticalCenter: parent.verticalCenter
-                    Text {
-                        text: "󰔚"
-                        color: root.gpuColor
-                        font.pixelSize: 13
-                        font.family: root.iconFont
-                        anchors.verticalCenter: parent.verticalCenter
+
+                    Row {
+                        id: uptimeRow
+                        spacing: 5
+                        anchors.centerIn: parent
+                        Text {
+                            text: "󰔚"
+                            color: root.gpuColor
+                            font.pixelSize: 13
+                            font.family: root.iconFont
+                            anchors.verticalCenter: parent.verticalCenter
+                        }
+                        Text {
+                            text: "Süre"
+                            color: root.gpuColor
+                            font.pixelSize: 12
+                            font.family: root.textFont
+                            font.weight: Font.DemiBold
+                            anchors.verticalCenter: parent.verticalCenter
+                        }
+                        Text {
+                            text: root.sysMonitor ? root.sysMonitor.uptime : "--"
+                            color: root.fgDim
+                            font.pixelSize: 12
+                            font.family: root.textFont
+                            anchors.verticalCenter: parent.verticalCenter
+                        }
                     }
-                    Text {
-                        text: "Süre"
-                        color: root.gpuColor
-                        font.pixelSize: 12
-                        font.family: root.textFont
-                        font.weight: Font.DemiBold
-                        anchors.verticalCenter: parent.verticalCenter
-                    }
-                    Text {
-                        text: root.sysMonitor ? root.sysMonitor.uptime : "--"
-                        color: root.fgDim
-                        font.pixelSize: 12
-                        font.family: root.textFont
-                        anchors.verticalCenter: parent.verticalCenter
+
+                    MouseArea {
+                        id: uptimeMouse
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: {
+                            Shell.playCreamy()
+                            root.opened = false
+                            Shell.openSystemMonitor("uptime")
+                            Qt.callLater(closeMenu)
+                        }
                     }
                 }
             }
