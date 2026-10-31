@@ -17,7 +17,7 @@ import socket
 import subprocess
 import sys
 
-__version__ = "0.2.16"
+__version__ = "0.2.17"
 
 # ── Platform Path & IPC Definitions ───────────────────────────
 IS_WINDOWS = sys.platform == "win32"
@@ -1409,40 +1409,53 @@ class Shell(QObject):
         """
         statedir = os.path.expanduser("~/.local/state/arch-update")
         tray_file = os.path.join(statedir, "tray_icon")
+        updates_file = os.path.join(statedir, "last_updates_check")
         notif_file = f"/run/user/{os.getuid()}/arch-update/notif_param" if not IS_WINDOWS else ""
 
         has_updates = False
         count = 0
-        icon_path = "/usr/share/icons/hicolor/scalable/apps/cachy-update-blue.svg"
-        tooltip = "Sisteminiz Güncel (CachyOS)"
+        tray_val = ""
 
         if os.path.exists(tray_file):
             try:
                 with open(tray_file, "r") as f:
-                    val = f.read().strip()
-                    if "updates-available" in val:
+                    tray_val = f.read().strip()
+                    if "updates-available" in tray_val:
                         has_updates = True
             except Exception:
                 pass
 
-        if notif_file and os.path.exists(notif_file):
+        if os.path.exists(updates_file):
+            try:
+                with open(updates_file, "r") as f:
+                    lines = [line.strip() for line in f if line.strip()]
+                    count = len(lines)
+                    if count > 0:
+                        has_updates = True
+            except Exception:
+                pass
+        elif has_updates and notif_file and os.path.exists(notif_file):
             try:
                 with open(notif_file, "r") as f:
                     c = f.read().strip()
                     if c.isdigit():
                         count = int(c)
-                        if count > 0:
-                            has_updates = True
             except Exception:
                 pass
 
         if has_updates:
-            icon_path = "/usr/share/icons/hicolor/scalable/apps/cachy-update_updates-available-blue.svg"
+            icon_name = tray_val if "updates-available" in tray_val else "cachy-update_updates-available-blue"
+            icon_path = f"/usr/share/icons/hicolor/scalable/apps/{icon_name}.svg"
+            if not os.path.exists(icon_path):
+                icon_path = "/usr/share/icons/hicolor/scalable/apps/cachy-update_updates-available-blue.svg"
             cnt_str = f" ({count})" if count > 0 else ""
-            tooltip = f"Güncellemeler Mevcut{cnt_str} — Tıkla ve Güncelle"
+            tooltip = f"Updates Available{cnt_str} — Click to Update"
         else:
-            icon_path = "/usr/share/icons/hicolor/scalable/apps/cachy-update-blue.svg"
-            tooltip = "Sisteminiz Güncel (CachyOS)"
+            icon_name = tray_val if tray_val and "updates-available" not in tray_val else "cachy-update-blue"
+            icon_path = f"/usr/share/icons/hicolor/scalable/apps/{icon_name}.svg"
+            if not os.path.exists(icon_path):
+                icon_path = "/usr/share/icons/hicolor/scalable/apps/cachy-update-blue.svg"
+            tooltip = "System Up to Date (CachyOS)"
 
         return {
             "has_updates": has_updates,

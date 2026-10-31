@@ -9,11 +9,10 @@
   "downloads": { "icon": "󰇚", "iconName": "aptdaemon-download", "label": "Downloads", "aliases": ["downloads", "indirilenler", "download", "dosyalar", "files"], "provider": "files-downloads" },
   "browser": { "icon": "󰖟", "iconName": "web-browser", "label": "Browser", "action": "xdg-open https://www.mozilla.org/" },
   "discover": { "icon": "󰀻", "iconName": "plasmadiscover", "label": "Discover", "aliases": ["discover", "store", "mağaza", "yazılım", "market"], "action": "plasma-discover" },
-  "cachyupdate": { "icon": "󰚰", "iconName": "cachy-update-blue", "label": "Cachy Update", "aliases": ["cachy", "update", "güncelle", "cachyos", "pacman"], "action": "konsole -e arch-update" },
   "appearance": { "icon": "󰏘", "iconName": "cs-themes", "label": "Appearance", "aliases": ["style", "theme"] },
   "trigger": { "icon": "󱓞", "iconName": "gnome-screenshot", "label": "Trigger" },
   "settings": { "icon": "", "iconName": "gnome-settings", "label": "Settings", "aliases": ["settings", "ayarlar", "setup", "config", "control", "yapılandırma", "sistem ayarları"], "action": "systemsettings" },
-  "system": { "icon": "", "iconName": "system-shutdown", "label": "System", "aliases": ["power-menu", "power"] },
+  "system": { "icon": "", "iconName": "system-shutdown", "label": "Power", "aliases": ["power", "system", "power-menu"] },
   "help": { "icon": "", "iconName": "help-browser", "label": "Help", "aliases": ["help", "yardım", "kılavuz", "info"] },
 
   // ─── Apps Kategorileri ─────────────────────────────────────────

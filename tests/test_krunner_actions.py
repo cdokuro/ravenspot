@@ -13,8 +13,8 @@ class TestKRunnerActions(unittest.TestCase):
         cls.shell = bridge.Shell()
 
     def test_version_bump(self):
-        self.assertEqual(self.shell.version, "0.2.16")
-        self.assertEqual(bridge.__version__, "0.2.16")
+        self.assertEqual(self.shell.version, "0.2.17")
+        self.assertEqual(bridge.__version__, "0.2.17")
 
     def test_power_profile_and_sleep_inhibit(self):
         self.assertTrue(hasattr(self.shell, "getPowerProfile"))

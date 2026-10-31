@@ -3,6 +3,7 @@ import QtQuick
 import QtQuick.Window
 import QtQuick.Controls
 import QtQuick.Effects
+import org.kde.plasma.private.batterymonitor
 import "MenuModel.js" as MenuModel
 
 Window {
@@ -12,6 +13,13 @@ Window {
     height: card.height + 48
     color: "transparent"
     flags: Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint
+
+    InhibitionControl {
+        id: kdeInhibitCtrl
+        onIsManuallyInhibitedChanged: {
+            root.sleepInhibited = isManuallyInhibited
+        }
+    }
 
     property bool canCloseOnInactive: false
     Timer {
@@ -1018,6 +1026,7 @@ Window {
             for (var j = 0; j < root.itemOrder.length; j++) {
                 var child = root.item(root.itemOrder[j])
                 if (!child || child.parent !== active) continue
+                if (active === "root" && (child.id === "help" || child.id === "cachyupdate")) continue
                 if (!root.isVisible(child)) continue
                 rows.push(displayRow(child, child.description, child.order))
             }
@@ -1427,7 +1436,11 @@ Window {
         root.selectedIndex = 0
         root.powerFlyoutOpen = false
         if (Shell.getPowerProfile) root.currentPowerProfile = Shell.getPowerProfile()
-        if (Shell.isSleepInhibited) root.sleepInhibited = Shell.isSleepInhibited()
+        if (typeof kdeInhibitCtrl !== "undefined" && kdeInhibitCtrl) {
+            root.sleepInhibited = kdeInhibitCtrl.isManuallyInhibited
+        } else if (Shell.isSleepInhibited) {
+            root.sleepInhibited = Shell.isSleepInhibited()
+        }
 
         // Ses seviyesini anında çek (%50 flash olmasını önler)
         var ainfo = Shell.getInitialAudioInfo()
@@ -3016,6 +3029,34 @@ Window {
                         }
                     }
                 }
+
+                // Help Icon Button (Sadece simge, metin yok)
+                Rectangle {
+                    height: 22
+                    width: 24
+                    radius: 5
+                    color: helpFooterMouse.containsMouse ? Qt.rgba(1, 1, 1, 0.12) : "transparent"
+                    anchors.verticalCenter: parent.verticalCenter
+
+                    Text {
+                        text: ""
+                        color: helpFooterMouse.containsMouse ? "#ffffff" : root.fgDim
+                        font.pixelSize: 13
+                        font.family: root.iconFont
+                        anchors.centerIn: parent
+                    }
+
+                    MouseArea {
+                        id: helpFooterMouse
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: {
+                            Shell.playCreamy()
+                            openMenu("help")
+                        }
+                    }
+                }
             }
         }
 
@@ -3129,63 +3170,69 @@ Window {
                     }
                 }
 
-                // 2. Güç Profili 3 Kademeli Slider / Segment Kontrolü
+                // 2. Güç Profili 3 Kademeli Slider (Kompakt ve tam hizalı)
                 Item {
                     width: parent.width
-                    height: 54
+                    height: 56
 
-                    // Slider Arka Plan Rayı
-                    Rectangle {
-                        id: profileTrack
+                    Item {
+                        id: sliderTrackContainer
+                        width: 250
+                        height: 52
+                        anchors.horizontalCenter: parent.horizontalCenter
                         anchors.top: parent.top
-                        anchors.topMargin: 14
-                        anchors.left: parent.left
-                        anchors.leftMargin: 24
-                        anchors.right: parent.right
-                        anchors.rightMargin: 24
-                        height: 6
-                        radius: 3
-                        color: Qt.rgba(255, 255, 255, 0.12)
+                        anchors.topMargin: 4
 
-                        // Aktif Doluluk Çizgisi
+                        // Slider Arka Plan Rayı
                         Rectangle {
-                            height: parent.height
-                            radius: 3
-                            width: root.currentPowerProfile === "power-saver" ? 0 : (root.currentPowerProfile === "balanced" ? parent.width / 2 : parent.width)
-                            color: root.currentPowerProfile === "power-saver" ? "#22c55e" : (root.currentPowerProfile === "performance" ? "#f97316" : root.selFg)
-                            Behavior on width { NumberAnimation { duration: 180; easing.type: Easing.OutQuad } }
-                        }
-                    }
+                            id: profileTrack
+                            width: parent.width
+                            height: 4
+                            radius: 2
+                            color: Qt.rgba(255, 255, 255, 0.16)
+                            y: 10
 
-                    // 3 Kademe Düğmesi ve Etiketleri
-                    Row {
-                        anchors.fill: parent
-                        spacing: 0
-
-                        // 1. Power Saver
-                        Item {
-                            width: parent.width / 3
-                            height: parent.height
-
+                            // Aktif Doluluk Çizgisi
                             Rectangle {
-                                anchors.horizontalCenter: parent.horizontalCenter
-                                anchors.top: parent.top
-                                anchors.topMargin: 9
-                                width: 16
-                                height: 16
-                                radius: 8
-                                color: root.currentPowerProfile === "power-saver" ? "#22c55e" : Qt.rgba(1, 1, 1, 0.25)
-                                border.color: root.currentPowerProfile === "power-saver" ? "#ffffff" : Qt.rgba(0, 0, 0, 0.4)
-                                border.width: root.currentPowerProfile === "power-saver" ? 2 : 1
-                                Behavior on color { ColorAnimation { duration: 150 } }
+                                height: parent.height
+                                radius: 2
+                                width: root.currentPowerProfile === "power-saver" ? 0 : (root.currentPowerProfile === "performance" ? 250 : 125)
+                                color: root.currentPowerProfile === "power-saver" ? "#22c55e" : (root.currentPowerProfile === "performance" ? "#f97316" : root.selFg)
+                                Behavior on width { NumberAnimation { duration: 160; easing.type: Easing.OutQuad } }
                             }
 
-                            Row {
-                                anchors.horizontalCenter: parent.horizontalCenter
-                                anchors.bottom: parent.bottom
-                                anchors.bottomMargin: 2
-                                spacing: 4
+                            // 3 Referans Noktası (Rayın tam başlangıcında, tam ortasında, tam bitişinde)
+                            Rectangle { width: 6; height: 6; radius: 3; color: "#ffffff"; opacity: 0.5; x: -3; y: -1 }
+                            Rectangle { width: 6; height: 6; radius: 3; color: "#ffffff"; opacity: 0.5; x: 125 - 3; y: -1 }
+                            Rectangle { width: 6; height: 6; radius: 3; color: "#ffffff"; opacity: 0.5; x: 250 - 3; y: -1 }
 
+                            // Slider Thumb (Kaydırıcı / Seçici Düğmesi)
+                            Rectangle {
+                                id: profileThumb
+                                width: 18
+                                height: 18
+                                radius: 9
+                                color: root.currentPowerProfile === "power-saver" ? "#22c55e" : (root.currentPowerProfile === "performance" ? "#f97316" : root.selFg)
+                                border.color: "#ffffff"
+                                border.width: 2
+                                y: -7
+                                x: (root.currentPowerProfile === "power-saver" ? 0 : (root.currentPowerProfile === "performance" ? 250 : 125)) - 9
+                                Behavior on x { NumberAnimation { duration: 160; easing.type: Easing.OutQuad } }
+                                Behavior on color { ColorAnimation { duration: 150 } }
+                            }
+                        }
+
+                        // Etiket 1: Power Saver (Nokta 0 hizasında)
+                        Item {
+                            anchors.horizontalCenter: parent.left
+                            anchors.top: profileTrack.bottom
+                            anchors.topMargin: 12
+                            width: 80
+                            height: 20
+
+                            Row {
+                                anchors.centerIn: parent
+                                spacing: 4
                                 Text {
                                     text: "󰌪"
                                     color: root.currentPowerProfile === "power-saver" ? "#22c55e" : root.fgDim
@@ -3193,7 +3240,6 @@ Window {
                                     font.family: root.iconFont
                                     anchors.verticalCenter: parent.verticalCenter
                                 }
-
                                 Text {
                                     text: "Power Saver"
                                     color: root.currentPowerProfile === "power-saver" ? "#22c55e" : root.fgDim
@@ -3215,30 +3261,17 @@ Window {
                             }
                         }
 
-                        // 2. Balanced
+                        // Etiket 2: Balanced (Nokta 1 hizasında - Merkez)
                         Item {
-                            width: parent.width / 3
-                            height: parent.height
-
-                            Rectangle {
-                                anchors.horizontalCenter: parent.horizontalCenter
-                                anchors.top: parent.top
-                                anchors.topMargin: 9
-                                width: 16
-                                height: 16
-                                radius: 8
-                                color: root.currentPowerProfile === "balanced" ? root.selFg : Qt.rgba(1, 1, 1, 0.25)
-                                border.color: root.currentPowerProfile === "balanced" ? "#ffffff" : Qt.rgba(0, 0, 0, 0.4)
-                                border.width: root.currentPowerProfile === "balanced" ? 2 : 1
-                                Behavior on color { ColorAnimation { duration: 150 } }
-                            }
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            anchors.top: profileTrack.bottom
+                            anchors.topMargin: 12
+                            width: 70
+                            height: 20
 
                             Row {
-                                anchors.horizontalCenter: parent.horizontalCenter
-                                anchors.bottom: parent.bottom
-                                anchors.bottomMargin: 2
+                                anchors.centerIn: parent
                                 spacing: 4
-
                                 Text {
                                     text: "󰾆"
                                     color: root.currentPowerProfile === "balanced" ? root.selFg : root.fgDim
@@ -3246,7 +3279,6 @@ Window {
                                     font.family: root.iconFont
                                     anchors.verticalCenter: parent.verticalCenter
                                 }
-
                                 Text {
                                     text: "Balanced"
                                     color: root.currentPowerProfile === "balanced" ? root.selFg : root.fgDim
@@ -3268,30 +3300,17 @@ Window {
                             }
                         }
 
-                        // 3. Performance
+                        // Etiket 3: Performance (Nokta 2 hizasında)
                         Item {
-                            width: parent.width / 3
-                            height: parent.height
-
-                            Rectangle {
-                                anchors.horizontalCenter: parent.horizontalCenter
-                                anchors.top: parent.top
-                                anchors.topMargin: 9
-                                width: 16
-                                height: 16
-                                radius: 8
-                                color: root.currentPowerProfile === "performance" ? "#f97316" : Qt.rgba(1, 1, 1, 0.25)
-                                border.color: root.currentPowerProfile === "performance" ? "#ffffff" : Qt.rgba(0, 0, 0, 0.4)
-                                border.width: root.currentPowerProfile === "performance" ? 2 : 1
-                                Behavior on color { ColorAnimation { duration: 150 } }
-                            }
+                            anchors.horizontalCenter: parent.right
+                            anchors.top: profileTrack.bottom
+                            anchors.topMargin: 12
+                            width: 80
+                            height: 20
 
                             Row {
-                                anchors.horizontalCenter: parent.horizontalCenter
-                                anchors.bottom: parent.bottom
-                                anchors.bottomMargin: 2
+                                anchors.centerIn: parent
                                 spacing: 4
-
                                 Text {
                                     text: "󰓅"
                                     color: root.currentPowerProfile === "performance" ? "#f97316" : root.fgDim
@@ -3299,7 +3318,6 @@ Window {
                                     font.family: root.iconFont
                                     anchors.verticalCenter: parent.verticalCenter
                                 }
-
                                 Text {
                                     text: "Performance"
                                     color: root.currentPowerProfile === "performance" ? "#f97316" : root.fgDim
@@ -3320,6 +3338,23 @@ Window {
                                 }
                             }
                         }
+
+                        // Ray üzerine tıklama
+                        MouseArea {
+                            anchors.left: parent.left
+                            anchors.right: parent.right
+                            anchors.top: parent.top
+                            height: 24
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: (mouse) => {
+                                Shell.playCreamy()
+                                var p = "balanced"
+                                if (mouse.x < 83) p = "power-saver"
+                                else if (mouse.x > 167) p = "performance"
+                                root.currentPowerProfile = p
+                                Shell.setPowerProfile(p)
+                            }
+                        }
                     }
                 }
 
@@ -3330,7 +3365,7 @@ Window {
                     color: Qt.rgba(255, 255, 255, 0.08)
                 }
 
-                // 3. "Uykuyu ve Ekran Kilidini Elle Engelle" Satırı (Kullanıcının Görseliyle Birebir)
+                // 3. "Manually Block Sleep and Screen Locking" (KDE Tray ile tam senkron)
                 Rectangle {
                     width: parent.width
                     height: 40
@@ -3379,9 +3414,9 @@ Window {
                             }
                         }
 
-                        // Metin Etiketi (Kullanıcının Ekran Görüntüsündeki Metin)
+                        // Metin Etiketi (İngilizce - KDE ile birebir)
                         Text {
-                            text: "Uykuyu ve Ekran Kilidini Elle Engelle"
+                            text: "Manually Block Sleep and Screen Locking"
                             color: root.sleepInhibited ? "#ffffff" : root.fgColor
                             font.pixelSize: 12
                             font.family: root.textFont
@@ -3397,8 +3432,17 @@ Window {
                         cursorShape: Qt.PointingHandCursor
                         onClicked: {
                             Shell.playCreamy()
-                            var nextState = !root.sleepInhibited
-                            root.sleepInhibited = Shell.setSleepInhibited(nextState)
+                            if (typeof kdeInhibitCtrl !== "undefined" && kdeInhibitCtrl) {
+                                if (kdeInhibitCtrl.isManuallyInhibited) {
+                                    kdeInhibitCtrl.uninhibit()
+                                } else {
+                                    kdeInhibitCtrl.inhibit("RavenSpot")
+                                }
+                                root.sleepInhibited = kdeInhibitCtrl.isManuallyInhibited
+                            } else {
+                                var nextState = !root.sleepInhibited
+                                root.sleepInhibited = Shell.setSleepInhibited(nextState)
+                            }
                         }
                     }
                 }
