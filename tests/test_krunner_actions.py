@@ -13,8 +13,17 @@ class TestKRunnerActions(unittest.TestCase):
         cls.shell = bridge.Shell()
 
     def test_version_bump(self):
-        self.assertEqual(self.shell.version, "0.2.18")
-        self.assertEqual(bridge.__version__, "0.2.18")
+        self.assertEqual(self.shell.version, "0.2.19")
+        self.assertEqual(bridge.__version__, "0.2.19")
+
+    def test_app_category_listing(self):
+        counts = json.loads(self.shell.getAppCategoryCounts())
+        self.assertIn("all", counts)
+        self.assertIn("games", counts)
+        self.assertTrue(counts["all"] > 0)
+        all_apps = json.loads(self.shell.listAppsCategory("all"))
+        self.assertIsInstance(all_apps, list)
+        self.assertTrue(len(all_apps) > 0)
 
     def test_power_profile_and_sleep_inhibit(self):
         self.assertTrue(hasattr(self.shell, "getPowerProfile"))

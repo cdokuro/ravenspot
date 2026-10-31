@@ -127,12 +127,13 @@ Window {
                     var baseName = root.items[cId].label.replace(/\s*\(\d+\)$/, "")
                     root.items[cId].label = baseName + " (" + counts[catMap[cId]] + ")"
                 }
+                loadAppsCategory(cId, catMap[cId])
+                root.providersLoaded[cId] = true
             }
-        } catch(e) {}
-
-        // Global arama için tüm uygulamaları arka planda root.items içine önceden yükle
-        loadAppsCategory("apps.all", "all")
-        root.providersLoaded["apps.all"] = true
+        } catch(e) {
+            loadAppsCategory("apps.all", "all")
+            root.providersLoaded["apps.all"] = true
+        }
 
         evaluateGuards()
     }
@@ -384,6 +385,7 @@ Window {
         var target = entry.kind === "link" ? entry.target : entry.id
         return {
             itemId: entry.id,
+            parent: entry.parent || "",
             kind: entry.kind,
             icon: entry.icon || "",
             iconName: entry.iconName || "",
@@ -611,6 +613,62 @@ Window {
             }
             currentRows.sort(function(a,b){ return a.score !== b.score ? a.score - b.score : a.path.localeCompare(b.path) })
             drilldownRows.sort(function(a,b){ return a.score !== b.score ? a.score - b.score : a.path.localeCompare(b.path) })
+
+            // Uygulama tekrarlarını filtrele (aynı uygulama All Apps ve alt kategori altında çift çıkmasın)
+            function deduplicateAppList(list) {
+                var seen = ({})
+                var out = []
+                for (var idx = 0; idx < list.length; idx++) {
+                    var r = list[idx]
+                    if (r.kind !== "app") {
+                        out.push(r)
+                        continue
+                    }
+                    var k = r.desktop ? r.desktop.toLowerCase() : (r.appId ? r.appId.toLowerCase() : (r.label ? r.label.toLowerCase() : r.itemId))
+                    if (!seen[k]) {
+                        seen[k] = r
+                        out.push(r)
+                    } else {
+                        var existing = seen[k]
+                        var existingIsAll = existing.parent === "apps.all" || (existing.itemId && existing.itemId.indexOf("apps.all.") === 0)
+                        var newIsSpecific = r.parent !== "apps.all" && (r.itemId && r.itemId.indexOf("apps.all.") !== 0)
+                        if (existingIsAll && newIsSpecific) {
+                            var outIdx = out.indexOf(existing)
+                            if (outIdx >= 0) {
+                                out[outIdx] = r
+                            }
+                            seen[k] = r
+                        }
+                    }
+                }
+                return out
+            }
+
+            currentRows = deduplicateAppList(currentRows)
+            drilldownRows = deduplicateAppList(drilldownRows)
+
+            // currentRows içinde olan uygulama drilldownRows içinde tekrar etmesin
+            var currentAppKeys = ({})
+            for (var c = 0; c < currentRows.length; c++) {
+                var cr = currentRows[c]
+                if (cr.kind === "app") {
+                    var ck = cr.desktop ? cr.desktop.toLowerCase() : (cr.appId ? cr.appId.toLowerCase() : (cr.label ? cr.label.toLowerCase() : cr.itemId))
+                    currentAppKeys[ck] = true
+                }
+            }
+            if (Object.keys(currentAppKeys).length > 0) {
+                var filteredDrilldown = []
+                for (var dd = 0; dd < drilldownRows.length; dd++) {
+                    var dr = drilldownRows[dd]
+                    if (dr.kind === "app") {
+                        var dk = dr.desktop ? dr.desktop.toLowerCase() : (dr.appId ? dr.appId.toLowerCase() : (dr.label ? dr.label.toLowerCase() : dr.itemId))
+                        if (currentAppKeys[dk]) continue
+                    }
+                    filteredDrilldown.push(dr)
+                }
+                drilldownRows = filteredDrilldown
+            }
+
             if (currentRows.length && drilldownRows.length) {
                 for (var d = 0; d < drilldownRows.length; d++) drilldownRows[d].section = "drilldown"
             }
