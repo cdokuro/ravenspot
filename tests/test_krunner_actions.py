@@ -13,8 +13,8 @@ class TestKRunnerActions(unittest.TestCase):
         cls.shell = bridge.Shell()
 
     def test_version_bump(self):
-        self.assertEqual(self.shell.version, "0.2.14")
-        self.assertEqual(bridge.__version__, "0.2.14")
+        self.assertEqual(self.shell.version, "0.2.15")
+        self.assertEqual(bridge.__version__, "0.2.15")
 
     def test_update_info(self):
         self.assertTrue(hasattr(self.shell, "getUpdateInfo"))

@@ -47,7 +47,7 @@ Window {
     property string textFont: "Inter"
     property int cardWidth: 680
     property int rowHeight: 48
-    property int headerHeight: 90
+    property int headerHeight: 110
     property int cpuPercent: 0
     property int gpuPercent: 0
     property int sysVolume: 50
@@ -1766,117 +1766,109 @@ Window {
                     }
                 }
 
-                // Orta: Ses Kontrol Paneli (Mute butonu + Ses Slider)
+                // Orta: Yeniden Başlat & Kapat Hızlı Aksiyon Butonları (Candy Icons)
                 Row {
-                    id: volumeControlRow
+                    id: powerQuickActionsRow
                     z: 10
                     anchors.centerIn: parent
                     spacing: 8
 
-                    // Mute Butonu
-                    Text {
-                        id: muteBtn
-                        text: root.sysMuted ? "󰝟" : (root.sysVolume > 50 ? "󰕾" : (root.sysVolume > 0 ? "󰖀" : "󰕿"))
-                        color: root.sysMuted ? "#ef4444" : root.bgBorder
-                        font.pixelSize: 14
-                        font.family: root.iconFont
-                        anchors.verticalCenter: parent.verticalCenter
+                    // Reboot Button
+                    Rectangle {
+                        id: quickRebootBtn
+                        height: 20
+                        width: rebootContentRow.width + 14
+                        radius: 5
+                        color: rebootMouse.containsMouse ? Qt.rgba(255, 167, 38, 0.22) : Qt.rgba(1, 1, 1, 0.06)
+                        border.color: rebootMouse.containsMouse ? "#ffa726" : Qt.rgba(root.bgBorder.r, root.bgBorder.g, root.bgBorder.b, 0.25)
+                        border.width: 1
+
+                        Row {
+                            id: rebootContentRow
+                            spacing: 5
+                            anchors.centerIn: parent
+
+                            Image {
+                                width: 13
+                                height: 13
+                                sourceSize.width: 16
+                                sourceSize.height: 16
+                                source: "image://themeicon/system-reboot?v=" + root.themeVersion
+                                anchors.verticalCenter: parent.verticalCenter
+                                smooth: true
+                            }
+
+                            Text {
+                                text: "Reboot"
+                                color: rebootMouse.containsMouse ? "#ffa726" : root.fgColor
+                                font.pixelSize: 10
+                                font.family: root.textFont
+                                font.weight: Font.DemiBold
+                                anchors.verticalCenter: parent.verticalCenter
+                            }
+                        }
 
                         MouseArea {
+                            id: rebootMouse
                             anchors.fill: parent
+                            hoverEnabled: true
                             cursorShape: Qt.PointingHandCursor
                             onClicked: {
                                 Shell.playCreamy()
-                                Shell.toggleSystemMute()
-                                root.sysMuted = !root.sysMuted
+                                root.opened = false
+                                Shell.executeCommand("qdbus6 org.kde.Shutdown /Shutdown org.kde.Shutdown.logoutAndReboot")
+                                Qt.callLater(closeMenu)
                             }
                         }
                     }
 
-                    // Ses Barı / Slider (Tıklama, Sürükleme ve WheelHandler)
+                    // Shutdown Button
                     Rectangle {
-                        id: volumeSliderTrack
-                        width: 110
-                        height: 6
-                        radius: 3
-                        color: "#30ffffff"
-                        anchors.verticalCenter: parent.verticalCenter
+                        id: quickShutdownBtn
+                        height: 20
+                        width: shutdownContentRow.width + 14
+                        radius: 5
+                        color: shutdownMouse.containsMouse ? Qt.rgba(255, 82, 82, 0.22) : Qt.rgba(1, 1, 1, 0.06)
+                        border.color: shutdownMouse.containsMouse ? "#ff5252" : Qt.rgba(root.bgBorder.r, root.bgBorder.g, root.bgBorder.b, 0.25)
+                        border.width: 1
 
-                        // Dolu kısım
-                        Rectangle {
-                            id: volumeSliderFill
-                            height: parent.height
-                            radius: 3
-                            width: root.sysMuted ? 0 : Math.max(0, Math.min(parent.width, (root.sysVolume / 100.0) * parent.width))
-                            color: root.bgBorder
-                            Behavior on width { NumberAnimation { duration: 40 } }
-                        }
+                        Row {
+                            id: shutdownContentRow
+                            spacing: 5
+                            anchors.centerIn: parent
 
-                        // Thumb gösterge
-                        Rectangle {
-                            width: 10
-                            height: 10
-                            radius: 5
-                            anchors.verticalCenter: parent.verticalCenter
-                            x: Math.max(0, Math.min(volumeSliderTrack.width - 10, volumeSliderFill.width - 5))
-                            color: root.selFg
-                            border.color: root.bgBorder
-                            border.width: 1
-                            visible: !root.sysMuted
-                        }
+                            Image {
+                                width: 13
+                                height: 13
+                                sourceSize.width: 16
+                                sourceSize.height: 16
+                                source: "image://themeicon/system-shutdown?v=" + root.themeVersion
+                                anchors.verticalCenter: parent.verticalCenter
+                                smooth: true
+                            }
 
-                        WheelHandler {
-                            id: volWheelHandler
-                            acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
-                            onWheel: function(event) {
-                                var delta = event.angleDelta.y > 0 ? 5 : -5
-                                var v = Math.max(0, Math.min(100, root.sysVolume + delta))
-                                root.sysVolume = v
-                                root.sysMuted = false
-                                Shell.setSystemVolume(v)
+                            Text {
+                                text: "Shutdown"
+                                color: shutdownMouse.containsMouse ? "#ff5252" : root.fgColor
+                                font.pixelSize: 10
+                                font.family: root.textFont
+                                font.weight: Font.DemiBold
+                                anchors.verticalCenter: parent.verticalCenter
                             }
                         }
 
                         MouseArea {
-                            id: volDragArea
+                            id: shutdownMouse
                             anchors.fill: parent
-                            anchors.topMargin: -8
-                            anchors.bottomMargin: -8
                             hoverEnabled: true
                             cursorShape: Qt.PointingHandCursor
-
-                            function updateVol(mouse) {
-                                var ratio = Math.max(0.0, Math.min(1.0, mouse.x / volumeSliderTrack.width))
-                                var newVol = Math.round(ratio * 100)
-                                root.sysVolume = newVol
-                                root.sysMuted = false
-                                Shell.setSystemVolume(newVol)
-                            }
-
-                            onPressed: function(mouse) {
-                                updateVol(mouse)
-                            }
-                            onPositionChanged: function(mouse) {
-                                if (pressed) updateVol(mouse)
-                            }
-                            onWheel: function(wheel) {
-                                var delta = wheel.angleDelta.y > 0 ? 5 : -5
-                                var v = Math.max(0, Math.min(100, root.sysVolume + delta))
-                                root.sysVolume = v
-                                root.sysMuted = false
-                                Shell.setSystemVolume(v)
+                            onClicked: {
+                                Shell.playCreamy()
+                                root.opened = false
+                                Shell.executeCommand("qdbus6 org.kde.Shutdown /Shutdown org.kde.Shutdown.logoutAndShutdown")
+                                Qt.callLater(closeMenu)
                             }
                         }
-                    }
-
-                    // Ses Yüzdesi Metni
-                    Text {
-                        text: root.sysMuted ? "MUTE" : root.sysVolume + "%"
-                        color: root.sysMuted ? "#ef4444" : root.fgDim
-                        font.pixelSize: 10
-                        font.family: root.textFont
-                        font.weight: Font.Bold
-                        anchors.verticalCenter: parent.verticalCenter
                     }
                 }
 
@@ -1908,7 +1900,7 @@ Window {
                         }
 
                         Text {
-                            text: (root.sysUpdateInfo && root.sysUpdateInfo.has_updates) ? (root.sysUpdateInfo.count > 0 ? root.sysUpdateInfo.count + " Güncelleme" : "Güncelle") : "Güncel"
+                            text: (root.sysUpdateInfo && root.sysUpdateInfo.has_updates) ? (root.sysUpdateInfo.count > 0 ? root.sysUpdateInfo.count + " Updates" : "Update") : "Up to date"
                             color: (root.sysUpdateInfo && root.sysUpdateInfo.has_updates) ? "#ff5252" : root.fgDim
                             font.pixelSize: 10
                             font.family: root.textFont
@@ -1932,20 +1924,19 @@ Window {
                 }
             }
 
-            // ── Apple Spotlight Style Frosted Glass Search Pill Bar (Eşit Üst/Alt Mesafeli) ──
+            // ── Apple Spotlight Style Frosted Glass Search Pill Bar ──
             Item {
                 id: searchPillContainer
                 anchors.top: topMetricsBar.bottom
-                anchors.bottom: parent.bottom
+                anchors.topMargin: 8
                 anchors.left: parent.left
                 anchors.right: parent.right
+                height: 42
                 z: 5
 
                 Rectangle {
                     id: searchPill
-                    anchors.verticalCenter: parent.verticalCenter
-                    anchors.left: parent.left
-                    anchors.right: parent.right
+                    anchors.fill: parent
                     anchors.leftMargin: 16
                     anchors.rightMargin: 16
                     height: 42
@@ -2032,7 +2023,7 @@ Window {
                         anchors.right: clearBtn.visible ? clearBtn.left : escBadge.left
                         anchors.rightMargin: 8
                         anchors.verticalCenter: parent.verticalCenter
-                        text: root.activeMenu === "root" ? "> komut çalıştır, * dosya ara, = hesapla..." : "Bu kategoride ara..."
+                        text: root.activeMenu === "root" ? "> run command, * find files, = calculate..." : "Search in this category..."
                         color: root.fgDim
                         opacity: 0.55
                         font.pixelSize: 14
@@ -2125,6 +2116,123 @@ Window {
                         color: root.fgDim
                     }
                 }
+            }
+        }
+
+        // ── Ses Kontrol Paneli (Arama Çubuğunun Altında) ──
+        Row {
+            id: volumeControlRow
+            z: 6
+            anchors.top: searchPillContainer.bottom
+            anchors.topMargin: 6
+            anchors.horizontalCenter: parent.horizontalCenter
+            spacing: 8
+            height: 18
+
+            // Mute Butonu
+            Text {
+                id: muteBtn
+                text: root.sysMuted ? "󰝟" : (root.sysVolume > 50 ? "󰕾" : (root.sysVolume > 0 ? "󰖀" : "󰕿"))
+                color: root.sysMuted ? "#ef4444" : root.bgBorder
+                font.pixelSize: 13
+                font.family: root.iconFont
+                anchors.verticalCenter: parent.verticalCenter
+
+                MouseArea {
+                    anchors.fill: parent
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: {
+                        Shell.playCreamy()
+                        Shell.toggleSystemMute()
+                        root.sysMuted = !root.sysMuted
+                    }
+                }
+            }
+
+            // Ses Barı / Slider
+            Rectangle {
+                id: volumeSliderTrack
+                width: 140
+                height: 5
+                radius: 2.5
+                color: "#30ffffff"
+                anchors.verticalCenter: parent.verticalCenter
+
+                // Dolu kısım
+                Rectangle {
+                    id: volumeSliderFill
+                    height: parent.height
+                    radius: 2.5
+                    width: root.sysMuted ? 0 : Math.max(0, Math.min(parent.width, (root.sysVolume / 100.0) * parent.width))
+                    color: root.bgBorder
+                    Behavior on width { NumberAnimation { duration: 40 } }
+                }
+
+                // Thumb gösterge
+                Rectangle {
+                    width: 9
+                    height: 9
+                    radius: 4.5
+                    anchors.verticalCenter: parent.verticalCenter
+                    x: Math.max(0, Math.min(volumeSliderTrack.width - 9, volumeSliderFill.width - 4.5))
+                    color: root.selFg
+                    border.color: root.bgBorder
+                    border.width: 1
+                    visible: !root.sysMuted
+                }
+
+                WheelHandler {
+                    id: volWheelHandler
+                    acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
+                    onWheel: function(event) {
+                        var delta = event.angleDelta.y > 0 ? 5 : -5
+                        var v = Math.max(0, Math.min(100, root.sysVolume + delta))
+                        root.sysVolume = v
+                        root.sysMuted = false
+                        Shell.setSystemVolume(v)
+                    }
+                }
+
+                MouseArea {
+                    id: volDragArea
+                    anchors.fill: parent
+                    anchors.topMargin: -8
+                    anchors.bottomMargin: -8
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+
+                    function updateVol(mouse) {
+                        var ratio = Math.max(0.0, Math.min(1.0, mouse.x / volumeSliderTrack.width))
+                        var newVol = Math.round(ratio * 100)
+                        root.sysVolume = newVol
+                        root.sysMuted = false
+                        Shell.setSystemVolume(newVol)
+                    }
+
+                    onPressed: function(mouse) {
+                        updateVol(mouse)
+                    }
+                    onPositionChanged: function(mouse) {
+                        if (pressed) updateVol(mouse)
+                    }
+                    onWheel: function(wheel) {
+                        var delta = wheel.angleDelta.y > 0 ? 5 : -5
+                        var v = Math.max(0, Math.min(100, root.sysVolume + delta))
+                        root.sysVolume = v
+                        root.sysMuted = false
+                        Shell.setSystemVolume(v)
+                    }
+                }
+            }
+
+            // Ses Yüzdesi Metni
+            Text {
+                text: root.sysMuted ? "MUTE" : root.sysVolume + "%"
+                color: root.sysMuted ? "#ef4444" : root.fgDim
+                font.pixelSize: 10
+                font.family: root.textFont
+                font.weight: Font.Bold
+                anchors.verticalCenter: parent.verticalCenter
             }
         }
     }
@@ -2368,7 +2476,7 @@ Window {
                         anchors.rightMargin: 12
                         spacing: 12
 
-                        // İkon Kutusu
+                        // İkon Kutusu (Candy Icons)
                         Rectangle {
                             width: 38
                             height: 38
@@ -2376,11 +2484,25 @@ Window {
                             color: (index === root.selectedIndex) ? Qt.rgba(255, 255, 255, 0.2) : Qt.rgba(1, 1, 1, 0.08)
                             anchors.verticalCenter: parent.verticalCenter
 
+                            Image {
+                                id: gridCandyIcon
+                                anchors.centerIn: parent
+                                width: 26
+                                height: 26
+                                sourceSize.width: 32
+                                sourceSize.height: 32
+                                source: (model.iconName && model.iconName.length) ? ("image://themeicon/" + model.iconName + "?v=" + root.themeVersion) : ""
+                                smooth: true
+                                fillMode: Image.PreserveAspectFit
+                                visible: (model.iconName && model.iconName.length) && (status === Image.Ready)
+                            }
+
                             Text {
                                 anchors.centerIn: parent
                                 text: model.icon || ""
                                 font.family: root.iconFont
                                 font.pixelSize: 18
+                                visible: !gridCandyIcon.visible
                                 color: (index === root.selectedIndex) ? root.selFg : (
                                     model.itemId === "system.shutdown" ? "#ff5252" :
                                     model.itemId === "system.reboot" ? "#ffa726" :
@@ -2751,7 +2873,7 @@ Window {
                             anchors.verticalCenter: parent.verticalCenter
                         }
                         Text {
-                            text: "Isı"
+                            text: "Temp"
                             color: root.cpuColor
                             font.pixelSize: 12
                             font.family: root.textFont
@@ -2801,7 +2923,7 @@ Window {
                             anchors.verticalCenter: parent.verticalCenter
                         }
                         Text {
-                            text: "Süre"
+                            text: "Uptime"
                             color: root.gpuColor
                             font.pixelSize: 12
                             font.family: root.textFont

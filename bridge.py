@@ -17,7 +17,7 @@ import socket
 import subprocess
 import sys
 
-__version__ = "0.2.14"
+__version__ = "0.2.15"
 
 # ── Platform Path & IPC Definitions ───────────────────────────
 IS_WINDOWS = sys.platform == "win32"
@@ -1337,7 +1337,7 @@ class Shell(QObject):
                 up_sec = int(ctypes.windll.kernel32.GetTickCount64() / 1000)
                 up_hrs = up_sec // 3600
                 up_mins = (up_sec % 3600) // 60
-                up_text = f"{up_hrs}s {up_mins}d"
+                up_text = f"{up_hrs}h {up_mins}m"
             except Exception:
                 pass
         else:
@@ -1360,7 +1360,7 @@ class Shell(QObject):
                     up_sec = int(float(f.readline().split()[0]))
                 up_hrs = up_sec // 3600
                 up_mins = (up_sec % 3600) // 60
-                up_text = f"{up_hrs}s {up_mins}d"
+                up_text = f"{up_hrs}h {up_mins}m"
             except Exception:
                 pass
 

@@ -28,13 +28,13 @@
   "apps.all": { "icon": "󰀻", "iconName": "applications-all", "label": "All Apps", "aliases": ["all", "tümü", "hepsi"], "provider": "apps-all" },
 
   // ─── System (Güç & Oturum Eylemleri) ─────────────────────────
-  "system.reboot": { "icon": "󰜉", "iconName": "system-reboot", "label": "Yeniden Başlat", "description": "Sistemi yeniden başlat", "action": "qdbus6 org.kde.Shutdown /Shutdown org.kde.Shutdown.logoutAndReboot" },
-  "system.shutdown": { "icon": "󰐥", "iconName": "system-shutdown", "label": "Kapat", "description": "Bilgisayarı tamamen kapat", "action": "qdbus6 org.kde.Shutdown /Shutdown org.kde.Shutdown.logoutAndShutdown" },
-  "system.lock": { "icon": "", "iconName": "system-lock-screen", "label": "Kilitle", "description": "Oturumu güvenle kilitle", "action": "loginctl lock-session" },
-  "system.logout": { "icon": "󰍃", "iconName": "system-log-out", "label": "Çıkış Yap", "description": "Mevcut kullanıcı oturumunu sonlandır", "action": "qdbus6 org.kde.Shutdown /Shutdown org.kde.Shutdown.logout" },
-  "system.suspend": { "icon": "󰒲", "iconName": "system-suspend", "label": "Uyku Modu", "description": "Düşük güç moduna geçir (Askıya al)", "action": "systemctl suspend" },
-  "system.hibernate": { "icon": "󰤁", "iconName": "system-suspend-hibernate", "label": "Hazırda Beklet", "description": "Durumu diske kaydedip kapat", "when": "[[ -f /sys/power/state ]] && grep -qw disk /sys/power/state", "action": "systemctl hibernate" },
-  "system.screensaver": { "icon": "󱄄", "iconName": "preferences-desktop-screensaver", "label": "Ekran Koruyucu", "description": "Ekran koruyucuyu devreye al", "action": "loginctl lock-session" },
+  "system.reboot": { "icon": "󰜉", "iconName": "system-reboot", "label": "Reboot", "description": "Restart the system", "aliases": ["reboot", "restart", "yeniden başlat"], "action": "qdbus6 org.kde.Shutdown /Shutdown org.kde.Shutdown.logoutAndReboot" },
+  "system.shutdown": { "icon": "󰐥", "iconName": "system-shutdown", "label": "Shutdown", "description": "Power off the computer", "aliases": ["shutdown", "poweroff", "kapat"], "action": "qdbus6 org.kde.Shutdown /Shutdown org.kde.Shutdown.logoutAndShutdown" },
+  "system.lock": { "icon": "", "iconName": "system-lock-screen", "label": "Lock", "description": "Lock current session", "aliases": ["lock", "kilitle"], "action": "loginctl lock-session" },
+  "system.logout": { "icon": "󰍃", "iconName": "system-log-out", "label": "Logout", "description": "Log out of session", "aliases": ["logout", "çıkış"], "action": "qdbus6 org.kde.Shutdown /Shutdown org.kde.Shutdown.logout" },
+  "system.suspend": { "icon": "󰒲", "iconName": "system-suspend", "label": "Suspend", "description": "Suspend system to RAM", "aliases": ["suspend", "sleep", "uyku"], "action": "systemctl suspend" },
+  "system.hibernate": { "icon": "󰤁", "iconName": "system-hibernate", "label": "Hibernate", "description": "Save state to disk and shut down", "when": "[[ -f /sys/power/state ]] && grep -qw disk /sys/power/state", "aliases": ["hibernate"], "action": "systemctl hibernate" },
+  "system.screensaver": { "icon": "󱄄", "iconName": "screensaver", "label": "Screensaver", "description": "Turn on screensaver", "aliases": ["screensaver", "ekran koruyucu"], "action": "loginctl lock-session" },
 
   // ─── Appearance ──────────────────────────────────────────────
   "appearance.ravenspot_theme": { "icon": "󰔉", "iconName": "cs-themes", "label": "RavenSpot Temaları (5 Özel Stil)", "aliases": ["ravenspot theme", "tema", "theme", "style", "görünüm"], "provider": "ravenspot-themes" },
