@@ -1817,133 +1817,157 @@ Window {
                     border.color: searchInput.activeFocus ? Qt.rgba(255, 255, 255, 0.28) : Qt.rgba(255, 255, 255, 0.10)
                     border.width: searchInput.activeFocus ? 1.2 : 1
 
-                Behavior on border.color { ColorAnimation { duration: 120 } }
-                Behavior on color { ColorAnimation { duration: 120 } }
-
-                // Sol: Büyüteç İkonu (Apple Spotlight Style)
-                Text {
-                    id: searchIcon
-                    anchors.left: parent.left
-                    anchors.leftMargin: 12
-                    anchors.verticalCenter: parent.verticalCenter
-                    text: "󰍉"
-                    font.family: root.iconFont
-                    font.pixelSize: 17
-                    color: searchInput.text.length > 0 ? root.fgColor : root.fgDim
+                    Behavior on border.color { ColorAnimation { duration: 120 } }
                     Behavior on color { ColorAnimation { duration: 120 } }
-                }
 
-                // Alt Kategori Dizin Breadcrumb Rozeti
-                Rectangle {
-                    id: categoryBadge
-                    visible: root.activeMenu !== "root" && !root.filterText.length
-                    anchors.left: searchIcon.right
-                    anchors.leftMargin: 8
-                    anchors.verticalCenter: parent.verticalCenter
-                    height: 24
-                    radius: 6
-                    color: Qt.rgba(255, 255, 255, 0.12)
-                    width: catBadgeContent.width + 16
-
-                    Row {
-                        id: catBadgeContent
-                        anchors.centerIn: parent
-                        spacing: 4
-                        Text {
-                            text: "‹"
-                            color: root.fgDim
-                            font.pixelSize: 13
-                            font.bold: true
-                            anchors.verticalCenter: parent.verticalCenter
-                        }
-                        Text {
-                            text: MenuModel.pathFor(root.items, root.activeMenu)
-                            color: root.fgColor
-                            font.pixelSize: 12
-                            font.family: root.textFont
-                            anchors.verticalCenter: parent.verticalCenter
-                        }
-                    }
-
+                    // Arama çubuğu genel metin imleci (I-Beam) ve tıklama odağı
                     MouseArea {
                         anchors.fill: parent
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: {
-                            Shell.playCreamy()
-                            goBack()
-                        }
+                        cursorShape: Qt.IBeamCursor
+                        acceptedButtons: Qt.LeftButton
+                        z: 0
+                        onClicked: searchInput.forceActiveFocus()
                     }
-                }
 
-                // Placeholder Metni
-                Text {
-                    id: placeholderText
-                    anchors.left: categoryBadge.visible ? categoryBadge.right : searchIcon.right
-                    anchors.leftMargin: 10
-                    anchors.right: clearBtn.visible ? clearBtn.left : escBadge.left
-                    anchors.rightMargin: 8
-                    anchors.verticalCenter: parent.verticalCenter
-                    text: root.activeMenu === "root" ? "RavenSpot'ta ara veya komut yaz (* dosya ara)..." : "Bu kategoride ara..."
-                    color: root.fgDim
-                    opacity: 0.55
-                    font.pixelSize: 14
-                    font.family: root.textFont
-                    elide: Text.ElideRight
-                    visible: !root.filterText.length
-                }
-
-                // Arama Girişi (TextInput)
-                TextInput {
-                    id: searchInput
-                    anchors.left: categoryBadge.visible ? categoryBadge.right : searchIcon.right
-                    anchors.leftMargin: 10
-                    anchors.right: clearBtn.visible ? clearBtn.left : escBadge.left
-                    anchors.rightMargin: 8
-                    anchors.verticalCenter: parent.verticalCenter
-                    color: root.fgColor
-                    font.pixelSize: 15
-                    font.family: root.textFont
-                    focus: true
-                    selectByMouse: true
-                    onTextChanged: setFilter(text)
-                    Keys.forwardTo: [keyHandler]
-                }
-
-                // Temizleme Butonu (×)
-                Rectangle {
-                    id: clearBtn
-                    visible: root.filterText.length > 0
-                    anchors.right: parent.right
-                    anchors.rightMargin: 10
-                    anchors.verticalCenter: parent.verticalCenter
-                    width: 22
-                    height: 22
-                    radius: 11
-                    color: clearMouse.containsMouse ? Qt.rgba(255, 255, 255, 0.22) : Qt.rgba(255, 255, 255, 0.1)
-
+                    // Sol: Büyüteç İkonu (Apple Spotlight Style)
                     Text {
-                        anchors.centerIn: parent
-                        text: "󰅖"
+                        id: searchIcon
+                        z: 1
+                        anchors.left: parent.left
+                        anchors.leftMargin: 12
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: "󰍉"
                         font.family: root.iconFont
-                        font.pixelSize: 12
-                        color: root.fgColor
+                        font.pixelSize: 17
+                        color: searchInput.text.length > 0 ? root.fgColor : root.fgDim
+                        Behavior on color { ColorAnimation { duration: 120 } }
                     }
 
-                    MouseArea {
-                        id: clearMouse
-                        anchors.fill: parent
-                        hoverEnabled: true
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: {
-                            searchInput.text = ""
-                            setFilter("")
+                    // Alt Kategori Dizin Breadcrumb Rozeti
+                    Rectangle {
+                        id: categoryBadge
+                        z: 2
+                        visible: root.activeMenu !== "root" && !root.filterText.length
+                        anchors.left: searchIcon.right
+                        anchors.leftMargin: 8
+                        anchors.verticalCenter: parent.verticalCenter
+                        height: 24
+                        radius: 6
+                        color: Qt.rgba(255, 255, 255, 0.12)
+                        width: catBadgeContent.width + 16
+
+                        Row {
+                            id: catBadgeContent
+                            anchors.centerIn: parent
+                            spacing: 4
+                            Text {
+                                text: "‹"
+                                color: root.fgDim
+                                font.pixelSize: 13
+                                font.bold: true
+                                anchors.verticalCenter: parent.verticalCenter
+                            }
+                            Text {
+                                text: MenuModel.pathFor(root.items, root.activeMenu)
+                                color: root.fgColor
+                                font.pixelSize: 12
+                                font.family: root.textFont
+                                anchors.verticalCenter: parent.verticalCenter
+                            }
+                        }
+
+                        MouseArea {
+                            anchors.fill: parent
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: {
+                                Shell.playCreamy()
+                                goBack()
+                            }
                         }
                     }
-                }
 
-                // ESC Kısayol Rozeti (Arama boşken görünür)
-                Rectangle {
-                    id: escBadge
+                    // Placeholder Metni
+                    Text {
+                        id: placeholderText
+                        z: 1
+                        anchors.left: categoryBadge.visible ? categoryBadge.right : searchIcon.right
+                        anchors.leftMargin: 10
+                        anchors.right: clearBtn.visible ? clearBtn.left : escBadge.left
+                        anchors.rightMargin: 8
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: root.activeMenu === "root" ? "RavenSpot'ta ara veya komut yaz (* dosya ara)..." : "Bu kategoride ara..."
+                        color: root.fgDim
+                        opacity: 0.55
+                        font.pixelSize: 14
+                        font.family: root.textFont
+                        elide: Text.ElideRight
+                        visible: !root.filterText.length
+                    }
+
+                    // Arama Girişi (TextInput)
+                    TextInput {
+                        id: searchInput
+                        z: 1
+                        anchors.left: categoryBadge.visible ? categoryBadge.right : searchIcon.right
+                        anchors.leftMargin: 10
+                        anchors.right: clearBtn.visible ? clearBtn.left : escBadge.left
+                        anchors.rightMargin: 8
+                        anchors.top: parent.top
+                        anchors.bottom: parent.bottom
+                        verticalAlignment: TextInput.AlignVCenter
+                        color: root.fgColor
+                        font.pixelSize: 15
+                        font.family: root.textFont
+                        focus: true
+                        selectByMouse: true
+                        onTextChanged: setFilter(text)
+                        Keys.forwardTo: [keyHandler]
+
+                        // Metin üzerine gelindiğinde I-Beam imleci göster
+                        MouseArea {
+                            anchors.fill: parent
+                            cursorShape: Qt.IBeamCursor
+                            acceptedButtons: Qt.NoButton
+                        }
+                    }
+
+                    // Temizleme Butonu (×)
+                    Rectangle {
+                        id: clearBtn
+                        z: 2
+                        visible: root.filterText.length > 0
+                        anchors.right: parent.right
+                        anchors.rightMargin: 10
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: 22
+                        height: 22
+                        radius: 11
+                        color: clearMouse.containsMouse ? Qt.rgba(255, 255, 255, 0.22) : Qt.rgba(255, 255, 255, 0.1)
+
+                        Text {
+                            anchors.centerIn: parent
+                            text: "󰅖"
+                            font.family: root.iconFont
+                            font.pixelSize: 12
+                            color: root.fgColor
+                        }
+
+                        MouseArea {
+                            id: clearMouse
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: {
+                                searchInput.text = ""
+                                setFilter("")
+                            }
+                        }
+                    }
+
+                    // ESC Kısayol Rozeti (Arama boşken görünür)
+                    Rectangle {
+                        id: escBadge
+                        z: 2
                     visible: !root.filterText.length
                     anchors.right: parent.right
                     anchors.rightMargin: 10
