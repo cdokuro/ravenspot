@@ -1707,15 +1707,25 @@ Window {
                     id: brandHeaderRow
                     anchors.left: parent.left
                     anchors.verticalCenter: parent.verticalCenter
-                    spacing: 6
+                    spacing: 7
                     z: 10
 
-                    Text {
-                        text: ""
-                        color: root.selFg
-                        font.pixelSize: 13
-                        font.family: root.iconFont
+                    Rectangle {
+                        width: 20
+                        height: 20
+                        radius: 5
+                        color: Qt.rgba(root.selFg.r, root.selFg.g, root.selFg.b, 0.14)
+                        border.color: Qt.rgba(root.selFg.r, root.selFg.g, root.selFg.b, 0.28)
+                        border.width: 1
                         anchors.verticalCenter: parent.verticalCenter
+
+                        Text {
+                            anchors.centerIn: parent
+                            text: "󰿅"
+                            color: root.selFg
+                            font.pixelSize: 12
+                            font.family: root.iconFont
+                        }
                     }
 
                     Row {
