@@ -47,7 +47,7 @@ Window {
     property string textFont: "Inter"
     property int cardWidth: 680
     property int rowHeight: 48
-    property int headerHeight: 110
+    property int headerHeight: 114
     property int cpuPercent: 0
     property int gpuPercent: 0
     property int sysVolume: 50
@@ -55,6 +55,10 @@ Window {
     property var sysMonitor: ({ "ram_text": "--", "ram_pct": 0, "disk_text": "--", "disk_pct": 0, "temp": "--", "uptime": "--" })
     property var sysUpdateInfo: null
     property int footerHeight: 38
+
+    property string currentPowerProfile: "balanced"
+    property bool sleepInhibited: false
+    property bool powerFlyoutOpen: false
 
     property int themeVersion: 1
 
@@ -1421,6 +1425,9 @@ Window {
         root.filterText = ""
         searchInput.text = ""
         root.selectedIndex = 0
+        root.powerFlyoutOpen = false
+        if (Shell.getPowerProfile) root.currentPowerProfile = Shell.getPowerProfile()
+        if (Shell.isSleepInhibited) root.sleepInhibited = Shell.isSleepInhibited()
 
         // Ses seviyesini anında çek (%50 flash olmasını önler)
         var ainfo = Shell.getInitialAudioInfo()
@@ -1446,6 +1453,7 @@ Window {
     }
 
     function closeMenu() {
+        if (root.powerFlyoutOpen) root.powerFlyoutOpen = false
         if (contextPopup.opened) contextPopup.close()
         enableCloseOnInactiveTimer.stop()
         root.canCloseOnInactive = false
@@ -1621,6 +1629,11 @@ Window {
             id: keyHandler
             Keys.onPressed: function(event) {
                 if (event.key === Qt.Key_Escape) {
+                    if (root.powerFlyoutOpen) {
+                        root.powerFlyoutOpen = false
+                        event.accepted = true
+                        return
+                    }
                     if (contextPopup.opened) {
                         contextPopup.close()
                         event.accepted = true
@@ -1764,160 +1777,173 @@ Window {
                     }
                 }
 
-                // Orta: Yeniden Başlat & Kapat Hızlı Aksiyon Butonları (Candy Icons)
-                Row {
-                    id: powerQuickActionsRow
+                // Orta: Güç Profili Butonu (Tıklanınca Pop-up Slider / Engelleme Paneli Açar)
+                Rectangle {
+                    id: powerProfileBtn
                     z: 10
                     anchors.centerIn: parent
-                    spacing: 8
-
-                    // Reboot Button
-                    Rectangle {
-                        id: quickRebootBtn
-                        height: 20
-                        width: rebootContentRow.width + 14
-                        radius: 5
-                        color: rebootMouse.containsMouse ? Qt.rgba(255, 167, 38, 0.22) : Qt.rgba(1, 1, 1, 0.06)
-                        border.color: rebootMouse.containsMouse ? "#ffa726" : Qt.rgba(root.bgBorder.r, root.bgBorder.g, root.bgBorder.b, 0.25)
-                        border.width: 1
-
-                        Row {
-                            id: rebootContentRow
-                            spacing: 5
-                            anchors.centerIn: parent
-
-                            Image {
-                                width: 13
-                                height: 13
-                                sourceSize.width: 16
-                                sourceSize.height: 16
-                                source: "image://themeicon/system-reboot?v=" + root.themeVersion
-                                anchors.verticalCenter: parent.verticalCenter
-                                smooth: true
-                            }
-
-                            Text {
-                                text: "Reboot"
-                                color: rebootMouse.containsMouse ? "#ffa726" : root.fgColor
-                                font.pixelSize: 10
-                                font.family: root.textFont
-                                font.weight: Font.DemiBold
-                                anchors.verticalCenter: parent.verticalCenter
-                            }
-                        }
-
-                        MouseArea {
-                            id: rebootMouse
-                            anchors.fill: parent
-                            hoverEnabled: true
-                            cursorShape: Qt.PointingHandCursor
-                            onClicked: {
-                                Shell.playCreamy()
-                                root.opened = false
-                                Shell.executeCommand("qdbus6 org.kde.Shutdown /Shutdown org.kde.Shutdown.logoutAndReboot")
-                                Qt.callLater(closeMenu)
-                            }
-                        }
-                    }
-
-                    // Shutdown Button
-                    Rectangle {
-                        id: quickShutdownBtn
-                        height: 20
-                        width: shutdownContentRow.width + 14
-                        radius: 5
-                        color: shutdownMouse.containsMouse ? Qt.rgba(255, 82, 82, 0.22) : Qt.rgba(1, 1, 1, 0.06)
-                        border.color: shutdownMouse.containsMouse ? "#ff5252" : Qt.rgba(root.bgBorder.r, root.bgBorder.g, root.bgBorder.b, 0.25)
-                        border.width: 1
-
-                        Row {
-                            id: shutdownContentRow
-                            spacing: 5
-                            anchors.centerIn: parent
-
-                            Image {
-                                width: 13
-                                height: 13
-                                sourceSize.width: 16
-                                sourceSize.height: 16
-                                source: "image://themeicon/system-shutdown?v=" + root.themeVersion
-                                anchors.verticalCenter: parent.verticalCenter
-                                smooth: true
-                            }
-
-                            Text {
-                                text: "Shutdown"
-                                color: shutdownMouse.containsMouse ? "#ff5252" : root.fgColor
-                                font.pixelSize: 10
-                                font.family: root.textFont
-                                font.weight: Font.DemiBold
-                                anchors.verticalCenter: parent.verticalCenter
-                            }
-                        }
-
-                        MouseArea {
-                            id: shutdownMouse
-                            anchors.fill: parent
-                            hoverEnabled: true
-                            cursorShape: Qt.PointingHandCursor
-                            onClicked: {
-                                Shell.playCreamy()
-                                root.opened = false
-                                Shell.executeCommand("qdbus6 org.kde.Shutdown /Shutdown org.kde.Shutdown.logoutAndShutdown")
-                                Qt.callLater(closeMenu)
-                            }
-                        }
-                    }
-                }
-
-                // Sağ: CachyOS Canlı Güncelleme Rozeti (Photo 2 & Photo 3)
-                Rectangle {
-                    id: cachyUpdateBadge
-                    anchors.right: parent.right
-                    anchors.verticalCenter: parent.verticalCenter
                     height: 20
-                    width: updateContentRow.width + 10
+                    width: powerBtnContent.width + 14
                     radius: 5
-                    color: updateBadgeMouse.containsMouse ? Qt.rgba(1, 1, 1, 0.12) : Qt.rgba(1, 1, 1, 0.05)
-                    border.color: (root.sysUpdateInfo && root.sysUpdateInfo.has_updates) ? "#ff5252" : Qt.rgba(root.bgBorder.r, root.bgBorder.g, root.bgBorder.b, 0.25)
+                    color: powerProfileMouse.containsMouse || root.powerFlyoutOpen ? Qt.rgba(1, 1, 1, 0.14) : Qt.rgba(1, 1, 1, 0.06)
+                    border.color: powerProfileMouse.containsMouse || root.powerFlyoutOpen ? root.selFg : Qt.rgba(root.bgBorder.r, root.bgBorder.g, root.bgBorder.b, 0.25)
                     border.width: 1
-                    z: 10
 
                     Row {
-                        id: updateContentRow
+                        id: powerBtnContent
                         spacing: 5
                         anchors.centerIn: parent
 
-                        Image {
-                            width: 14
-                            height: 14
-                            sourceSize.width: 14
-                            sourceSize.height: 14
-                            source: (root.sysUpdateInfo && root.sysUpdateInfo.icon_path) ? "file://" + root.sysUpdateInfo.icon_path : "file:///usr/share/icons/hicolor/scalable/apps/cachy-update-blue.svg"
+                        Text {
+                            text: root.currentPowerProfile === "power-saver" ? "󰌪" : (root.currentPowerProfile === "performance" ? "󰓅" : "󰾆")
+                            color: root.currentPowerProfile === "power-saver" ? "#22c55e" : (root.currentPowerProfile === "performance" ? "#f97316" : root.selFg)
+                            font.pixelSize: 13
+                            font.family: root.iconFont
                             anchors.verticalCenter: parent.verticalCenter
                         }
 
                         Text {
-                            text: (root.sysUpdateInfo && root.sysUpdateInfo.has_updates) ? (root.sysUpdateInfo.count > 0 ? root.sysUpdateInfo.count + " Updates" : "Update") : "Up to date"
-                            color: (root.sysUpdateInfo && root.sysUpdateInfo.has_updates) ? "#ff5252" : root.fgDim
+                            text: root.currentPowerProfile === "power-saver" ? "Power Saver" : (root.currentPowerProfile === "performance" ? "Performance" : "Balanced")
+                            color: root.fgColor
                             font.pixelSize: 10
                             font.family: root.textFont
                             font.weight: Font.DemiBold
                             anchors.verticalCenter: parent.verticalCenter
                         }
+
+                        Text {
+                            text: root.powerFlyoutOpen ? "󰅃" : "󰅀"
+                            color: root.fgDim
+                            font.pixelSize: 10
+                            font.family: root.iconFont
+                            anchors.verticalCenter: parent.verticalCenter
+                        }
                     }
 
                     MouseArea {
-                        id: updateBadgeMouse
+                        id: powerProfileMouse
                         anchors.fill: parent
                         hoverEnabled: true
                         cursorShape: Qt.PointingHandCursor
                         onClicked: {
                             Shell.playCreamy()
-                            root.opened = false
-                            Shell.launchUpdate()
-                            Qt.callLater(closeMenu)
+                            root.powerFlyoutOpen = !root.powerFlyoutOpen
                         }
+                    }
+                }
+
+                // Sağ: Ses Kontrol Paneli (Mute butonu + Ses Slider)
+                Row {
+                    id: volumeControlRow
+                    z: 10
+                    anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
+                    spacing: 8
+
+                    // Mute Butonu
+                    Text {
+                        id: muteBtn
+                        text: root.sysMuted ? "󰝟" : (root.sysVolume > 50 ? "󰕾" : (root.sysVolume > 0 ? "󰖀" : "󰕿"))
+                        color: root.sysMuted ? "#ef4444" : root.bgBorder
+                        font.pixelSize: 13
+                        font.family: root.iconFont
+                        anchors.verticalCenter: parent.verticalCenter
+
+                        MouseArea {
+                            anchors.fill: parent
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: {
+                                Shell.playCreamy()
+                                Shell.toggleSystemMute()
+                                root.sysMuted = !root.sysMuted
+                            }
+                        }
+                    }
+
+                    // Ses Barı / Slider
+                    Rectangle {
+                        id: volumeSliderTrack
+                        width: 100
+                        height: 5
+                        radius: 2.5
+                        color: "#30ffffff"
+                        anchors.verticalCenter: parent.verticalCenter
+
+                        // Dolu kısım
+                        Rectangle {
+                            id: volumeSliderFill
+                            height: parent.height
+                            radius: 2.5
+                            width: root.sysMuted ? 0 : Math.max(0, Math.min(parent.width, (root.sysVolume / 100.0) * parent.width))
+                            color: root.bgBorder
+                            Behavior on width { NumberAnimation { duration: 40 } }
+                        }
+
+                        // Thumb gösterge
+                        Rectangle {
+                            width: 9
+                            height: 9
+                            radius: 4.5
+                            anchors.verticalCenter: parent.verticalCenter
+                            x: Math.max(0, Math.min(volumeSliderTrack.width - 9, volumeSliderFill.width - 4.5))
+                            color: root.selFg
+                            border.color: root.bgBorder
+                            border.width: 1
+                            visible: !root.sysMuted
+                        }
+
+                        WheelHandler {
+                            id: volWheelHandler
+                            acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
+                            onWheel: function(event) {
+                                var delta = event.angleDelta.y > 0 ? 5 : -5
+                                var v = Math.max(0, Math.min(100, root.sysVolume + delta))
+                                root.sysVolume = v
+                                root.sysMuted = false
+                                Shell.setSystemVolume(v)
+                            }
+                        }
+
+                        MouseArea {
+                            id: volDragArea
+                            anchors.fill: parent
+                            anchors.topMargin: -8
+                            anchors.bottomMargin: -8
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+
+                            function updateVol(mouse) {
+                                var ratio = Math.max(0.0, Math.min(1.0, mouse.x / volumeSliderTrack.width))
+                                var newVol = Math.round(ratio * 100)
+                                root.sysVolume = newVol
+                                root.sysMuted = false
+                                Shell.setSystemVolume(newVol)
+                            }
+
+                            onPressed: function(mouse) {
+                                updateVol(mouse)
+                            }
+                            onPositionChanged: function(mouse) {
+                                if (pressed) updateVol(mouse)
+                            }
+                            onWheel: function(wheel) {
+                                var delta = wheel.angleDelta.y > 0 ? 5 : -5
+                                var v = Math.max(0, Math.min(100, root.sysVolume + delta))
+                                root.sysVolume = v
+                                root.sysMuted = false
+                                Shell.setSystemVolume(v)
+                            }
+                        }
+                    }
+
+                    // Ses Yüzdesi Metni
+                    Text {
+                        text: root.sysMuted ? "MUTE" : root.sysVolume + "%"
+                        color: root.sysMuted ? "#ef4444" : root.fgDim
+                        font.pixelSize: 10
+                        font.family: root.textFont
+                        font.weight: Font.Bold
+                        anchors.verticalCenter: parent.verticalCenter
                     }
                 }
             }
@@ -2117,120 +2143,160 @@ Window {
             }
         }
 
-        // ── Ses Kontrol Paneli (Arama Çubuğunun Altında) ──
+        // ── Hızlı Eylemler Çubuğu: Update + Reboot + Shutdown (Arama Çubuğunun Altında) ──
         Row {
-            id: volumeControlRow
+            id: quickActionsRow
             z: 6
             anchors.top: searchPillContainer.bottom
             anchors.topMargin: 6
             anchors.horizontalCenter: parent.horizontalCenter
-            spacing: 8
-            height: 18
+            spacing: 10
+            height: 22
 
-            // Mute Butonu
-            Text {
-                id: muteBtn
-                text: root.sysMuted ? "󰝟" : (root.sysVolume > 50 ? "󰕾" : (root.sysVolume > 0 ? "󰖀" : "󰕿"))
-                color: root.sysMuted ? "#ef4444" : root.bgBorder
-                font.pixelSize: 13
-                font.family: root.iconFont
-                anchors.verticalCenter: parent.verticalCenter
+            // CachyOS Canlı Güncelleme Butonu
+            Rectangle {
+                id: cachyUpdateBadge
+                height: 22
+                width: updateContentRow.width + 12
+                radius: 5
+                color: updateBadgeMouse.containsMouse ? Qt.rgba(1, 1, 1, 0.12) : Qt.rgba(1, 1, 1, 0.06)
+                border.color: (root.sysUpdateInfo && root.sysUpdateInfo.has_updates) ? "#ff5252" : Qt.rgba(root.bgBorder.r, root.bgBorder.g, root.bgBorder.b, 0.25)
+                border.width: 1
+
+                Row {
+                    id: updateContentRow
+                    spacing: 5
+                    anchors.centerIn: parent
+
+                    Image {
+                        width: 14
+                        height: 14
+                        sourceSize.width: 14
+                        sourceSize.height: 14
+                        source: (root.sysUpdateInfo && root.sysUpdateInfo.icon_path) ? "file://" + root.sysUpdateInfo.icon_path : "file:///usr/share/icons/hicolor/scalable/apps/cachy-update-blue.svg"
+                        anchors.verticalCenter: parent.verticalCenter
+                    }
+
+                    Text {
+                        text: (root.sysUpdateInfo && root.sysUpdateInfo.has_updates) ? (root.sysUpdateInfo.count > 0 ? root.sysUpdateInfo.count + " Updates" : "Update") : "Up to date"
+                        color: (root.sysUpdateInfo && root.sysUpdateInfo.has_updates) ? "#ff5252" : root.fgDim
+                        font.pixelSize: 10
+                        font.family: root.textFont
+                        font.weight: Font.DemiBold
+                        anchors.verticalCenter: parent.verticalCenter
+                    }
+                }
 
                 MouseArea {
+                    id: updateBadgeMouse
                     anchors.fill: parent
+                    hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
                     onClicked: {
                         Shell.playCreamy()
-                        Shell.toggleSystemMute()
-                        root.sysMuted = !root.sysMuted
+                        root.opened = false
+                        Shell.launchUpdate()
+                        Qt.callLater(closeMenu)
                     }
                 }
             }
 
-            // Ses Barı / Slider
+            // Reboot Butonu
             Rectangle {
-                id: volumeSliderTrack
-                width: 140
-                height: 5
-                radius: 2.5
-                color: "#30ffffff"
-                anchors.verticalCenter: parent.verticalCenter
+                id: quickRebootBtn
+                height: 22
+                width: rebootContentRow.width + 14
+                radius: 5
+                color: rebootMouse.containsMouse ? Qt.rgba(255, 167, 38, 0.22) : Qt.rgba(1, 1, 1, 0.06)
+                border.color: rebootMouse.containsMouse ? "#ffa726" : Qt.rgba(root.bgBorder.r, root.bgBorder.g, root.bgBorder.b, 0.25)
+                border.width: 1
 
-                // Dolu kısım
-                Rectangle {
-                    id: volumeSliderFill
-                    height: parent.height
-                    radius: 2.5
-                    width: root.sysMuted ? 0 : Math.max(0, Math.min(parent.width, (root.sysVolume / 100.0) * parent.width))
-                    color: root.bgBorder
-                    Behavior on width { NumberAnimation { duration: 40 } }
-                }
+                Row {
+                    id: rebootContentRow
+                    spacing: 5
+                    anchors.centerIn: parent
 
-                // Thumb gösterge
-                Rectangle {
-                    width: 9
-                    height: 9
-                    radius: 4.5
-                    anchors.verticalCenter: parent.verticalCenter
-                    x: Math.max(0, Math.min(volumeSliderTrack.width - 9, volumeSliderFill.width - 4.5))
-                    color: root.selFg
-                    border.color: root.bgBorder
-                    border.width: 1
-                    visible: !root.sysMuted
-                }
+                    Image {
+                        width: 14
+                        height: 14
+                        sourceSize.width: 16
+                        sourceSize.height: 16
+                        source: "image://themeicon/system-reboot?v=" + root.themeVersion
+                        anchors.verticalCenter: parent.verticalCenter
+                        smooth: true
+                    }
 
-                WheelHandler {
-                    id: volWheelHandler
-                    acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
-                    onWheel: function(event) {
-                        var delta = event.angleDelta.y > 0 ? 5 : -5
-                        var v = Math.max(0, Math.min(100, root.sysVolume + delta))
-                        root.sysVolume = v
-                        root.sysMuted = false
-                        Shell.setSystemVolume(v)
+                    Text {
+                        text: "Reboot"
+                        color: rebootMouse.containsMouse ? "#ffa726" : root.fgColor
+                        font.pixelSize: 10
+                        font.family: root.textFont
+                        font.weight: Font.DemiBold
+                        anchors.verticalCenter: parent.verticalCenter
                     }
                 }
 
                 MouseArea {
-                    id: volDragArea
+                    id: rebootMouse
                     anchors.fill: parent
-                    anchors.topMargin: -8
-                    anchors.bottomMargin: -8
                     hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
-
-                    function updateVol(mouse) {
-                        var ratio = Math.max(0.0, Math.min(1.0, mouse.x / volumeSliderTrack.width))
-                        var newVol = Math.round(ratio * 100)
-                        root.sysVolume = newVol
-                        root.sysMuted = false
-                        Shell.setSystemVolume(newVol)
-                    }
-
-                    onPressed: function(mouse) {
-                        updateVol(mouse)
-                    }
-                    onPositionChanged: function(mouse) {
-                        if (pressed) updateVol(mouse)
-                    }
-                    onWheel: function(wheel) {
-                        var delta = wheel.angleDelta.y > 0 ? 5 : -5
-                        var v = Math.max(0, Math.min(100, root.sysVolume + delta))
-                        root.sysVolume = v
-                        root.sysMuted = false
-                        Shell.setSystemVolume(v)
+                    onClicked: {
+                        Shell.playCreamy()
+                        root.opened = false
+                        Shell.executeCommand("qdbus6 org.kde.Shutdown /Shutdown org.kde.Shutdown.logoutAndReboot")
+                        Qt.callLater(closeMenu)
                     }
                 }
             }
 
-            // Ses Yüzdesi Metni
-            Text {
-                text: root.sysMuted ? "MUTE" : root.sysVolume + "%"
-                color: root.sysMuted ? "#ef4444" : root.fgDim
-                font.pixelSize: 10
-                font.family: root.textFont
-                font.weight: Font.Bold
-                anchors.verticalCenter: parent.verticalCenter
+            // Shutdown Butonu
+            Rectangle {
+                id: quickShutdownBtn
+                height: 22
+                width: shutdownContentRow.width + 14
+                radius: 5
+                color: shutdownMouse.containsMouse ? Qt.rgba(255, 82, 82, 0.22) : Qt.rgba(1, 1, 1, 0.06)
+                border.color: shutdownMouse.containsMouse ? "#ff5252" : Qt.rgba(root.bgBorder.r, root.bgBorder.g, root.bgBorder.b, 0.25)
+                border.width: 1
+
+                Row {
+                    id: shutdownContentRow
+                    spacing: 5
+                    anchors.centerIn: parent
+
+                    Image {
+                        width: 14
+                        height: 14
+                        sourceSize.width: 16
+                        sourceSize.height: 16
+                        source: "image://themeicon/system-shutdown?v=" + root.themeVersion
+                        anchors.verticalCenter: parent.verticalCenter
+                        smooth: true
+                    }
+
+                    Text {
+                        text: "Shutdown"
+                        color: shutdownMouse.containsMouse ? "#ff5252" : root.fgColor
+                        font.pixelSize: 10
+                        font.family: root.textFont
+                        font.weight: Font.DemiBold
+                        anchors.verticalCenter: parent.verticalCenter
+                    }
+                }
+
+                MouseArea {
+                    id: shutdownMouse
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: {
+                        Shell.playCreamy()
+                        root.opened = false
+                        Shell.executeCommand("qdbus6 org.kde.Shutdown /Shutdown org.kde.Shutdown.logoutAndShutdown")
+                        Qt.callLater(closeMenu)
+                    }
+                }
             }
         }
     }
@@ -2947,6 +3013,392 @@ Window {
                             root.opened = false
                             Shell.openSystemMonitor("uptime")
                             Qt.callLater(closeMenu)
+                        }
+                    }
+                }
+            }
+        }
+
+        // Flyout dışına tıklandığında kapatıcı overlay
+        MouseArea {
+            anchors.fill: parent
+            visible: root.powerFlyoutOpen
+            z: 90
+            acceptedButtons: Qt.AllButtons
+            onClicked: {
+                root.powerFlyoutOpen = false
+            }
+        }
+
+        // ── Güç Profili & Uyku Engelleme Pop-up Paneli (Power Flyout) ──
+        Rectangle {
+            id: powerFlyout
+            visible: root.powerFlyoutOpen
+            z: 100
+            anchors.horizontalCenter: parent.horizontalCenter
+            anchors.top: parent.top
+            anchors.topMargin: 34
+            width: 390
+            height: powerFlyoutCol.height + 26
+            radius: 12
+            color: Qt.rgba(24/255, 27/255, 34/255, 0.98)
+            border.color: Qt.rgba(255, 255, 255, 0.20)
+            border.width: 1
+
+            // MultiEffect gölge
+            layer.enabled: true
+            layer.effect: MultiEffect {
+                shadowEnabled: true
+                shadowColor: "#80000000"
+                shadowBlur: 0.8
+                shadowOpacity: 0.6
+                shadowVerticalOffset: 6
+            }
+
+            // Tıklamaların arka plana geçmesini engelle
+            MouseArea {
+                anchors.fill: parent
+                acceptedButtons: Qt.AllButtons
+            }
+
+            Column {
+                id: powerFlyoutCol
+                anchors.top: parent.top
+                anchors.topMargin: 14
+                anchors.left: parent.left
+                anchors.leftMargin: 16
+                anchors.right: parent.right
+                anchors.rightMargin: 16
+                spacing: 12
+
+                // 1. Başlık Satırı
+                Item {
+                    width: parent.width
+                    height: 20
+
+                    Row {
+                        anchors.left: parent.left
+                        anchors.verticalCenter: parent.verticalCenter
+                        spacing: 6
+
+                        Text {
+                            text: "󰂄"
+                            font.family: root.iconFont
+                            font.pixelSize: 14
+                            color: root.selFg
+                            anchors.verticalCenter: parent.verticalCenter
+                        }
+
+                        Text {
+                            text: "Power & Performance"
+                            font.family: root.textFont
+                            font.pixelSize: 13
+                            font.weight: Font.Bold
+                            color: root.fgColor
+                            anchors.verticalCenter: parent.verticalCenter
+                        }
+                    }
+
+                    // Kapat Butonu (×)
+                    Rectangle {
+                        anchors.right: parent.right
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: 20
+                        height: 20
+                        radius: 10
+                        color: closeFlyoutMouse.containsMouse ? Qt.rgba(255, 255, 255, 0.15) : "transparent"
+
+                        Text {
+                            anchors.centerIn: parent
+                            text: "󰅖"
+                            font.family: root.iconFont
+                            font.pixelSize: 11
+                            color: root.fgDim
+                        }
+
+                        MouseArea {
+                            id: closeFlyoutMouse
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: {
+                                Shell.playCreamy()
+                                root.powerFlyoutOpen = false
+                            }
+                        }
+                    }
+                }
+
+                // 2. Güç Profili 3 Kademeli Slider / Segment Kontrolü
+                Item {
+                    width: parent.width
+                    height: 54
+
+                    // Slider Arka Plan Rayı
+                    Rectangle {
+                        id: profileTrack
+                        anchors.top: parent.top
+                        anchors.topMargin: 14
+                        anchors.left: parent.left
+                        anchors.leftMargin: 24
+                        anchors.right: parent.right
+                        anchors.rightMargin: 24
+                        height: 6
+                        radius: 3
+                        color: Qt.rgba(255, 255, 255, 0.12)
+
+                        // Aktif Doluluk Çizgisi
+                        Rectangle {
+                            height: parent.height
+                            radius: 3
+                            width: root.currentPowerProfile === "power-saver" ? 0 : (root.currentPowerProfile === "balanced" ? parent.width / 2 : parent.width)
+                            color: root.currentPowerProfile === "power-saver" ? "#22c55e" : (root.currentPowerProfile === "performance" ? "#f97316" : root.selFg)
+                            Behavior on width { NumberAnimation { duration: 180; easing.type: Easing.OutQuad } }
+                        }
+                    }
+
+                    // 3 Kademe Düğmesi ve Etiketleri
+                    Row {
+                        anchors.fill: parent
+                        spacing: 0
+
+                        // 1. Power Saver
+                        Item {
+                            width: parent.width / 3
+                            height: parent.height
+
+                            Rectangle {
+                                anchors.horizontalCenter: parent.horizontalCenter
+                                anchors.top: parent.top
+                                anchors.topMargin: 9
+                                width: 16
+                                height: 16
+                                radius: 8
+                                color: root.currentPowerProfile === "power-saver" ? "#22c55e" : Qt.rgba(1, 1, 1, 0.25)
+                                border.color: root.currentPowerProfile === "power-saver" ? "#ffffff" : Qt.rgba(0, 0, 0, 0.4)
+                                border.width: root.currentPowerProfile === "power-saver" ? 2 : 1
+                                Behavior on color { ColorAnimation { duration: 150 } }
+                            }
+
+                            Row {
+                                anchors.horizontalCenter: parent.horizontalCenter
+                                anchors.bottom: parent.bottom
+                                anchors.bottomMargin: 2
+                                spacing: 4
+
+                                Text {
+                                    text: "󰌪"
+                                    color: root.currentPowerProfile === "power-saver" ? "#22c55e" : root.fgDim
+                                    font.pixelSize: 11
+                                    font.family: root.iconFont
+                                    anchors.verticalCenter: parent.verticalCenter
+                                }
+
+                                Text {
+                                    text: "Power Saver"
+                                    color: root.currentPowerProfile === "power-saver" ? "#22c55e" : root.fgDim
+                                    font.pixelSize: 10
+                                    font.family: root.textFont
+                                    font.weight: root.currentPowerProfile === "power-saver" ? Font.Bold : Font.Normal
+                                    anchors.verticalCenter: parent.verticalCenter
+                                }
+                            }
+
+                            MouseArea {
+                                anchors.fill: parent
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: {
+                                    Shell.playCreamy()
+                                    root.currentPowerProfile = "power-saver"
+                                    Shell.setPowerProfile("power-saver")
+                                }
+                            }
+                        }
+
+                        // 2. Balanced
+                        Item {
+                            width: parent.width / 3
+                            height: parent.height
+
+                            Rectangle {
+                                anchors.horizontalCenter: parent.horizontalCenter
+                                anchors.top: parent.top
+                                anchors.topMargin: 9
+                                width: 16
+                                height: 16
+                                radius: 8
+                                color: root.currentPowerProfile === "balanced" ? root.selFg : Qt.rgba(1, 1, 1, 0.25)
+                                border.color: root.currentPowerProfile === "balanced" ? "#ffffff" : Qt.rgba(0, 0, 0, 0.4)
+                                border.width: root.currentPowerProfile === "balanced" ? 2 : 1
+                                Behavior on color { ColorAnimation { duration: 150 } }
+                            }
+
+                            Row {
+                                anchors.horizontalCenter: parent.horizontalCenter
+                                anchors.bottom: parent.bottom
+                                anchors.bottomMargin: 2
+                                spacing: 4
+
+                                Text {
+                                    text: "󰾆"
+                                    color: root.currentPowerProfile === "balanced" ? root.selFg : root.fgDim
+                                    font.pixelSize: 11
+                                    font.family: root.iconFont
+                                    anchors.verticalCenter: parent.verticalCenter
+                                }
+
+                                Text {
+                                    text: "Balanced"
+                                    color: root.currentPowerProfile === "balanced" ? root.selFg : root.fgDim
+                                    font.pixelSize: 10
+                                    font.family: root.textFont
+                                    font.weight: root.currentPowerProfile === "balanced" ? Font.Bold : Font.Normal
+                                    anchors.verticalCenter: parent.verticalCenter
+                                }
+                            }
+
+                            MouseArea {
+                                anchors.fill: parent
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: {
+                                    Shell.playCreamy()
+                                    root.currentPowerProfile = "balanced"
+                                    Shell.setPowerProfile("balanced")
+                                }
+                            }
+                        }
+
+                        // 3. Performance
+                        Item {
+                            width: parent.width / 3
+                            height: parent.height
+
+                            Rectangle {
+                                anchors.horizontalCenter: parent.horizontalCenter
+                                anchors.top: parent.top
+                                anchors.topMargin: 9
+                                width: 16
+                                height: 16
+                                radius: 8
+                                color: root.currentPowerProfile === "performance" ? "#f97316" : Qt.rgba(1, 1, 1, 0.25)
+                                border.color: root.currentPowerProfile === "performance" ? "#ffffff" : Qt.rgba(0, 0, 0, 0.4)
+                                border.width: root.currentPowerProfile === "performance" ? 2 : 1
+                                Behavior on color { ColorAnimation { duration: 150 } }
+                            }
+
+                            Row {
+                                anchors.horizontalCenter: parent.horizontalCenter
+                                anchors.bottom: parent.bottom
+                                anchors.bottomMargin: 2
+                                spacing: 4
+
+                                Text {
+                                    text: "󰓅"
+                                    color: root.currentPowerProfile === "performance" ? "#f97316" : root.fgDim
+                                    font.pixelSize: 11
+                                    font.family: root.iconFont
+                                    anchors.verticalCenter: parent.verticalCenter
+                                }
+
+                                Text {
+                                    text: "Performance"
+                                    color: root.currentPowerProfile === "performance" ? "#f97316" : root.fgDim
+                                    font.pixelSize: 10
+                                    font.family: root.textFont
+                                    font.weight: root.currentPowerProfile === "performance" ? Font.Bold : Font.Normal
+                                    anchors.verticalCenter: parent.verticalCenter
+                                }
+                            }
+
+                            MouseArea {
+                                anchors.fill: parent
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: {
+                                    Shell.playCreamy()
+                                    root.currentPowerProfile = "performance"
+                                    Shell.setPowerProfile("performance")
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Ayırıcı Çizgi
+                Rectangle {
+                    width: parent.width
+                    height: 1
+                    color: Qt.rgba(255, 255, 255, 0.08)
+                }
+
+                // 3. "Uykuyu ve Ekran Kilidini Elle Engelle" Satırı (Kullanıcının Görseliyle Birebir)
+                Rectangle {
+                    width: parent.width
+                    height: 40
+                    radius: 8
+                    color: inhibitMouse.containsMouse ? Qt.rgba(255, 255, 255, 0.06) : "transparent"
+
+                    Row {
+                        anchors.fill: parent
+                        anchors.leftMargin: 8
+                        anchors.rightMargin: 8
+                        spacing: 12
+
+                        // Candy Sleep İkonu
+                        Image {
+                            id: sleepIconImg
+                            width: 22
+                            height: 22
+                            sourceSize.width: 24
+                            sourceSize.height: 24
+                            source: "image://themeicon/sleep?v=" + root.themeVersion
+                            smooth: true
+                            anchors.verticalCenter: parent.verticalCenter
+                        }
+
+                        // iOS / KDE Tarzı Toggle Switch
+                        Rectangle {
+                            id: toggleTrack
+                            width: 38
+                            height: 20
+                            radius: 10
+                            color: root.sleepInhibited ? "#22c55e" : Qt.rgba(1, 1, 1, 0.18)
+                            border.color: root.sleepInhibited ? "#16a34a" : Qt.rgba(255, 255, 255, 0.15)
+                            border.width: 1
+                            anchors.verticalCenter: parent.verticalCenter
+                            Behavior on color { ColorAnimation { duration: 150 } }
+
+                            // Toggle Düğmesi (Thumb)
+                            Rectangle {
+                                width: 16
+                                height: 16
+                                radius: 8
+                                color: "#ffffff"
+                                anchors.verticalCenter: parent.verticalCenter
+                                x: root.sleepInhibited ? 20 : 2
+                                Behavior on x { NumberAnimation { duration: 150; easing.type: Easing.OutQuad } }
+                            }
+                        }
+
+                        // Metin Etiketi (Kullanıcının Ekran Görüntüsündeki Metin)
+                        Text {
+                            text: "Uykuyu ve Ekran Kilidini Elle Engelle"
+                            color: root.sleepInhibited ? "#ffffff" : root.fgColor
+                            font.pixelSize: 12
+                            font.family: root.textFont
+                            font.weight: Font.Medium
+                            anchors.verticalCenter: parent.verticalCenter
+                        }
+                    }
+
+                    MouseArea {
+                        id: inhibitMouse
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: {
+                            Shell.playCreamy()
+                            var nextState = !root.sleepInhibited
+                            root.sleepInhibited = Shell.setSleepInhibited(nextState)
                         }
                     }
                 }

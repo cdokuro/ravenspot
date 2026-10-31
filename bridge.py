@@ -17,7 +17,7 @@ import socket
 import subprocess
 import sys
 
-__version__ = "0.2.15"
+__version__ = "0.2.16"
 
 # ── Platform Path & IPC Definitions ───────────────────────────
 IS_WINDOWS = sys.platform == "win32"
@@ -1223,6 +1223,7 @@ class Shell(QObject):
         QIcon.setThemeName(cur_icon_theme)
 
         # Sounds
+        self._sleep_inhibit_cookie = None
         self._snd_thock = QSoundEffect()
         self._snd_thock.setSource(QUrl.fromLocalFile(os.path.join(APP_DIR, "sounds", "thock.wav")))
         self._snd_thock.setVolume(0.08)
@@ -1461,6 +1462,88 @@ class Shell(QObject):
                 elif shutil.which("cachyos-rate-mirrors"):
                     subprocess.Popen([term, "-e", "bash", "-c", "sudo pacman -Syu"], start_new_session=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
                     return
+
+    @Slot(result=str)
+    def getPowerProfile(self):
+        """KDE / Linux power-profiles-daemon aktif profilini döndürür."""
+        if IS_WINDOWS:
+            return "balanced"
+        try:
+            res = subprocess.run(["powerprofilesctl", "get"], capture_output=True, text=True, check=True, timeout=2)
+            return res.stdout.strip()
+        except Exception:
+            return "balanced"
+
+    @Slot(str, result=bool)
+    def setPowerProfile(self, profile: str):
+        """Sistem güç profilini ayarlar (power-saver, balanced, performance)."""
+        if IS_WINDOWS:
+            return False
+        if profile not in ("power-saver", "balanced", "performance"):
+            return False
+        try:
+            subprocess.run(["powerprofilesctl", "set", profile], check=True, timeout=2)
+            return True
+        except Exception as e:
+            print(f"Error setting power profile: {e}")
+            return False
+
+    @Slot(result=bool)
+    def isSleepInhibited(self):
+        """RavenSpot tarafından manuel uyku ve ekran kilidi engelleme aktif mi?"""
+        return self._sleep_inhibit_cookie is not None
+
+    @Slot(bool, result=bool)
+    def setSleepInhibited(self, inhibit: bool):
+        """Uykuyu ve Ekran Kilidini Elle Engelle (Inhibit / UnInhibit) açıp kapatır."""
+        if IS_WINDOWS:
+            return False
+        if inhibit:
+            if self._sleep_inhibit_cookie is not None:
+                return True
+            try:
+                res = subprocess.run(
+                    ["qdbus6", "org.freedesktop.PowerManagement.Inhibit",
+                     "/org/freedesktop/PowerManagement/Inhibit",
+                     "org.freedesktop.PowerManagement.Inhibit.Inhibit",
+                     "RavenSpot", "Manually Block Sleep and Screen Locking"],
+                    capture_output=True, text=True, check=True, timeout=2
+                )
+                cookie = int(res.stdout.strip())
+                self._sleep_inhibit_cookie = cookie
+                return True
+            except Exception as e:
+                print(f"Error inhibiting sleep: {e}")
+                return False
+        else:
+            if self._sleep_inhibit_cookie is not None:
+                try:
+                    subprocess.run(
+                        ["qdbus6", "org.freedesktop.PowerManagement.Inhibit",
+                         "/org/freedesktop/PowerManagement/Inhibit",
+                         "org.freedesktop.PowerManagement.Inhibit.UnInhibit",
+                         str(self._sleep_inhibit_cookie)],
+                        check=True, timeout=2
+                    )
+                except Exception as e:
+                    print(f"Error un-inhibiting sleep: {e}")
+                self._sleep_inhibit_cookie = None
+            return False
+
+    def cleanup(self):
+        """Uygulama sonlanırken engellemeleri serbest bırak."""
+        if self._sleep_inhibit_cookie is not None:
+            try:
+                subprocess.run(
+                    ["qdbus6", "org.freedesktop.PowerManagement.Inhibit",
+                     "/org/freedesktop/PowerManagement/Inhibit",
+                     "org.freedesktop.PowerManagement.Inhibit.UnInhibit",
+                     str(self._sleep_inhibit_cookie)],
+                    timeout=1
+                )
+            except Exception:
+                pass
+            self._sleep_inhibit_cookie = None
 
     @Slot(str)
     def openSystemMonitor(self, section: str = "overview"):
@@ -1915,6 +1998,8 @@ def main():
         hotkey_thread.hotkeyTriggered.connect(shell.toggleRequested.emit)
         hotkey_thread.start()
         app.aboutToQuit.connect(hotkey_thread.stop)
+
+    app.aboutToQuit.connect(shell.cleanup)
 
     engine = QQmlApplicationEngine()
     engine.addImageProvider("appicon", AppIconProvider(shell))
