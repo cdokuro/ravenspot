@@ -3029,34 +3029,6 @@ Window {
                         }
                     }
                 }
-
-                // Help Icon Button (Sadece simge, metin yok)
-                Rectangle {
-                    height: 22
-                    width: 24
-                    radius: 5
-                    color: helpFooterMouse.containsMouse ? Qt.rgba(1, 1, 1, 0.12) : "transparent"
-                    anchors.verticalCenter: parent.verticalCenter
-
-                    Text {
-                        text: ""
-                        color: helpFooterMouse.containsMouse ? "#ffffff" : root.fgDim
-                        font.pixelSize: 13
-                        font.family: root.iconFont
-                        anchors.centerIn: parent
-                    }
-
-                    MouseArea {
-                        id: helpFooterMouse
-                        anchors.fill: parent
-                        hoverEnabled: true
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: {
-                            Shell.playCreamy()
-                            openMenu("help")
-                        }
-                    }
-                }
             }
         }
 
