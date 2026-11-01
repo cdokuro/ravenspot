@@ -17,7 +17,7 @@ import socket
 import subprocess
 import sys
 
-__version__ = "0.2.21"
+__version__ = "0.2.22"
 
 # ── Platform Path & IPC Definitions ───────────────────────────
 IS_WINDOWS = sys.platform == "win32"
@@ -1199,6 +1199,7 @@ class Shell(QObject):
     # ── Raven Themes, Telemetry & Sound Effects ──────────────────
     themeChanged = Signal()
     statsUpdated = Signal(int, int, int, bool)
+    appAudioChanged = Signal(int, bool)
 
     def _init_extra(self):
         self._themes_file = os.path.join(APP_DIR, "themes.json")
@@ -1227,20 +1228,33 @@ class Shell(QObject):
         cur_icon_theme = "candy-icons"
         QIcon.setThemeName(cur_icon_theme)
 
-        # Sounds (Aula AU75 / F75 with Leobog Seiya switch acoustics; 4-voice polyphonic round-robin pool)
+        # Sounds & App Volume (Aula AU75 / F75 creamy switch profile with persistent app volume)
         self._sleep_inhibit_cookie = None
+        self._user_sound_file = os.path.join(USER_CONFIG_DIR, "sound.json")
+        self._app_volume = 65
+        self._app_muted = False
+        if os.path.exists(self._user_sound_file):
+            try:
+                with open(self._user_sound_file, "r") as f:
+                    s_data = json.load(f)
+                    self._app_volume = max(0, min(100, int(s_data.get("volume", 65))))
+                    self._app_muted = bool(s_data.get("muted", False))
+            except Exception:
+                pass
+
+        eff_vol = 0.0 if self._app_muted else (self._app_volume / 100.0)
         self._snd_thock_pool = []
         for _ in range(4):
             snd = QSoundEffect(self)
             snd.setSource(QUrl.fromLocalFile(os.path.join(APP_DIR, "sounds", "thock.wav")))
-            snd.setVolume(0.20)
+            snd.setVolume(0.28 * eff_vol)
             self._snd_thock_pool.append(snd)
         self._snd_thock_idx = 0
         self._snd_thock = self._snd_thock_pool[0]
 
         self._snd_creamy = QSoundEffect(self)
         self._snd_creamy.setSource(QUrl.fromLocalFile(os.path.join(APP_DIR, "sounds", "creamy.wav")))
-        self._snd_creamy.setVolume(0.22)
+        self._snd_creamy.setVolume(0.32 * eff_vol)
 
         # Telemetry timer
         self._last_cpu_idle = 0
@@ -1754,8 +1768,41 @@ class Shell(QObject):
             QIcon.setThemeName(self._themes_data["themes"][key].get("iconTheme", "candy-icons"))
             self.themeChanged.emit()
 
+    @Slot(result="QVariantMap")
+    def getAppAudioInfo(self):
+        return {
+            "volume": getattr(self, "_app_volume", 65),
+            "muted": getattr(self, "_app_muted", False),
+        }
+
+    @Slot(int)
+    def setAppVolume(self, vol):
+        self._app_volume = max(0, min(100, int(vol)))
+        self._apply_app_audio()
+
+    @Slot()
+    def toggleAppMute(self):
+        self._app_muted = not getattr(self, "_app_muted", False)
+        self._apply_app_audio()
+
+    def _apply_app_audio(self):
+        eff_vol = 0.0 if getattr(self, "_app_muted", False) else (getattr(self, "_app_volume", 65) / 100.0)
+        if hasattr(self, "_snd_thock_pool"):
+            for snd in self._snd_thock_pool:
+                snd.setVolume(0.28 * eff_vol)
+        if hasattr(self, "_snd_creamy"):
+            self._snd_creamy.setVolume(0.32 * eff_vol)
+        try:
+            with open(self._user_sound_file, "w") as f:
+                json.dump({"volume": self._app_volume, "muted": self._app_muted}, f)
+        except Exception:
+            pass
+        self.appAudioChanged.emit(self._app_volume, self._app_muted)
+
     @Slot()
     def playThock(self):
+        if getattr(self, "_app_muted", False) or getattr(self, "_app_volume", 65) <= 0:
+            return
         try:
             if hasattr(self, "_snd_thock_pool") and self._snd_thock_pool:
                 snd = self._snd_thock_pool[self._snd_thock_idx]
@@ -1768,6 +1815,8 @@ class Shell(QObject):
 
     @Slot()
     def playCreamy(self):
+        if getattr(self, "_app_muted", False) or getattr(self, "_app_volume", 65) <= 0:
+            return
         try:
             if self._snd_creamy.status() == QSoundEffect.Ready or self._snd_creamy.status() == QSoundEffect.Loading:
                 self._snd_creamy.play()

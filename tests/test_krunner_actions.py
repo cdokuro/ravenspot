@@ -13,14 +13,26 @@ class TestKRunnerActions(unittest.TestCase):
         cls.shell = bridge.Shell()
 
     def test_version_bump(self):
-        self.assertEqual(self.shell.version, "0.2.21")
-        self.assertEqual(bridge.__version__, "0.2.21")
+        self.assertEqual(self.shell.version, "0.2.22")
+        self.assertEqual(bridge.__version__, "0.2.22")
 
     def test_aula_seiya_sound_effects(self):
         self.assertTrue(hasattr(self.shell, "_snd_thock_pool"))
         self.assertGreaterEqual(len(self.shell._snd_thock_pool), 3)
         self.assertTrue(hasattr(self.shell, "playThock"))
         self.assertTrue(hasattr(self.shell, "playCreamy"))
+        self.assertTrue(hasattr(self.shell, "getAppAudioInfo"))
+        self.assertTrue(hasattr(self.shell, "setAppVolume"))
+        self.assertTrue(hasattr(self.shell, "toggleAppMute"))
+        ainfo = self.shell.getAppAudioInfo()
+        self.assertIn("volume", ainfo)
+        self.assertIn("muted", ainfo)
+        self.shell.setAppVolume(70)
+        self.assertEqual(self.shell._app_volume, 70)
+        self.shell.toggleAppMute()
+        self.assertTrue(self.shell._app_muted)
+        self.shell.toggleAppMute()
+        self.assertFalse(self.shell._app_muted)
         # Verify calling playThock and playCreamy executes safely
         try:
             for _ in range(5):

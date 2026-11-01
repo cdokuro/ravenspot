@@ -53,11 +53,14 @@ Window {
     property color gpuColor: "#00f0ff"
     property string iconFont: "FantasqueSansM Nerd Font"
     property string textFont: "Inter"
-    property int cardWidth: 680
+    property int cardWidth: 450
     property int rowHeight: 48
     property int headerHeight: 114
     property int cpuPercent: 0
     property int gpuPercent: 0
+    property int appSoundVolume: 65
+    property bool appSoundMuted: false
+    property bool audioFlyoutOpen: false
     property int sysVolume: 50
     property bool sysMuted: false
     property var sysMonitor: ({ "ram_text": "--", "ram_pct": 0, "disk_text": "--", "disk_pct": 0, "temp": "--", "uptime": "--" })
@@ -1525,6 +1528,7 @@ Window {
 
     function closeMenu() {
         if (root.powerFlyoutOpen) root.powerFlyoutOpen = false
+        if (root.audioFlyoutOpen) root.audioFlyoutOpen = false
         if (contextPopup.opened) contextPopup.close()
         enableCloseOnInactiveTimer.stop()
         root.canCloseOnInactive = false
@@ -1568,6 +1572,10 @@ Window {
         }
         function onThemeChanged() {
             root.syncTheme()
+        }
+        function onAppAudioChanged(vol, muted) {
+            root.appSoundVolume = vol
+            root.appSoundMuted = muted
         }
     }
 
@@ -1904,118 +1912,37 @@ Window {
                     }
                 }
 
-                // Sağ: Ses Kontrol Paneli (Mute butonu + Ses Slider)
-                Row {
-                    id: volumeControlRow
+                // Sağ: RavenSpot Uygulama İçi Ses Butonu (Tıklanınca Pop-up Slider Açar)
+                Rectangle {
+                    id: appVolumeBtn
                     z: 10
                     anchors.right: parent.right
                     anchors.verticalCenter: parent.verticalCenter
-                    spacing: 8
+                    height: 22
+                    width: 26
+                    radius: 5
+                    color: appVolMouse.containsMouse || root.audioFlyoutOpen ? Qt.rgba(1, 1, 1, 0.14) : Qt.rgba(1, 1, 1, 0.06)
+                    border.color: appVolMouse.containsMouse || root.audioFlyoutOpen ? root.selFg : Qt.rgba(root.bgBorder.r, root.bgBorder.g, root.bgBorder.b, 0.25)
+                    border.width: 1
 
-                    // Mute Butonu
                     Text {
-                        id: muteBtn
-                        text: root.sysMuted ? "󰝟" : (root.sysVolume > 50 ? "󰕾" : (root.sysVolume > 0 ? "󰖀" : "󰕿"))
-                        color: root.sysMuted ? "#ef4444" : root.bgBorder
+                        anchors.centerIn: parent
+                        text: root.appSoundMuted || root.appSoundVolume === 0 ? "󰝟" : (root.appSoundVolume > 50 ? "󰕾" : "󰖀")
+                        color: root.appSoundMuted || root.appSoundVolume === 0 ? "#ef4444" : root.bgBorder
                         font.pixelSize: 13
                         font.family: root.iconFont
-                        anchors.verticalCenter: parent.verticalCenter
-
-                        MouseArea {
-                            anchors.fill: parent
-                            cursorShape: Qt.PointingHandCursor
-                            onClicked: {
-                                Shell.playCreamy()
-                                Shell.toggleSystemMute()
-                                root.sysMuted = !root.sysMuted
-                            }
-                        }
                     }
 
-                    // Ses Barı / Slider
-                    Rectangle {
-                        id: volumeSliderTrack
-                        width: 100
-                        height: 5
-                        radius: 2.5
-                        color: "#30ffffff"
-                        anchors.verticalCenter: parent.verticalCenter
-
-                        // Dolu kısım
-                        Rectangle {
-                            id: volumeSliderFill
-                            height: parent.height
-                            radius: 2.5
-                            width: root.sysMuted ? 0 : Math.max(0, Math.min(parent.width, (root.sysVolume / 100.0) * parent.width))
-                            color: root.bgBorder
-                            Behavior on width { NumberAnimation { duration: 40 } }
+                    MouseArea {
+                        id: appVolMouse
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onEntered: Shell.playThock()
+                        onClicked: {
+                            Shell.playCreamy()
+                            root.audioFlyoutOpen = !root.audioFlyoutOpen
                         }
-
-                        // Thumb gösterge
-                        Rectangle {
-                            width: 9
-                            height: 9
-                            radius: 4.5
-                            anchors.verticalCenter: parent.verticalCenter
-                            x: Math.max(0, Math.min(volumeSliderTrack.width - 9, volumeSliderFill.width - 4.5))
-                            color: root.selFg
-                            border.color: root.bgBorder
-                            border.width: 1
-                            visible: !root.sysMuted
-                        }
-
-                        WheelHandler {
-                            id: volWheelHandler
-                            acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
-                            onWheel: function(event) {
-                                var delta = event.angleDelta.y > 0 ? 5 : -5
-                                var v = Math.max(0, Math.min(100, root.sysVolume + delta))
-                                root.sysVolume = v
-                                root.sysMuted = false
-                                Shell.setSystemVolume(v)
-                            }
-                        }
-
-                        MouseArea {
-                            id: volDragArea
-                            anchors.fill: parent
-                            anchors.topMargin: -8
-                            anchors.bottomMargin: -8
-                            hoverEnabled: true
-                            cursorShape: Qt.PointingHandCursor
-
-                            function updateVol(mouse) {
-                                var ratio = Math.max(0.0, Math.min(1.0, mouse.x / volumeSliderTrack.width))
-                                var newVol = Math.round(ratio * 100)
-                                root.sysVolume = newVol
-                                root.sysMuted = false
-                                Shell.setSystemVolume(newVol)
-                            }
-
-                            onPressed: function(mouse) {
-                                updateVol(mouse)
-                            }
-                            onPositionChanged: function(mouse) {
-                                if (pressed) updateVol(mouse)
-                            }
-                            onWheel: function(wheel) {
-                                var delta = wheel.angleDelta.y > 0 ? 5 : -5
-                                var v = Math.max(0, Math.min(100, root.sysVolume + delta))
-                                root.sysVolume = v
-                                root.sysMuted = false
-                                Shell.setSystemVolume(v)
-                            }
-                        }
-                    }
-
-                    // Ses Yüzdesi Metni
-                    Text {
-                        text: root.sysMuted ? "MUTE" : root.sysVolume + "%"
-                        color: root.sysMuted ? "#ef4444" : root.fgDim
-                        font.pixelSize: 10
-                        font.family: root.textFont
-                        font.weight: Font.Bold
-                        anchors.verticalCenter: parent.verticalCenter
                     }
                 }
             }
@@ -2798,19 +2725,19 @@ Window {
 
             Row {
                 anchors.centerIn: parent
-                spacing: 8
+                spacing: root.cardWidth < 520 ? 6 : 8
 
                 // CPU
                 Rectangle {
                     height: 22
-                    width: cpuRow.width + 12
+                    width: cpuRow.width + (root.cardWidth < 520 ? 8 : 12)
                     radius: 5
                     color: cpuMouse.containsMouse ? Qt.rgba(1, 1, 1, 0.10) : "transparent"
                     anchors.verticalCenter: parent.verticalCenter
 
                     Row {
                         id: cpuRow
-                        spacing: 5
+                        spacing: 4
                         anchors.centerIn: parent
                         Text {
                             text: ""
@@ -2826,6 +2753,7 @@ Window {
                             font.family: root.textFont
                             font.weight: Font.DemiBold
                             anchors.verticalCenter: parent.verticalCenter
+                            visible: root.cardWidth >= 520
                         }
                         Text {
                             text: root.cpuPercent + "%"
@@ -2854,14 +2782,14 @@ Window {
                 // GPU
                 Rectangle {
                     height: 22
-                    width: gpuRow.width + 12
+                    width: gpuRow.width + (root.cardWidth < 520 ? 8 : 12)
                     radius: 5
                     color: gpuMouse.containsMouse ? Qt.rgba(1, 1, 1, 0.10) : "transparent"
                     anchors.verticalCenter: parent.verticalCenter
 
                     Row {
                         id: gpuRow
-                        spacing: 5
+                        spacing: 4
                         anchors.centerIn: parent
                         Text {
                             text: "󰢮"
@@ -2877,6 +2805,7 @@ Window {
                             font.family: root.textFont
                             font.weight: Font.DemiBold
                             anchors.verticalCenter: parent.verticalCenter
+                            visible: root.cardWidth >= 520
                         }
                         Text {
                             text: root.gpuPercent + "%"
@@ -2905,14 +2834,14 @@ Window {
                 // RAM
                 Rectangle {
                     height: 22
-                    width: ramRow.width + 12
+                    width: ramRow.width + (root.cardWidth < 520 ? 8 : 12)
                     radius: 5
                     color: ramMouse.containsMouse ? Qt.rgba(1, 1, 1, 0.10) : "transparent"
                     anchors.verticalCenter: parent.verticalCenter
 
                     Row {
                         id: ramRow
-                        spacing: 5
+                        spacing: 4
                         anchors.centerIn: parent
                         Text {
                             text: "󰘚"
@@ -2928,9 +2857,10 @@ Window {
                             font.family: root.textFont
                             font.weight: Font.DemiBold
                             anchors.verticalCenter: parent.verticalCenter
+                            visible: root.cardWidth >= 520
                         }
                         Text {
-                            text: (root.sysMonitor ? root.sysMonitor.ram_text : "--") + " (" + (root.sysMonitor ? root.sysMonitor.ram_pct : 0) + "%)"
+                            text: root.cardWidth < 520 ? ((root.sysMonitor ? root.sysMonitor.ram_pct : 0) + "%") : ((root.sysMonitor ? root.sysMonitor.ram_text : "--") + " (" + (root.sysMonitor ? root.sysMonitor.ram_pct : 0) + "%)")
                             color: root.fgDim
                             font.pixelSize: 12
                             font.family: root.textFont
@@ -2956,14 +2886,14 @@ Window {
                 // Disk (Root /)
                 Rectangle {
                     height: 22
-                    width: diskRow.width + 12
+                    width: diskRow.width + (root.cardWidth < 520 ? 8 : 12)
                     radius: 5
                     color: diskMouse.containsMouse ? Qt.rgba(1, 1, 1, 0.10) : "transparent"
                     anchors.verticalCenter: parent.verticalCenter
 
                     Row {
                         id: diskRow
-                        spacing: 5
+                        spacing: 4
                         anchors.centerIn: parent
                         Text {
                             text: "󰋊"
@@ -2979,9 +2909,10 @@ Window {
                             font.family: root.textFont
                             font.weight: Font.DemiBold
                             anchors.verticalCenter: parent.verticalCenter
+                            visible: root.cardWidth >= 520
                         }
                         Text {
-                            text: (root.sysMonitor ? root.sysMonitor.disk_text : "--") + " (" + (root.sysMonitor ? root.sysMonitor.disk_pct : 0) + "%)"
+                            text: root.cardWidth < 520 ? ((root.sysMonitor ? root.sysMonitor.disk_pct : 0) + "%") : ((root.sysMonitor ? root.sysMonitor.disk_text : "--") + " (" + (root.sysMonitor ? root.sysMonitor.disk_pct : 0) + "%)")
                             color: root.fgDim
                             font.pixelSize: 12
                             font.family: root.textFont
@@ -3007,14 +2938,14 @@ Window {
                 // Sıcaklık
                 Rectangle {
                     height: 22
-                    width: tempRow.width + 12
+                    width: tempRow.width + (root.cardWidth < 520 ? 8 : 12)
                     radius: 5
                     color: tempMouse.containsMouse ? Qt.rgba(1, 1, 1, 0.10) : "transparent"
                     anchors.verticalCenter: parent.verticalCenter
 
                     Row {
                         id: tempRow
-                        spacing: 5
+                        spacing: 4
                         anchors.centerIn: parent
                         Text {
                             text: ""
@@ -3030,6 +2961,7 @@ Window {
                             font.family: root.textFont
                             font.weight: Font.DemiBold
                             anchors.verticalCenter: parent.verticalCenter
+                            visible: root.cardWidth >= 520
                         }
                         Text {
                             text: root.sysMonitor ? root.sysMonitor.temp : "--"
@@ -3058,14 +2990,14 @@ Window {
                 // Uptime
                 Rectangle {
                     height: 22
-                    width: uptimeRow.width + 12
+                    width: uptimeRow.width + (root.cardWidth < 520 ? 8 : 12)
                     radius: 5
                     color: uptimeMouse.containsMouse ? Qt.rgba(1, 1, 1, 0.10) : "transparent"
                     anchors.verticalCenter: parent.verticalCenter
 
                     Row {
                         id: uptimeRow
-                        spacing: 5
+                        spacing: 4
                         anchors.centerIn: parent
                         Text {
                             text: "󰔚"
@@ -3081,6 +3013,7 @@ Window {
                             font.family: root.textFont
                             font.weight: Font.DemiBold
                             anchors.verticalCenter: parent.verticalCenter
+                            visible: root.cardWidth >= 520
                         }
                         Text {
                             text: root.sysMonitor ? root.sysMonitor.uptime : "--"
@@ -3111,11 +3044,166 @@ Window {
         // Flyout dışına tıklandığında kapatıcı overlay
         MouseArea {
             anchors.fill: parent
-            visible: root.powerFlyoutOpen
+            visible: root.powerFlyoutOpen || root.audioFlyoutOpen
             z: 90
             acceptedButtons: Qt.AllButtons
             onClicked: {
                 root.powerFlyoutOpen = false
+                root.audioFlyoutOpen = false
+            }
+        }
+
+        // ── RavenSpot UI Ses Düzeyi Pop-up Paneli (Audio Flyout) ──
+        Rectangle {
+            id: audioFlyout
+            visible: root.audioFlyoutOpen
+            z: 100
+            anchors.top: parent.top
+            anchors.topMargin: 34
+            anchors.right: parent.right
+            anchors.rightMargin: 16
+            width: 210
+            height: 68
+            radius: 12
+            color: Qt.rgba(24/255, 27/255, 34/255, 0.98)
+            border.color: Qt.rgba(root.bgBorder.r, root.bgBorder.g, root.bgBorder.b, 0.40)
+            border.width: 1
+
+            layer.enabled: true
+            layer.effect: MultiEffect {
+                shadowEnabled: true
+                shadowColor: "#80000000"
+                shadowBlur: 0.8
+                shadowOpacity: 0.6
+                shadowVerticalOffset: 6
+            }
+
+            MouseArea {
+                anchors.fill: parent
+                acceptedButtons: Qt.AllButtons
+            }
+
+            Column {
+                anchors.fill: parent
+                anchors.margins: 10
+                spacing: 8
+
+                Row {
+                    width: parent.width
+
+                    Text {
+                        text: "UI Sounds"
+                        color: root.fgColor
+                        font.pixelSize: 11
+                        font.family: root.textFont
+                        font.weight: Font.DemiBold
+                        anchors.verticalCenter: parent.verticalCenter
+                    }
+
+                    Item {
+                        width: parent.width - 62 - flyoutMuteBox.width - 26
+                        height: 1
+                    }
+
+                    Rectangle {
+                        id: flyoutMuteBox
+                        height: 18
+                        width: 18
+                        radius: 4
+                        color: flyoutMuteMouse.containsMouse ? Qt.rgba(1, 1, 1, 0.15) : "transparent"
+                        anchors.verticalCenter: parent.verticalCenter
+
+                        Text {
+                            anchors.centerIn: parent
+                            text: root.appSoundMuted || root.appSoundVolume === 0 ? "󰝟" : "󰕾"
+                            color: root.appSoundMuted || root.appSoundVolume === 0 ? "#ef4444" : root.selFg
+                            font.pixelSize: 12
+                            font.family: root.iconFont
+                        }
+
+                        MouseArea {
+                            id: flyoutMuteMouse
+                            anchors.fill: parent
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: {
+                                Shell.playCreamy()
+                                Shell.toggleAppMute()
+                            }
+                        }
+                    }
+
+                    Text {
+                        text: root.appSoundMuted ? "0%" : root.appSoundVolume + "%"
+                        color: root.appSoundMuted ? "#ef4444" : root.fgDim
+                        font.pixelSize: 10
+                        font.family: root.textFont
+                        font.weight: Font.Bold
+                        anchors.verticalCenter: parent.verticalCenter
+                    }
+                }
+
+                Rectangle {
+                    id: appVolTrack
+                    width: parent.width
+                    height: 5
+                    radius: 2.5
+                    color: "#30ffffff"
+
+                    Rectangle {
+                        id: appVolFill
+                        height: parent.height
+                        radius: 2.5
+                        width: root.appSoundMuted ? 0 : Math.max(0, Math.min(parent.width, (root.appSoundVolume / 100.0) * parent.width))
+                        color: root.bgBorder
+                        Behavior on width { NumberAnimation { duration: 40 } }
+                    }
+
+                    Rectangle {
+                        width: 9
+                        height: 9
+                        radius: 4.5
+                        anchors.verticalCenter: parent.verticalCenter
+                        x: Math.max(0, Math.min(appVolTrack.width - 9, appVolFill.width - 4.5))
+                        color: root.selFg
+                        border.color: root.bgBorder
+                        border.width: 1
+                        visible: !root.appSoundMuted
+                    }
+
+                    WheelHandler {
+                        acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
+                        onWheel: function(event) {
+                            var delta = event.angleDelta.y > 0 ? 5 : -5
+                            var v = Math.max(0, Math.min(100, root.appSoundVolume + delta))
+                            root.appSoundVolume = v
+                            root.appSoundMuted = false
+                            Shell.setAppVolume(v)
+                        }
+                    }
+
+                    MouseArea {
+                        anchors.fill: parent
+                        anchors.topMargin: -8
+                        anchors.bottomMargin: -8
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+
+                        function updateVol(mouse) {
+                            var ratio = Math.max(0.0, Math.min(1.0, mouse.x / appVolTrack.width))
+                            var newVol = Math.round(ratio * 100)
+                            root.appSoundVolume = newVol
+                            root.appSoundMuted = false
+                            Shell.setAppVolume(newVol)
+                        }
+
+                        onPressed: function(mouse) {
+                            updateVol(mouse)
+                        }
+                        onPositionChanged: function(mouse) {
+                            if (pressed) updateVol(mouse)
+                        }
+                    }
+                }
             }
         }
 
@@ -3127,7 +3215,7 @@ Window {
             anchors.horizontalCenter: parent.horizontalCenter
             anchors.top: parent.top
             anchors.topMargin: 34
-            width: 390
+            width: Math.min(390, card.width - 24)
             height: powerFlyoutCol.height + 26
             radius: 12
             color: Qt.rgba(24/255, 27/255, 34/255, 0.98)
@@ -3585,6 +3673,11 @@ Window {
 
     Component.onCompleted: {
         syncTheme()
+        var appAudio = Shell.getAppAudioInfo()
+        if (appAudio) {
+            root.appSoundVolume = (appAudio.volume !== undefined) ? appAudio.volume : 65
+            root.appSoundMuted = !!appAudio.muted
+        }
         var ainfo = Shell.getInitialAudioInfo()
         if (ainfo) {
             root.sysVolume = ainfo.volume
