@@ -17,7 +17,7 @@ import socket
 import subprocess
 import sys
 
-__version__ = "0.2.22"
+__version__ = "0.2.23"
 
 # ── Platform Path & IPC Definitions ───────────────────────────
 IS_WINDOWS = sys.platform == "win32"

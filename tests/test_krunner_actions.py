@@ -13,8 +13,8 @@ class TestKRunnerActions(unittest.TestCase):
         cls.shell = bridge.Shell()
 
     def test_version_bump(self):
-        self.assertEqual(self.shell.version, "0.2.22")
-        self.assertEqual(bridge.__version__, "0.2.22")
+        self.assertEqual(self.shell.version, "0.2.23")
+        self.assertEqual(bridge.__version__, "0.2.23")
 
     def test_aula_seiya_sound_effects(self):
         self.assertTrue(hasattr(self.shell, "_snd_thock_pool"))
