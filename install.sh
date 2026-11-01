@@ -143,12 +143,21 @@ mkdir -p "$HOME/.config/ravenspot"
 cp -rf "$SCRIPT_DIR"/* "$TARGET_DIR/"
 test -f "$TARGET_DIR/menu.jsonc" && cp -n "$TARGET_DIR/menu.jsonc" "$HOME/.config/ravenspot/menu.jsonc" || true
 
-# Wrapper script
-cat << 'EOF' > "$HOME/.local/bin/ravenspot"
+# Wrapper binary / script
+if [[ -f "$SCRIPT_DIR/ravenspot" ]]; then
+    echo "Derlenmiş yerel C++ ikili dosyası kopyalanıyor..."
+    cp -f "$SCRIPT_DIR/ravenspot" "$HOME/.local/bin/ravenspot"
+elif command -v qmake6 >/dev/null 2>&1; then
+    echo "Yerel C++ ikili dosyası derleniyor..."
+    (cd "$SCRIPT_DIR" && qmake6 ravenspot.pro && make -j"$(nproc)")
+    cp -f "$SCRIPT_DIR/ravenspot" "$HOME/.local/bin/ravenspot"
+else
+    cat << 'EOF' > "$HOME/.local/bin/ravenspot"
 #!/usr/bin/env bash
-# RavenSpot launcher
+# RavenSpot launcher fallback
 exec python3 "$HOME/.local/share/omarchy-menu/bridge.py" "$@"
 EOF
+fi
 chmod +x "$HOME/.local/bin/ravenspot"
 
 # Desktop entry
@@ -158,16 +167,21 @@ chmod +x "$HOME/.local/share/applications/ravenspot.desktop"
 # Systemd Service
 cat << EOF > "$HOME/.config/systemd/user/ravenspot.service"
 [Unit]
-Description=RavenSpot - Spotlight Launcher Resident Daemon
+Description=RavenSpot - Spotlight Launcher Resident Daemon (Native C++20)
 After=graphical-session.target
 PartOf=graphical-session.target
 
 [Service]
 Type=simple
-ExecStart=/usr/bin/python3 $HOME/.local/share/omarchy-menu/bridge.py --daemon
+WorkingDirectory=$SCRIPT_DIR
+ExecStart=$HOME/.local/bin/ravenspot --daemon
 Restart=on-failure
 RestartSec=2s
 Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=graphical-session.target
+EOF
 
 [Install]
 WantedBy=graphical-session.target

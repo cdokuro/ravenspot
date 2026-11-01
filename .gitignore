@@ -5,3 +5,10 @@ __pycache__/
 backup/
 .cache/
 .DS_Store
+
+# C++ Build Artifacts
+*.o
+moc_*
+Makefile*
+.qmake.stash
+ravenspot
