@@ -17,7 +17,7 @@ import socket
 import subprocess
 import sys
 
-__version__ = "0.2.19"
+__version__ = "0.2.20"
 
 # ── Platform Path & IPC Definitions ───────────────────────────
 IS_WINDOWS = sys.platform == "win32"
@@ -296,6 +296,11 @@ class Shell(QObject):
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
             start_new_session=True,  # menü kapanınca SIGHUP almasın
         )
+
+    @Slot(str)
+    def executeCommand(self, command):
+        """Komutu arka planda çalıştır (runDetached takma adı)."""
+        self.runDetached(command)
 
     # ── Provider: apps ───────────────────────────────────────────
     def _categorize_app(self, categories_str):
@@ -1768,7 +1773,7 @@ class Shell(QObject):
             subprocess.Popen("shutdown /s /t 0", shell=True)
         else:
             subprocess.Popen(
-                ["bash", "-c", "qdbus6 org.kde.Shutdown /Shutdown logoutAndShutdown 2>/dev/null || systemctl poweroff"],
+                ["bash", "-c", "qdbus6 org.kde.Shutdown /Shutdown org.kde.Shutdown.logoutAndShutdown 2>/dev/null || qdbus6 org.kde.Shutdown /Shutdown logoutAndShutdown 2>/dev/null || systemctl poweroff"],
                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True
             )
 
@@ -1779,7 +1784,7 @@ class Shell(QObject):
             subprocess.Popen("shutdown /r /t 0", shell=True)
         else:
             subprocess.Popen(
-                ["bash", "-c", "qdbus6 org.kde.Shutdown /Shutdown logoutAndReboot 2>/dev/null || systemctl reboot"],
+                ["bash", "-c", "qdbus6 org.kde.Shutdown /Shutdown org.kde.Shutdown.logoutAndReboot 2>/dev/null || qdbus6 org.kde.Shutdown /Shutdown logoutAndReboot 2>/dev/null || systemctl reboot"],
                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True
             )
 

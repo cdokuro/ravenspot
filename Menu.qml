@@ -2315,7 +2315,7 @@ Window {
                     onClicked: {
                         Shell.playCreamy()
                         root.opened = false
-                        Shell.executeCommand("qdbus6 org.kde.Shutdown /Shutdown org.kde.Shutdown.logoutAndReboot")
+                        Shell.rebootSystem()
                         Qt.callLater(closeMenu)
                     }
                 }
@@ -2364,7 +2364,7 @@ Window {
                     onClicked: {
                         Shell.playCreamy()
                         root.opened = false
-                        Shell.executeCommand("qdbus6 org.kde.Shutdown /Shutdown org.kde.Shutdown.logoutAndShutdown")
+                        Shell.powerOff()
                         Qt.callLater(closeMenu)
                     }
                 }

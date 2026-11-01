@@ -13,8 +13,16 @@ class TestKRunnerActions(unittest.TestCase):
         cls.shell = bridge.Shell()
 
     def test_version_bump(self):
-        self.assertEqual(self.shell.version, "0.2.19")
-        self.assertEqual(bridge.__version__, "0.2.19")
+        self.assertEqual(self.shell.version, "0.2.20")
+        self.assertEqual(bridge.__version__, "0.2.20")
+
+    def test_reboot_and_poweroff_methods(self):
+        self.assertTrue(hasattr(self.shell, "rebootSystem"))
+        self.assertTrue(hasattr(self.shell, "powerOff"))
+        self.assertTrue(hasattr(self.shell, "executeCommand"))
+        self.assertTrue(callable(getattr(self.shell, "rebootSystem")))
+        self.assertTrue(callable(getattr(self.shell, "powerOff")))
+        self.assertTrue(callable(getattr(self.shell, "executeCommand")))
 
     def test_app_category_listing(self):
         counts = json.loads(self.shell.getAppCategoryCounts())
