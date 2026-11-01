@@ -17,7 +17,7 @@ import socket
 import subprocess
 import sys
 
-__version__ = "0.2.20"
+__version__ = "0.2.21"
 
 # ── Platform Path & IPC Definitions ───────────────────────────
 IS_WINDOWS = sys.platform == "win32"
@@ -1227,15 +1227,20 @@ class Shell(QObject):
         cur_icon_theme = "candy-icons"
         QIcon.setThemeName(cur_icon_theme)
 
-        # Sounds
+        # Sounds (Aula AU75 / F75 with Leobog Seiya switch acoustics; 4-voice polyphonic round-robin pool)
         self._sleep_inhibit_cookie = None
-        self._snd_thock = QSoundEffect()
-        self._snd_thock.setSource(QUrl.fromLocalFile(os.path.join(APP_DIR, "sounds", "thock.wav")))
-        self._snd_thock.setVolume(0.08)
+        self._snd_thock_pool = []
+        for _ in range(4):
+            snd = QSoundEffect(self)
+            snd.setSource(QUrl.fromLocalFile(os.path.join(APP_DIR, "sounds", "thock.wav")))
+            snd.setVolume(0.20)
+            self._snd_thock_pool.append(snd)
+        self._snd_thock_idx = 0
+        self._snd_thock = self._snd_thock_pool[0]
 
-        self._snd_creamy = QSoundEffect()
+        self._snd_creamy = QSoundEffect(self)
         self._snd_creamy.setSource(QUrl.fromLocalFile(os.path.join(APP_DIR, "sounds", "creamy.wav")))
-        self._snd_creamy.setVolume(0.10)
+        self._snd_creamy.setVolume(0.22)
 
         # Telemetry timer
         self._last_cpu_idle = 0
@@ -1752,7 +1757,11 @@ class Shell(QObject):
     @Slot()
     def playThock(self):
         try:
-            if self._snd_thock.status() == QSoundEffect.Ready or self._snd_thock.status() == QSoundEffect.Loading:
+            if hasattr(self, "_snd_thock_pool") and self._snd_thock_pool:
+                snd = self._snd_thock_pool[self._snd_thock_idx]
+                self._snd_thock_idx = (self._snd_thock_idx + 1) % len(self._snd_thock_pool)
+                snd.play()
+            elif hasattr(self, "_snd_thock") and (self._snd_thock.status() == QSoundEffect.Ready or self._snd_thock.status() == QSoundEffect.Loading):
                 self._snd_thock.play()
         except Exception:
             pass

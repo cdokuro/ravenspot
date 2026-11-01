@@ -13,8 +13,21 @@ class TestKRunnerActions(unittest.TestCase):
         cls.shell = bridge.Shell()
 
     def test_version_bump(self):
-        self.assertEqual(self.shell.version, "0.2.20")
-        self.assertEqual(bridge.__version__, "0.2.20")
+        self.assertEqual(self.shell.version, "0.2.21")
+        self.assertEqual(bridge.__version__, "0.2.21")
+
+    def test_aula_seiya_sound_effects(self):
+        self.assertTrue(hasattr(self.shell, "_snd_thock_pool"))
+        self.assertGreaterEqual(len(self.shell._snd_thock_pool), 3)
+        self.assertTrue(hasattr(self.shell, "playThock"))
+        self.assertTrue(hasattr(self.shell, "playCreamy"))
+        # Verify calling playThock and playCreamy executes safely
+        try:
+            for _ in range(5):
+                self.shell.playThock()
+            self.shell.playCreamy()
+        except Exception as e:
+            self.fail(f"Acoustic switch sound methods failed: {e}")
 
     def test_reboot_and_poweroff_methods(self):
         self.assertTrue(hasattr(self.shell, "rebootSystem"))

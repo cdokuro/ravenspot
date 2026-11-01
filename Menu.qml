@@ -1896,6 +1896,7 @@ Window {
                         anchors.fill: parent
                         hoverEnabled: true
                         cursorShape: Qt.PointingHandCursor
+                        onEntered: Shell.playThock()
                         onClicked: {
                             Shell.playCreamy()
                             root.powerFlyoutOpen = !root.powerFlyoutOpen
@@ -2263,6 +2264,7 @@ Window {
                     anchors.fill: parent
                     hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
+                    onEntered: Shell.playThock()
                     onClicked: {
                         Shell.playCreamy()
                         root.opened = false
@@ -2312,6 +2314,7 @@ Window {
                     anchors.fill: parent
                     hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
+                    onEntered: Shell.playThock()
                     onClicked: {
                         Shell.playCreamy()
                         root.opened = false
@@ -2361,6 +2364,7 @@ Window {
                     anchors.fill: parent
                     hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
+                    onEntered: Shell.playThock()
                     onClicked: {
                         Shell.playCreamy()
                         root.opened = false
@@ -2681,12 +2685,20 @@ Window {
                         anchors.fill: parent
                         hoverEnabled: true
                         cursorShape: Qt.PointingHandCursor
+                        onEntered: {
+                            if (root.selectedIndex !== index) {
+                                root.selectedIndex = index
+                                Shell.playThock()
+                            }
+                        }
                         onPositionChanged: {
                             if (root.selectedIndex !== index) {
                                 root.selectedIndex = index
+                                Shell.playThock()
                             }
                         }
                         onClicked: {
+                            Shell.playCreamy()
                             activateIndex(index)
                         }
                     }
@@ -2829,6 +2841,7 @@ Window {
                         anchors.fill: parent
                         hoverEnabled: true
                         cursorShape: Qt.PointingHandCursor
+                        onEntered: Shell.playThock()
                         onClicked: {
                             Shell.playCreamy()
                             root.opened = false
@@ -2879,6 +2892,7 @@ Window {
                         anchors.fill: parent
                         hoverEnabled: true
                         cursorShape: Qt.PointingHandCursor
+                        onEntered: Shell.playThock()
                         onClicked: {
                             Shell.playCreamy()
                             root.opened = false
@@ -2929,6 +2943,7 @@ Window {
                         anchors.fill: parent
                         hoverEnabled: true
                         cursorShape: Qt.PointingHandCursor
+                        onEntered: Shell.playThock()
                         onClicked: {
                             Shell.playCreamy()
                             root.opened = false
@@ -2979,6 +2994,7 @@ Window {
                         anchors.fill: parent
                         hoverEnabled: true
                         cursorShape: Qt.PointingHandCursor
+                        onEntered: Shell.playThock()
                         onClicked: {
                             Shell.playCreamy()
                             root.opened = false
@@ -3029,6 +3045,7 @@ Window {
                         anchors.fill: parent
                         hoverEnabled: true
                         cursorShape: Qt.PointingHandCursor
+                        onEntered: Shell.playThock()
                         onClicked: {
                             Shell.playCreamy()
                             root.opened = false
@@ -3079,6 +3096,7 @@ Window {
                         anchors.fill: parent
                         hoverEnabled: true
                         cursorShape: Qt.PointingHandCursor
+                        onEntered: Shell.playThock()
                         onClicked: {
                             Shell.playCreamy()
                             root.opened = false
@@ -3553,6 +3571,9 @@ Window {
                     anchors.fill: parent
                     hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
+                    onEntered: {
+                        Shell.playThock()
+                    }
                     onClicked: {
                         Shell.playCreamy()
                         executeContextAction(model.actionType, model.actionPayload)
