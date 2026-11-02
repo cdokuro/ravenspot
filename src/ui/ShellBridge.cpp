@@ -23,6 +23,7 @@
 #include <QDebug>
 #include <sys/statvfs.h>
 #include <unistd.h>
+#include <malloc.h>
 #include <algorithm>
 
 namespace ravenspot {
@@ -104,6 +105,7 @@ void ShellBridge::onMenuVisibilityChanged(bool visible) {
         updateTelemetry();
     } else {
         m_telemetryTimer.stop();
+        ::malloc_trim(0);
     }
 }
 

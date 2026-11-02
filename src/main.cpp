@@ -174,6 +174,7 @@ int main(int argc, char *argv[]) {
     auto audioEngine = std::make_unique<ravenspot::AudioEngine>(&app);
     auto appIndexer = std::make_unique<ravenspot::AppIndexer>(&app);
     appIndexer->initialize();
+    ::malloc_trim(0);
 
     auto shellBridge = std::make_unique<ravenspot::ShellBridge>(startHidden, &app);
 
