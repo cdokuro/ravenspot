@@ -12,7 +12,7 @@ class SoundConfig : public QObject {
     Q_PROPERTY(bool enabled READ isEnabled WRITE setEnabled NOTIFY configChanged)
 
 public:
-    static constexpr int DEFAULT_VOLUME = 80;
+    static constexpr int DEFAULT_VOLUME = 5;
     static constexpr bool DEFAULT_MUTED = false;
 
     explicit SoundConfig(const QString &configFilePath = QString(), QObject *parent = nullptr);

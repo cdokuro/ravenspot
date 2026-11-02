@@ -58,7 +58,7 @@ Window {
     property int headerHeight: 114
     property int cpuPercent: 0
     property int gpuPercent: 0
-    property int appSoundVolume: 65
+    property int appSoundVolume: 5
     property bool appSoundMuted: false
     property bool audioFlyoutOpen: false
     property int sysVolume: 50
@@ -3675,7 +3675,7 @@ Window {
         syncTheme()
         var appAudio = Shell.getAppAudioInfo()
         if (appAudio) {
-            root.appSoundVolume = (appAudio.volume !== undefined) ? appAudio.volume : 65
+            root.appSoundVolume = (appAudio.volume !== undefined) ? appAudio.volume : 5
             root.appSoundMuted = !!appAudio.muted
         }
         var ainfo = Shell.getInitialAudioInfo()

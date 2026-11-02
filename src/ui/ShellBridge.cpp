@@ -104,31 +104,19 @@ void ShellBridge::onMenuVisibilityChanged(bool visible) {
         updateTelemetry();
     } else {
         m_telemetryTimer.stop();
-        if (m_layerShellWindow && m_layerShellWindow->isVisible()) {
-            m_layerShellWindow->hideWindow();
-        }
     }
 }
 
 void ShellBridge::toggleMenu() {
     emit toggleRequested();
-    if (m_layerShellWindow) {
-        m_layerShellWindow->toggleWindow();
-    }
 }
 
 void ShellBridge::showMenu() {
     emit showRequested();
-    if (m_layerShellWindow) {
-        m_layerShellWindow->showWindow();
-    }
 }
 
 void ShellBridge::hideMenu() {
     emit hideRequested();
-    if (m_layerShellWindow) {
-        m_layerShellWindow->hideWindow();
-    }
 }
 
 // ── 2. Audio & Volume ──────────────────────────────────────
@@ -179,7 +167,7 @@ QVariantMap ShellBridge::getAppAudioInfo() const {
         map[QStringLiteral("volume")] = m_audioEngine->volume();
         map[QStringLiteral("muted")] = m_audioEngine->isMuted();
     } else {
-        map[QStringLiteral("volume")] = 80;
+        map[QStringLiteral("volume")] = 5;
         map[QStringLiteral("muted")] = false;
     }
     return map;
@@ -981,7 +969,7 @@ void ShellBridge::updateTelemetry() {
         gpuFile.close();
     }
 
-    const int vol = m_audioEngine ? m_audioEngine->volume() : 80;
+    const int vol = m_audioEngine ? m_audioEngine->volume() : 5;
     const bool muted = m_audioEngine ? m_audioEngine->isMuted() : false;
 
     emit statsUpdated(m_lastCpuPercent, m_lastGpuPercent, vol, muted);

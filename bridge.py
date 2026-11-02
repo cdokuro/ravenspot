@@ -1231,7 +1231,7 @@ class Shell(QObject):
         # Sounds & App Volume (Aula AU75 / F75 creamy switch profile with persistent app volume)
         self._sleep_inhibit_cookie = None
         self._user_sound_file = os.path.join(USER_CONFIG_DIR, "sound.json")
-        self._app_volume = 65
+        self._app_volume = 5
         self._app_muted = False
         if os.path.exists(self._user_sound_file):
             try:
