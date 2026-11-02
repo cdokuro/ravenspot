@@ -56,6 +56,7 @@ void LayerShellWindow::initWindow() {
 
     m_dragThrottleTimer.setInterval(7);
     m_dragThrottleTimer.setSingleShot(true);
+    m_dragThrottleTimer.setTimerType(Qt::PreciseTimer);
     connect(&m_dragThrottleTimer, &QTimer::timeout, this, &LayerShellWindow::commitDragPosition);
 
     connect(m_window.data(), &QQuickWindow::activeChanged, this, &LayerShellWindow::onWindowActiveChanged);
@@ -185,6 +186,8 @@ void LayerShellWindow::beginDrag(double localX, double localY) {
     Q_UNUSED(localX);
     Q_UNUSED(localY);
     m_dragThrottleTimer.stop();
+    m_dragClock.restart();
+    m_lastCommitTime = 0;
     m_dragStartWinPos = QPoint(m_posX, m_posY);
     m_targetX = m_posX;
     m_targetY = m_posY;
@@ -226,9 +229,13 @@ QPoint LayerShellWindow::dragBy(double deltaX, double deltaY) {
     m_targetX = newTargetX;
     m_targetY = newTargetY;
 
-    if (!m_dragThrottleTimer.isActive()) {
+    const qint64 now = m_dragClock.elapsed();
+    if (now - m_lastCommitTime >= 7) {
         commitDragPosition();
-        m_dragThrottleTimer.start(7);
+        m_lastCommitTime = now;
+        m_dragThrottleTimer.stop();
+    } else if (!m_dragThrottleTimer.isActive()) {
+        m_dragThrottleTimer.start(8);
     }
 
     return QPoint(appliedDx, appliedDy);
@@ -243,6 +250,9 @@ void LayerShellWindow::commitDragPosition() {
 
     if (m_layerWindow) {
         m_layerWindow->setMargins(QMargins(m_posX, m_posY, 0, 0));
+    }
+    if (m_window) {
+        m_window->requestUpdate();
     }
     if (!m_isWayland && m_window && m_window->screen()) {
         m_window->setPosition(m_window->screen()->geometry().x() + m_posX, m_window->screen()->geometry().y() + m_posY);

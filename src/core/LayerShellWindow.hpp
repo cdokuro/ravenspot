@@ -5,6 +5,7 @@
 #include <QQuickWindow>
 #include <QScreen>
 #include <QTimer>
+#include <QElapsedTimer>
 #include <LayerShellQt/Window>
 
 namespace ravenspot {
@@ -62,6 +63,8 @@ private:
     LayerShellQt::Window *m_layerWindow{nullptr};
     QTimer m_graceTimer;
     QTimer m_dragThrottleTimer;
+    QElapsedTimer m_dragClock;
+    qint64 m_lastCommitTime{0};
     bool m_canCloseOnInactive{false};
     bool m_isWayland{false};
     int m_cardHeight{600};
