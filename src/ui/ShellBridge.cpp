@@ -127,6 +127,13 @@ void ShellBridge::beginDrag(double localX, double localY) {
     }
 }
 
+QPoint ShellBridge::dragBy(double deltaX, double deltaY) {
+    if (m_layerShellWindow) {
+        return m_layerShellWindow->dragBy(deltaX, deltaY);
+    }
+    return QPoint(0, 0);
+}
+
 void ShellBridge::updateDrag(double localX, double localY) {
     if (m_layerShellWindow) {
         m_layerShellWindow->updateDrag(localX, localY);

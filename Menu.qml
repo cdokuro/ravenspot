@@ -1872,34 +1872,6 @@ Window {
             height: root.headerHeight
             color: "transparent"
 
-            // ── En üst ince hat doğrudan pencere taşıma alanı (Titlebar Drag Handle) ──
-            MouseArea {
-                id: topDragHandle
-                anchors.left: parent.left
-                anchors.right: parent.right
-                anchors.top: parent.top
-                height: 32
-                z: 2
-                acceptedButtons: Qt.LeftButton
-                cursorShape: pressed ? Qt.ClosedHandCursor : Qt.ArrowCursor
-                onPressed: function(mouse) {
-                    var p = mapToItem(null, mouse.x, mouse.y)
-                    Shell.beginDrag(p.x, p.y)
-                }
-                onPositionChanged: function(mouse) {
-                    if (pressed) {
-                        var p = mapToItem(null, mouse.x, mouse.y)
-                        Shell.updateDrag(p.x, p.y)
-                    }
-                }
-                onReleased: {
-                    Shell.endDrag()
-                }
-                onCanceled: {
-                    Shell.endDrag()
-                }
-            }
-
             // ── Üst Bar: Ses Kontrol Paneli (Mute + Slider) & RavenSpot Başlığı ──
             Item {
                 id: topMetricsBar
@@ -1954,20 +1926,54 @@ Window {
                         anchors.fill: parent
                         cursorShape: pressed ? Qt.ClosedHandCursor : Qt.OpenHandCursor
                         acceptedButtons: Qt.LeftButton
+
+                        property real lastX: 0
+                        property real lastY: 0
+                        property real pressX: 0
+                        property real pressY: 0
+                        property bool isDragging: false
+
                         onPressed: function(mouse) {
-                            var p = mapToItem(null, mouse.x, mouse.y)
-                            Shell.beginDrag(p.x, p.y)
+                            pressX = mouse.x
+                            pressY = mouse.y
+                            lastX = mouse.x
+                            lastY = mouse.y
+                            isDragging = false
+                            Shell.beginDrag()
                         }
+
                         onPositionChanged: function(mouse) {
-                            if (pressed) {
-                                var p = mapToItem(null, mouse.x, mouse.y)
-                                Shell.updateDrag(p.x, p.y)
+                            if (!pressed) return
+
+                            if (!isDragging) {
+                                var dist = Math.hypot(mouse.x - pressX, mouse.y - pressY)
+                                if (dist < 4) return // 4px deadzone: clicking never jumps
+                                isDragging = true
+                                lastX = mouse.x
+                                lastY = mouse.y
+                            }
+
+                            var dx = mouse.x - lastX
+                            var dy = mouse.y - lastY
+                            if (dx === 0 && dy === 0) return
+
+                            lastX = mouse.x
+                            lastY = mouse.y
+
+                            var moved = Shell.dragBy(dx, dy)
+                            if (moved) {
+                                lastX -= moved.x
+                                lastY -= moved.y
                             }
                         }
+
                         onReleased: {
+                            isDragging = false
                             Shell.endDrag()
                         }
+
                         onCanceled: {
+                            isDragging = false
                             Shell.endDrag()
                         }
                     }

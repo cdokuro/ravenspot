@@ -34,8 +34,9 @@ public:
     [[nodiscard]] int cardHeight() const noexcept { return m_cardHeight; }
 
     // Drag-to-move window controls
-    void beginDrag(double localX, double localY);
-    void updateDrag(double localX, double localY);
+    void beginDrag(double localX = 0, double localY = 0);
+    QPoint dragBy(double deltaX, double deltaY);
+    void updateDrag(double localX = 0, double localY = 0);
     void endDrag();
     void setWindowPosition(int x, int y);
     [[nodiscard]] QPoint windowPosition() const noexcept { return QPoint(m_posX, m_posY); }
@@ -66,6 +67,8 @@ private:
     int m_posY{0};
     bool m_hasCustomPosition{false};
     bool m_isDragging{false};
+    double m_accumulatedDeltaX{0.0};
+    double m_accumulatedDeltaY{0.0};
     QPoint m_dragStartWinPos;
     QPointF m_globalStartPos;
     QPointer<QScreen> m_lastScreen;

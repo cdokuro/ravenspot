@@ -176,33 +176,43 @@ void LayerShellWindow::showOnActiveScreen() {
 }
 
 void LayerShellWindow::beginDrag(double localX, double localY) {
+    Q_UNUSED(localX);
+    Q_UNUSED(localY);
     m_dragStartWinPos = QPoint(m_posX, m_posY);
-    m_globalStartPos = QPointF(m_posX + localX, m_posY + localY);
+    m_accumulatedDeltaX = 0.0;
+    m_accumulatedDeltaY = 0.0;
     m_isDragging = true;
 }
 
-void LayerShellWindow::updateDrag(double localX, double localY) {
-    if (!m_isDragging) return;
+QPoint LayerShellWindow::dragBy(double deltaX, double deltaY) {
+    if (!m_isDragging) return QPoint(0, 0);
 
-    // Calculate invariant global mouse position on screen: (current_win_pos + current_local_mouse)
-    const qreal globalCurrentX = m_posX + localX;
-    const qreal globalCurrentY = m_posY + localY;
+    m_accumulatedDeltaX += deltaX;
+    m_accumulatedDeltaY += deltaY;
 
-    const qreal totalDeltaX = globalCurrentX - m_globalStartPos.x();
-    const qreal totalDeltaY = globalCurrentY - m_globalStartPos.y();
+    const int intDx = static_cast<int>(std::round(m_accumulatedDeltaX));
+    const int intDy = static_cast<int>(std::round(m_accumulatedDeltaY));
+
+    if (intDx == 0 && intDy == 0) return QPoint(0, 0);
+
+    m_accumulatedDeltaX -= intDx;
+    m_accumulatedDeltaY -= intDy;
 
     QScreen *screen = m_window ? m_window->screen() : nullptr;
     if (!screen) screen = resolveActiveScreen();
 
-    const int maxW = screen ? screen->geometry().width() : 1920;
-    const int maxH = screen ? screen->geometry().height() : 1080;
+    const int maxW = screen ? screen->geometry().width() : 2560;
+    const int maxH = screen ? screen->geometry().height() : 1440;
     const int winW = m_window ? m_window->width() : 543;
     const int winH = m_window ? m_window->height() : 648;
 
-    int newX = std::clamp(m_dragStartWinPos.x() + static_cast<int>(std::round(totalDeltaX)), 0, std::max(0, maxW - winW));
-    int newY = std::clamp(m_dragStartWinPos.y() + static_cast<int>(std::round(totalDeltaY)), 0, std::max(0, maxH - winH));
+    const int newX = std::clamp(m_posX + intDx, 0, std::max(0, maxW - winW));
+    const int newY = std::clamp(m_posY + intDy, 0, std::max(0, maxH - winH));
 
-    if (newX == m_posX && newY == m_posY) return;
+    const int appliedDx = newX - m_posX;
+    const int appliedDy = newY - m_posY;
+
+    if (appliedDx == 0 && appliedDy == 0) return QPoint(0, 0);
 
     m_posX = newX;
     m_posY = newY;
@@ -214,10 +224,19 @@ void LayerShellWindow::updateDrag(double localX, double localY) {
     if (!m_isWayland && m_window && screen) {
         m_window->setPosition(screen->geometry().x() + m_posX, screen->geometry().y() + m_posY);
     }
+
+    return QPoint(appliedDx, appliedDy);
+}
+
+void LayerShellWindow::updateDrag(double localX, double localY) {
+    Q_UNUSED(localX);
+    Q_UNUSED(localY);
 }
 
 void LayerShellWindow::endDrag() {
     m_isDragging = false;
+    m_accumulatedDeltaX = 0.0;
+    m_accumulatedDeltaY = 0.0;
 }
 
 void LayerShellWindow::setWindowPosition(int x, int y) {

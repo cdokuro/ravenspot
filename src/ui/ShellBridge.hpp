@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QObject>
+#include <QPoint>
 #include <QString>
 #include <QVariantMap>
 #include <QPointer>
@@ -64,8 +65,9 @@ public slots:
     Q_INVOKABLE void toggleMenu();
     Q_INVOKABLE void showMenu();
     Q_INVOKABLE void hideMenu();
-    Q_INVOKABLE void beginDrag(double localX, double localY);
-    Q_INVOKABLE void updateDrag(double localX, double localY);
+    Q_INVOKABLE void beginDrag(double localX = 0, double localY = 0);
+    Q_INVOKABLE QPoint dragBy(double deltaX, double deltaY);
+    Q_INVOKABLE void updateDrag(double localX = 0, double localY = 0);
     Q_INVOKABLE void endDrag();
 
     // ── 2. Audio & Volume ──────────────────────────────────────
