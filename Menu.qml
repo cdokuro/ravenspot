@@ -1960,11 +1960,7 @@ Window {
                             lastX = mouse.x
                             lastY = mouse.y
 
-                            var moved = Shell.dragBy(dx, dy)
-                            if (moved) {
-                                lastX -= moved.x
-                                lastY -= moved.y
-                            }
+                            Shell.dragBy(dx, dy)
                         }
 
                         onReleased: {

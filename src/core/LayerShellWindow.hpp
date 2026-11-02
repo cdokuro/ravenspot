@@ -49,6 +49,7 @@ private slots:
     void onGraceTimerTriggered();
     void onWindowActiveChanged();
     void onFocusWindowChanged(QWindow *focusWindow);
+    void commitDragPosition();
 
 private:
     void initWindow();
@@ -60,11 +61,14 @@ private:
     bool m_ownsWindow{false};
     LayerShellQt::Window *m_layerWindow{nullptr};
     QTimer m_graceTimer;
+    QTimer m_dragThrottleTimer;
     bool m_canCloseOnInactive{false};
     bool m_isWayland{false};
     int m_cardHeight{600};
     int m_posX{0};
     int m_posY{0};
+    int m_targetX{0};
+    int m_targetY{0};
     bool m_hasCustomPosition{false};
     bool m_isDragging{false};
     double m_accumulatedDeltaX{0.0};

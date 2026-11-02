@@ -54,6 +54,10 @@ void LayerShellWindow::initWindow() {
     m_graceTimer.setSingleShot(true);
     connect(&m_graceTimer, &QTimer::timeout, this, &LayerShellWindow::onGraceTimerTriggered);
 
+    m_dragThrottleTimer.setInterval(7);
+    m_dragThrottleTimer.setSingleShot(true);
+    connect(&m_dragThrottleTimer, &QTimer::timeout, this, &LayerShellWindow::commitDragPosition);
+
     connect(m_window.data(), &QQuickWindow::activeChanged, this, &LayerShellWindow::onWindowActiveChanged);
     if (qGuiApp) {
         connect(qGuiApp, &QGuiApplication::focusWindowChanged, this, &LayerShellWindow::onFocusWindowChanged);
@@ -153,6 +157,8 @@ void LayerShellWindow::showOnActiveScreen() {
             m_posX = (geom.width() - winW) / 2;
             m_posY = (geom.height() - winH) / 2;
         }
+        m_targetX = m_posX;
+        m_targetY = m_posY;
 
         if (m_layerWindow) {
             m_layerWindow->setMargins(QMargins(m_posX, m_posY, 0, 0));
@@ -178,7 +184,10 @@ void LayerShellWindow::showOnActiveScreen() {
 void LayerShellWindow::beginDrag(double localX, double localY) {
     Q_UNUSED(localX);
     Q_UNUSED(localY);
+    m_dragThrottleTimer.stop();
     m_dragStartWinPos = QPoint(m_posX, m_posY);
+    m_targetX = m_posX;
+    m_targetY = m_posY;
     m_accumulatedDeltaX = 0.0;
     m_accumulatedDeltaY = 0.0;
     m_isDragging = true;
@@ -206,26 +215,38 @@ QPoint LayerShellWindow::dragBy(double deltaX, double deltaY) {
     const int winW = m_window ? m_window->width() : 543;
     const int winH = m_window ? m_window->height() : 648;
 
-    const int newX = std::clamp(m_posX + intDx, 0, std::max(0, maxW - winW));
-    const int newY = std::clamp(m_posY + intDy, 0, std::max(0, maxH - winH));
+    const int newTargetX = std::clamp(m_targetX + intDx, 0, std::max(0, maxW - winW));
+    const int newTargetY = std::clamp(m_targetY + intDy, 0, std::max(0, maxH - winH));
 
-    const int appliedDx = newX - m_posX;
-    const int appliedDy = newY - m_posY;
+    const int appliedDx = newTargetX - m_targetX;
+    const int appliedDy = newTargetY - m_targetY;
 
     if (appliedDx == 0 && appliedDy == 0) return QPoint(0, 0);
 
-    m_posX = newX;
-    m_posY = newY;
+    m_targetX = newTargetX;
+    m_targetY = newTargetY;
+
+    if (!m_dragThrottleTimer.isActive()) {
+        commitDragPosition();
+        m_dragThrottleTimer.start(7);
+    }
+
+    return QPoint(appliedDx, appliedDy);
+}
+
+void LayerShellWindow::commitDragPosition() {
+    if (m_posX == m_targetX && m_posY == m_targetY && m_hasCustomPosition) return;
+
+    m_posX = m_targetX;
+    m_posY = m_targetY;
     m_hasCustomPosition = true;
 
     if (m_layerWindow) {
         m_layerWindow->setMargins(QMargins(m_posX, m_posY, 0, 0));
     }
-    if (!m_isWayland && m_window && screen) {
-        m_window->setPosition(screen->geometry().x() + m_posX, screen->geometry().y() + m_posY);
+    if (!m_isWayland && m_window && m_window->screen()) {
+        m_window->setPosition(m_window->screen()->geometry().x() + m_posX, m_window->screen()->geometry().y() + m_posY);
     }
-
-    return QPoint(appliedDx, appliedDy);
 }
 
 void LayerShellWindow::updateDrag(double localX, double localY) {
@@ -234,6 +255,8 @@ void LayerShellWindow::updateDrag(double localX, double localY) {
 }
 
 void LayerShellWindow::endDrag() {
+    m_dragThrottleTimer.stop();
+    commitDragPosition();
     m_isDragging = false;
     m_accumulatedDeltaX = 0.0;
     m_accumulatedDeltaY = 0.0;
@@ -242,6 +265,8 @@ void LayerShellWindow::endDrag() {
 void LayerShellWindow::setWindowPosition(int x, int y) {
     m_posX = x;
     m_posY = y;
+    m_targetX = x;
+    m_targetY = y;
     m_hasCustomPosition = true;
     if (m_layerWindow) {
         m_layerWindow->setMargins(QMargins(m_posX, m_posY, 0, 0));
