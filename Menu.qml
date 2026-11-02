@@ -1883,14 +1883,19 @@ Window {
                 acceptedButtons: Qt.LeftButton
                 cursorShape: pressed ? Qt.ClosedHandCursor : Qt.ArrowCursor
                 onPressed: function(mouse) {
-                    Shell.beginDrag()
+                    var p = mapToItem(null, mouse.x, mouse.y)
+                    Shell.beginDrag(p.x, p.y)
                 }
                 onPositionChanged: function(mouse) {
                     if (pressed) {
-                        Shell.updateDrag()
+                        var p = mapToItem(null, mouse.x, mouse.y)
+                        Shell.updateDrag(p.x, p.y)
                     }
                 }
                 onReleased: {
+                    Shell.endDrag()
+                }
+                onCanceled: {
                     Shell.endDrag()
                 }
             }
@@ -1950,14 +1955,19 @@ Window {
                         cursorShape: pressed ? Qt.ClosedHandCursor : Qt.OpenHandCursor
                         acceptedButtons: Qt.LeftButton
                         onPressed: function(mouse) {
-                            Shell.beginDrag()
+                            var p = mapToItem(null, mouse.x, mouse.y)
+                            Shell.beginDrag(p.x, p.y)
                         }
                         onPositionChanged: function(mouse) {
                             if (pressed) {
-                                Shell.updateDrag()
+                                var p = mapToItem(null, mouse.x, mouse.y)
+                                Shell.updateDrag(p.x, p.y)
                             }
                         }
                         onReleased: {
+                            Shell.endDrag()
+                        }
+                        onCanceled: {
                             Shell.endDrag()
                         }
                     }

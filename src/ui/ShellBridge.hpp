@@ -64,8 +64,8 @@ public slots:
     Q_INVOKABLE void toggleMenu();
     Q_INVOKABLE void showMenu();
     Q_INVOKABLE void hideMenu();
-    Q_INVOKABLE void beginDrag();
-    Q_INVOKABLE void updateDrag();
+    Q_INVOKABLE void beginDrag(double localX, double localY);
+    Q_INVOKABLE void updateDrag(double localX, double localY);
     Q_INVOKABLE void endDrag();
 
     // ── 2. Audio & Volume ──────────────────────────────────────

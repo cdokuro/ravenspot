@@ -175,17 +175,21 @@ void LayerShellWindow::showOnActiveScreen() {
     emit visibilityChanged(true);
 }
 
-void LayerShellWindow::beginDrag() {
-    m_dragStartCursor = QCursor::pos();
-    m_dragStartPos = QPoint(m_posX, m_posY);
+void LayerShellWindow::beginDrag(double localX, double localY) {
+    m_dragStartWinPos = QPoint(m_posX, m_posY);
+    m_globalStartPos = QPointF(m_posX + localX, m_posY + localY);
     m_isDragging = true;
 }
 
-void LayerShellWindow::updateDrag() {
+void LayerShellWindow::updateDrag(double localX, double localY) {
     if (!m_isDragging) return;
 
-    const QPoint currentCursor = QCursor::pos();
-    const QPoint delta = currentCursor - m_dragStartCursor;
+    // Calculate invariant global mouse position on screen: (current_win_pos + current_local_mouse)
+    const qreal globalCurrentX = m_posX + localX;
+    const qreal globalCurrentY = m_posY + localY;
+
+    const qreal totalDeltaX = globalCurrentX - m_globalStartPos.x();
+    const qreal totalDeltaY = globalCurrentY - m_globalStartPos.y();
 
     QScreen *screen = m_window ? m_window->screen() : nullptr;
     if (!screen) screen = resolveActiveScreen();
@@ -195,8 +199,10 @@ void LayerShellWindow::updateDrag() {
     const int winW = m_window ? m_window->width() : 543;
     const int winH = m_window ? m_window->height() : 648;
 
-    int newX = std::clamp(m_dragStartPos.x() + delta.x(), 0, std::max(0, maxW - winW));
-    int newY = std::clamp(m_dragStartPos.y() + delta.y(), 0, std::max(0, maxH - winH));
+    int newX = std::clamp(m_dragStartWinPos.x() + static_cast<int>(std::round(totalDeltaX)), 0, std::max(0, maxW - winW));
+    int newY = std::clamp(m_dragStartWinPos.y() + static_cast<int>(std::round(totalDeltaY)), 0, std::max(0, maxH - winH));
+
+    if (newX == m_posX && newY == m_posY) return;
 
     m_posX = newX;
     m_posY = newY;

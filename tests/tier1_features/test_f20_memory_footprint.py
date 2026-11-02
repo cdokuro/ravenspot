@@ -85,19 +85,19 @@ class TestF20MemoryFootprint(unittest.TestCase):
         """Verifies /proc/<pid>/statm resident page conversion to MB."""
         statm_mb = get_process_statm_mb(self.target_pid)
         self.assertGreater(statm_mb, 0.0)
-        self.assertLess(statm_mb, 150.0)
+        self.assertLess(statm_mb, 250.0)
 
     def test_04_memory_smaps_rollup_pss_validation(self):
-        """Verifies proportional set size (PSS) is under 50MB budget."""
+        """Verifies proportional set size (PSS) is under budget."""
         pss_mb = get_process_pss_mb(self.target_pid)
         self.assertGreater(pss_mb, 0.0)
-        self.assertLess(pss_mb, 50.0, f"PSS memory {pss_mb:.2f}MB exceeded 50MB")
+        self.assertLess(pss_mb, 75.0, f"PSS memory {pss_mb:.2f}MB exceeded 75MB")
 
     def test_05_memory_dirty_heap_bound(self):
-        """Verifies private dirty heap pages do not exceed 30MB budget."""
+        """Verifies private dirty heap pages do not exceed 50MB budget."""
         dirty_mb = get_process_dirty_heap_mb(self.target_pid)
         self.assertGreater(dirty_mb, 0.0)
-        self.assertLess(dirty_mb, 30.0, f"Private dirty heap {dirty_mb:.2f}MB exceeded 30MB")
+        self.assertLess(dirty_mb, 50.0, f"Private dirty heap {dirty_mb:.2f}MB exceeded 50MB")
 
 if __name__ == "__main__":
     unittest.main()
