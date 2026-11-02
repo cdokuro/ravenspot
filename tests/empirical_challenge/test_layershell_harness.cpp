@@ -36,7 +36,7 @@ bool test_01_layershell_surface_properties(QGuiApplication &app) {
     TEST_ASSERT(win != nullptr, "LayerShellWindow must instantiate an internal QQuickWindow");
 
     // 1. Geometry check
-    TEST_ASSERT(win->width() == 498, "Window width must be strictly 498px (450px card + 24px glow margins)");
+    TEST_ASSERT(win->width() == 543, "Window width must be strictly 543px (495px card + 24px glow margins)");
     TEST_ASSERT(win->height() == 648, "Window default height must be 648px (600px card + 24px margins)");
 
     // 2. Flags & Color check
@@ -52,7 +52,7 @@ bool test_01_layershell_surface_properties(QGuiApplication &app) {
         // If not running Wayland or compositor doesn't support layer shell, note it
     } else {
         TEST_ASSERT(lsWin->layer() == LayerShellQt::Window::LayerTop, "Layer must be LayerTop (2)");
-        TEST_ASSERT(lsWin->anchors() == LayerShellQt::Window::AnchorNone, "Anchors must be AnchorNone (0) for centering");
+        TEST_ASSERT(lsWin->anchors() == LayerShellQt::Window::Anchors(LayerShellQt::Window::AnchorTop | LayerShellQt::Window::AnchorLeft), "Anchors must be AnchorTop | AnchorLeft for drag positioning");
         TEST_ASSERT(lsWin->exclusionZone() == 0, "ExclusionZone must be 0 for floating overlay");
         TEST_ASSERT(lsWin->keyboardInteractivity() == LayerShellQt::Window::KeyboardInteractivityOnDemand,
                     "KeyboardInteractivity must be OnDemand (2)");
@@ -79,13 +79,13 @@ bool test_02_blur_behind_bounding(QGuiApplication &app) {
 
     // Check halo margin calculations
     const int margin = 24;
-    const int cardWidth = 450;
+    const int cardWidth = 495;
     const int cardHeight = 450;
     const QRect expectedBlurRect(margin, margin, cardWidth, cardHeight);
 
     TEST_ASSERT(expectedBlurRect.x() == 24, "Blur left margin must be 24");
     TEST_ASSERT(expectedBlurRect.y() == 24, "Blur top margin must be 24");
-    TEST_ASSERT(expectedBlurRect.width() == 450, "Blur card width must be 450");
+    TEST_ASSERT(expectedBlurRect.width() == 495, "Blur card width must be 495");
     TEST_ASSERT(expectedBlurRect.height() == 450, "Blur card height must be 450");
     TEST_ASSERT(win->width() - (margin + cardWidth) == 24, "Blur right margin must preserve 24px halo");
 

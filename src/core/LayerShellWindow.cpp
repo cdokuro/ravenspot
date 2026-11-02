@@ -37,7 +37,7 @@ void LayerShellWindow::initWindow() {
     if (!m_window) {
         m_ownsWindow = true;
         m_window = new QQuickWindow();
-        m_window->resize(498, 648);
+        m_window->resize(543, 648);
     }
 
     m_isWayland = QGuiApplication::platformName().contains(QStringLiteral("wayland"), Qt::CaseInsensitive);
@@ -71,7 +71,7 @@ void LayerShellWindow::initLayerShell() {
 
     m_layerWindow->setLayer(LayerShellQt::Window::LayerTop);
     m_layerWindow->setScope(QStringLiteral("ravenspot"));
-    m_layerWindow->setAnchors(LayerShellQt::Window::AnchorNone); // Centered
+    m_layerWindow->setAnchors(LayerShellQt::Window::Anchors(LayerShellQt::Window::AnchorTop | LayerShellQt::Window::AnchorLeft));
     m_layerWindow->setExclusiveZone(0);                           // Floating overlay
     m_layerWindow->setKeyboardInteractivity(LayerShellQt::Window::KeyboardInteractivityOnDemand);
     m_layerWindow->setActivateOnShow(true);
@@ -90,9 +90,9 @@ void LayerShellWindow::setCardHeight(int height) {
 void LayerShellWindow::updateBlurRegion(int cardHeight) {
     if (!m_window) return;
 
-    // Card width is 450px centered in 498px container (24px padding on each side)
+    // Card width is 495px centered in 543px container (24px padding on each side)
     const int margin = 24;
-    const int cardWidth = 450;
+    const int cardWidth = 495;
     const QRegion blurRegion(QRect(margin, margin, cardWidth, cardHeight));
 
     KWindowEffects::enableBlurBehind(m_window.data(), true, blurRegion);
@@ -135,17 +135,32 @@ void LayerShellWindow::showOnActiveScreen() {
 
     QScreen *target = resolveActiveScreen();
     if (target) {
+        if (m_lastScreen != target) {
+            m_lastScreen = target;
+            m_hasCustomPosition = false; // re-center on new screen
+        }
+
         if (m_layerWindow) {
             m_layerWindow->setScreen(target);
         }
         m_window->setScreen(target);
 
+        const QRect geom = target->geometry();
+        const int winW = m_window->width() > 0 ? m_window->width() : 543;
+        const int winH = m_window->height() > 0 ? m_window->height() : 648;
+
+        if (!m_hasCustomPosition) {
+            m_posX = (geom.width() - winW) / 2;
+            m_posY = (geom.height() - winH) / 2;
+        }
+
+        if (m_layerWindow) {
+            m_layerWindow->setMargins(QMargins(m_posX, m_posY, 0, 0));
+        }
+
         // Positioning for X11 sessions
         if (!m_isWayland) {
-            const QRect geom = target->geometry();
-            const int x = geom.x() + (geom.width() - m_window->width()) / 2;
-            const int y = geom.y() + (geom.height() - m_window->height()) / 2;
-            m_window->setPosition(x, y);
+            m_window->setPosition(geom.x() + m_posX, geom.y() + m_posY);
         }
         emit screenChanged(target);
     }
@@ -158,6 +173,57 @@ void LayerShellWindow::showOnActiveScreen() {
     m_graceTimer.start(); // 350ms window activation grace period
 
     emit visibilityChanged(true);
+}
+
+void LayerShellWindow::beginDrag() {
+    m_dragStartCursor = QCursor::pos();
+    m_dragStartPos = QPoint(m_posX, m_posY);
+    m_isDragging = true;
+}
+
+void LayerShellWindow::updateDrag() {
+    if (!m_isDragging) return;
+
+    const QPoint currentCursor = QCursor::pos();
+    const QPoint delta = currentCursor - m_dragStartCursor;
+
+    QScreen *screen = m_window ? m_window->screen() : nullptr;
+    if (!screen) screen = resolveActiveScreen();
+
+    const int maxW = screen ? screen->geometry().width() : 1920;
+    const int maxH = screen ? screen->geometry().height() : 1080;
+    const int winW = m_window ? m_window->width() : 543;
+    const int winH = m_window ? m_window->height() : 648;
+
+    int newX = std::clamp(m_dragStartPos.x() + delta.x(), 0, std::max(0, maxW - winW));
+    int newY = std::clamp(m_dragStartPos.y() + delta.y(), 0, std::max(0, maxH - winH));
+
+    m_posX = newX;
+    m_posY = newY;
+    m_hasCustomPosition = true;
+
+    if (m_layerWindow) {
+        m_layerWindow->setMargins(QMargins(m_posX, m_posY, 0, 0));
+    }
+    if (!m_isWayland && m_window && screen) {
+        m_window->setPosition(screen->geometry().x() + m_posX, screen->geometry().y() + m_posY);
+    }
+}
+
+void LayerShellWindow::endDrag() {
+    m_isDragging = false;
+}
+
+void LayerShellWindow::setWindowPosition(int x, int y) {
+    m_posX = x;
+    m_posY = y;
+    m_hasCustomPosition = true;
+    if (m_layerWindow) {
+        m_layerWindow->setMargins(QMargins(m_posX, m_posY, 0, 0));
+    }
+    if (!m_isWayland && m_window && m_window->screen()) {
+        m_window->setPosition(m_window->screen()->geometry().x() + m_posX, m_window->screen()->geometry().y() + m_posY);
+    }
 }
 
 void LayerShellWindow::hideWindow() {

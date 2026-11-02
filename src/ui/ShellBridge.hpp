@@ -64,6 +64,9 @@ public slots:
     Q_INVOKABLE void toggleMenu();
     Q_INVOKABLE void showMenu();
     Q_INVOKABLE void hideMenu();
+    Q_INVOKABLE void beginDrag();
+    Q_INVOKABLE void updateDrag();
+    Q_INVOKABLE void endDrag();
 
     // ── 2. Audio & Volume ──────────────────────────────────────
     Q_INVOKABLE void playThock();
@@ -114,6 +117,11 @@ public slots:
     Q_INVOKABLE void runDetached(const QString &command);
     Q_INVOKABLE void executeCommand(const QString &cmdStr, bool inTerminal = false);
     Q_INVOKABLE QString bash(const QString &script);
+    Q_INVOKABLE bool isCommandAvailable(const QString &command) const;
+    Q_INVOKABLE QString detectGpuVendor() const;
+    Q_INVOKABLE QString getNashiPath() const;
+    Q_INVOKABLE void installPackage(const QString &packageName, const QString &customCommand);
+    Q_INVOKABLE void installNashi();
 
     // ── 6. Power & System Actions ──────────────────────────────
     Q_INVOKABLE void powerOff();

@@ -53,12 +53,12 @@ Window {
     property color gpuColor: "#00f0ff"
     property string iconFont: "FantasqueSansM Nerd Font"
     property string textFont: "Inter"
-    property int cardWidth: 450
+    property int cardWidth: 495
     property int rowHeight: 48
     property int headerHeight: 114
     property int cpuPercent: 0
     property int gpuPercent: 0
-    property int appSoundVolume: 5
+    property int appSoundVolume: 10
     property bool appSoundMuted: false
     property bool audioFlyoutOpen: false
     property int sysVolume: 50
@@ -70,6 +70,19 @@ Window {
     property string currentPowerProfile: "balanced"
     property bool sleepInhibited: false
     property bool powerFlyoutOpen: false
+    property bool depModalOpen: false
+    property string depModalTitle: ""
+    property string depModalDesc: ""
+    property string depModalPkg: ""
+    property string depModalCmd: ""
+
+    function showDependencyPrompt(pkg, title, desc, cmd) {
+        depModalPkg = pkg
+        depModalTitle = title
+        depModalDesc = desc
+        depModalCmd = cmd
+        depModalOpen = true
+    }
 
     property int themeVersion: 1
 
@@ -1269,6 +1282,23 @@ Window {
             } else if (row.provider === "power-profile") {
                 Shell.applyPowerProfile(row.value)
             } else if (row.action) {
+                if ((row.itemId && row.itemId.indexOf("trigger.nashi") === 0) || (row.action && row.action.indexOf("nashi") !== -1)) {
+                    var nashiExec = Shell.getNashiPath()
+                    if (nashiExec === "") {
+                        showDependencyPrompt(
+                            "nashi-app",
+                            "Nashi Radial Hub",
+                            "Nashi Hızlı Eylem ve Format Dönüştürücü Çarkını kullanabilmeniz için <b>Nashi</b> uygulamasının kurulu olması gerekiyor. GitHub'dan (<b>cdokuro/nashi-app</b>) indirilip kurulsun mu?",
+                            "install-nashi"
+                        )
+                        return
+                    }
+                    var actCmd = row.action
+                    actCmd = actCmd.replace("/home/dokuro/Masaüstü/orkunprogram/nashi-linux/nashi", nashiExec)
+                    Shell.runDetached(actCmd)
+                    Qt.callLater(closeMenu)
+                    return
+                }
                 Shell.runDetached(row.action)
             }
             Qt.callLater(closeMenu)
@@ -1563,6 +1593,7 @@ Window {
     }
 
     function closeMenu() {
+        if (root.depModalOpen) root.depModalOpen = false
         if (root.powerFlyoutOpen) root.powerFlyoutOpen = false
         if (root.audioFlyoutOpen) root.audioFlyoutOpen = false
         if (contextPopup.opened) contextPopup.close()
@@ -1744,6 +1775,11 @@ Window {
             id: keyHandler
             Keys.onPressed: function(event) {
                 if (event.key === Qt.Key_Escape) {
+                    if (root.depModalOpen) {
+                        root.depModalOpen = false
+                        event.accepted = true
+                        return
+                    }
                     if (root.powerFlyoutOpen) {
                         root.powerFlyoutOpen = false
                         event.accepted = true
@@ -1845,9 +1881,17 @@ Window {
                 height: 32
                 z: 2
                 acceptedButtons: Qt.LeftButton
-                cursorShape: Qt.ArrowCursor
+                cursorShape: pressed ? Qt.ClosedHandCursor : Qt.ArrowCursor
                 onPressed: function(mouse) {
-                    root.startSystemMove()
+                    Shell.beginDrag()
+                }
+                onPositionChanged: function(mouse) {
+                    if (pressed) {
+                        Shell.updateDrag()
+                    }
+                }
+                onReleased: {
+                    Shell.endDrag()
                 }
             }
 
@@ -1863,32 +1907,59 @@ Window {
                 height: 20
                 z: 5
 
-                // Sol: RavenSpot Başlığı (Sadece Metin, Saf & Estetik Tipografi)
-                Row {
-                    id: brandHeaderRow
+                // Sol: RavenSpot Başlığı (Sadece Metin, Saf & Estetik Tipografi + Tutup Taşıma)
+                Item {
+                    id: brandHeaderContainer
                     anchors.left: parent.left
-                    anchors.verticalCenter: parent.verticalCenter
-                    spacing: 0
-                    z: 10
+                    anchors.right: powerProfileBtn.left
+                    anchors.rightMargin: 8
+                    anchors.top: parent.top
+                    anchors.bottom: parent.bottom
+                    z: 15
 
-                    Text {
-                        text: "Raven"
-                        color: root.fgColor
-                        font.pixelSize: 13
-                        font.family: "Fira Sans, Inter, sans-serif"
-                        font.weight: Font.Bold
-                        font.letterSpacing: 0.8
+                    Row {
+                        id: brandHeaderRow
+                        anchors.left: parent.left
                         anchors.verticalCenter: parent.verticalCenter
+                        spacing: 0
+
+                        Text {
+                            text: "Raven"
+                            color: root.fgColor
+                            font.pixelSize: 13
+                            font.family: "Fira Sans, Inter, sans-serif"
+                            font.weight: Font.Bold
+                            font.letterSpacing: 0.8
+                            anchors.verticalCenter: parent.verticalCenter
+                        }
+
+                        Text {
+                            text: "Spot"
+                            color: root.selFg
+                            font.pixelSize: 13
+                            font.family: "Fira Sans, Inter, sans-serif"
+                            font.weight: Font.DemiBold
+                            font.letterSpacing: 0.8
+                            anchors.verticalCenter: parent.verticalCenter
+                        }
                     }
 
-                    Text {
-                        text: "Spot"
-                        color: root.selFg
-                        font.pixelSize: 13
-                        font.family: "Fira Sans, Inter, sans-serif"
-                        font.weight: Font.DemiBold
-                        font.letterSpacing: 0.8
-                        anchors.verticalCenter: parent.verticalCenter
+                    MouseArea {
+                        id: titleDragMouse
+                        anchors.fill: parent
+                        cursorShape: pressed ? Qt.ClosedHandCursor : Qt.OpenHandCursor
+                        acceptedButtons: Qt.LeftButton
+                        onPressed: function(mouse) {
+                            Shell.beginDrag()
+                        }
+                        onPositionChanged: function(mouse) {
+                            if (pressed) {
+                                Shell.updateDrag()
+                            }
+                        }
+                        onReleased: {
+                            Shell.endDrag()
+                        }
                     }
                 }
 
@@ -2808,6 +2879,15 @@ Window {
                         onEntered: Shell.playThock()
                         onClicked: {
                             Shell.playCreamy()
+                            if (!Shell.isCommandAvailable("cpu-x")) {
+                                showDependencyPrompt(
+                                    "cpu-x",
+                                    "CPU-X Sistem İzleme",
+                                    "CPU ayrıntılarını ve donanım izleme panelini açmak için <b>cpu-x</b> paketinin kurulu olması gerekiyor. Şimdi kurmak istiyor musunuz?",
+                                    "sudo pacman -S --noconfirm cpu-x || yay -S --noconfirm cpu-x"
+                                )
+                                return
+                            }
                             root.opened = false
                             Shell.openSystemMonitor("cpu")
                             Qt.callLater(closeMenu)
@@ -2860,6 +2940,28 @@ Window {
                         onEntered: Shell.playThock()
                         onClicked: {
                             Shell.playCreamy()
+                            var vendor = Shell.detectGpuVendor()
+                            if (vendor === "amd") {
+                                if (!Shell.isCommandAvailable("lact")) {
+                                    showDependencyPrompt(
+                                        "lact",
+                                        "LACT (Linux AMD Controller)",
+                                        "AMD Radeon ekran kartınızı ve GPU telemetrisini yönetmek için <b>lact</b> paketinin kurulu olması gerekiyor. Şimdi kurmak istiyor musunuz?",
+                                        "sudo pacman -S --noconfirm lact || yay -S --noconfirm lact-bin && sudo systemctl enable --now lactd && lact"
+                                    )
+                                    return
+                                }
+                            } else if (vendor === "nvidia") {
+                                if (!Shell.isCommandAvailable("nvidia-settings") && !Shell.isCommandAvailable("nvtop")) {
+                                    showDependencyPrompt(
+                                        "nvidia-settings",
+                                        "NVIDIA Denetim Masası & NVTOP",
+                                        "NVIDIA ekran kartınızı yönetmek için <b>nvidia-settings</b> ve <b>nvtop</b> paketlerinin kurulu olması gerekiyor. Şimdi kurmak istiyor musunuz?",
+                                        "sudo pacman -S --noconfirm nvidia-settings nvtop"
+                                    )
+                                    return
+                                }
+                            }
                             root.opened = false
                             Shell.openSystemMonitor("gpu")
                             Qt.callLater(closeMenu)
@@ -3614,6 +3716,171 @@ Window {
                             } else {
                                 var nextState = !root.sleepInhibited
                                 root.sleepInhibited = Shell.setSleepInhibited(nextState)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // ── Paket / Uygulama Kurulum Onay Modalı (Dependency Installer Modal) ──
+        Rectangle {
+            id: dependencyModalBackdrop
+            visible: root.depModalOpen
+            z: 200
+            anchors.fill: card
+            radius: card.radius
+            color: Qt.rgba(0, 0, 0, 0.65)
+
+            MouseArea {
+                anchors.fill: parent
+                onClicked: {
+                    root.depModalOpen = false
+                }
+            }
+
+            Rectangle {
+                id: dependencyModalCard
+                anchors.centerIn: parent
+                width: Math.min(420, card.width - 32)
+                height: depCol.height + 36
+                radius: 12
+                color: Qt.rgba(24/255, 27/255, 34/255, 0.98)
+                border.color: root.selFg
+                border.width: 1
+
+                layer.enabled: true
+                layer.effect: MultiEffect {
+                    shadowEnabled: true
+                    shadowColor: "#a0000000"
+                    shadowBlur: 0.85
+                    shadowOpacity: 0.8
+                    shadowVerticalOffset: 8
+                }
+
+                MouseArea {
+                    anchors.fill: parent
+                    acceptedButtons: Qt.AllButtons
+                }
+
+                Column {
+                    id: depCol
+                    anchors.top: parent.top
+                    anchors.topMargin: 18
+                    anchors.left: parent.left
+                    anchors.leftMargin: 20
+                    anchors.right: parent.right
+                    anchors.rightMargin: 20
+                    spacing: 14
+
+                    // Başlık Satırı
+                    Row {
+                        spacing: 8
+                        width: parent.width
+
+                        Text {
+                            text: "󰏔"
+                            font.family: root.iconFont
+                            font.pixelSize: 18
+                            color: root.selFg
+                            anchors.verticalCenter: parent.verticalCenter
+                        }
+
+                        Text {
+                            text: root.depModalTitle
+                            font.family: root.textFont
+                            font.pixelSize: 14
+                            font.weight: Font.Bold
+                            color: root.fgColor
+                            anchors.verticalCenter: parent.verticalCenter
+                            elide: Text.ElideRight
+                            width: parent.width - 28
+                        }
+                    }
+
+                    // Açıklama Metni
+                    Text {
+                        text: root.depModalDesc
+                        textFormat: Text.RichText
+                        font.family: root.textFont
+                        font.pixelSize: 12
+                        color: root.fgDim
+                        wrapMode: Text.Wrap
+                        width: parent.width
+                        lineHeight: 1.25
+                    }
+
+                    // Butonlar Satırı (Kur / İptal)
+                    Row {
+                        anchors.right: parent.right
+                        spacing: 10
+
+                        // İptal Butonu
+                        Rectangle {
+                            width: 75
+                            height: 28
+                            radius: 6
+                            color: cancelMouse.containsMouse ? Qt.rgba(1, 1, 1, 0.12) : Qt.rgba(1, 1, 1, 0.06)
+                            border.color: Qt.rgba(255, 255, 255, 0.15)
+                            border.width: 1
+
+                            Text {
+                                text: "İptal"
+                                anchors.centerIn: parent
+                                font.family: root.textFont
+                                font.pixelSize: 12
+                                color: root.fgDim
+                            }
+
+                            MouseArea {
+                                id: cancelMouse
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: {
+                                    Shell.playCreamy()
+                                    root.depModalOpen = false
+                                }
+                            }
+                        }
+
+                        // Kur Butonu
+                        Rectangle {
+                            width: 90
+                            height: 28
+                            radius: 6
+                            color: installMouse.containsMouse ? Qt.lighter(root.selFg, 1.15) : root.selFg
+
+                            Row {
+                                anchors.centerIn: parent
+                                spacing: 5
+                                Text {
+                                    text: "󰄬"
+                                    font.family: root.iconFont
+                                    font.pixelSize: 12
+                                    color: "#ffffff"
+                                }
+                                Text {
+                                    text: "Yükle"
+                                    font.family: root.textFont
+                                    font.pixelSize: 12
+                                    font.weight: Font.DemiBold
+                                    color: "#ffffff"
+                                }
+                            }
+
+                            MouseArea {
+                                id: installMouse
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: {
+                                    Shell.playCreamy()
+                                    root.depModalOpen = false
+                                    Shell.installPackage(root.depModalPkg, root.depModalCmd)
+                                    root.opened = false
+                                    Qt.callLater(closeMenu)
+                                }
                             }
                         }
                     }

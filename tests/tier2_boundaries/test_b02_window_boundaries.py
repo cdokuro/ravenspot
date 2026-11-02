@@ -8,13 +8,13 @@ class TestB02WindowBoundaries(unittest.TestCase):
         screen_w, screen_h = 0, 0
         safe_w = screen_w if screen_w > 0 else 1920
         safe_h = screen_h if screen_h > 0 else 1080
-        win_w = 498
+        win_w = 543
         win_x = (safe_w - win_w) // 2
-        self.assertEqual(win_x, 711)
+        self.assertEqual(win_x, 688)
 
     def test_02_window_high_dpi_scaling(self):
-        """Fractional scale factors (1.25, 1.5, 2.0) preserve logical 450px card width."""
-        logical_width = 450
+        """Fractional scale factors (1.25, 1.5, 2.0) preserve logical 495px card width."""
+        logical_width = 495
         for scale in [1.25, 1.5, 2.0]:
             physical_px = int(logical_width * scale)
             reconstructed_logical = physical_px / scale

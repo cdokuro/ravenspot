@@ -190,13 +190,13 @@ class TestPairwiseInteractions(unittest.TestCase):
         self.assertFalse(self.daemon.sound_muted)
 
     def test_21_multi_monitor_move_and_geometry(self):
-        """Moving launcher to a second 4K monitor centers window with 450px card width."""
+        """Moving launcher to a second 4K monitor centers window with 495px card width."""
         screen2_w, screen2_h = 3840, 2160
-        card_w = 450
-        win_w = 498
+        card_w = 495
+        win_w = 543
         center_x = (screen2_w - win_w) // 2
-        self.assertEqual(center_x, 1671)
-        self.assertEqual(card_w, 450)
+        self.assertEqual(center_x, 1648)
+        self.assertEqual(card_w, 495)
 
     def test_22_file_search_and_keyboard_nav(self):
         """File search results navigable with arrow keys and Enter triggers xdg-open."""

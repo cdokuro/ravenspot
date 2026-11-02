@@ -33,6 +33,13 @@ public:
     void setCardHeight(int height);
     [[nodiscard]] int cardHeight() const noexcept { return m_cardHeight; }
 
+    // Drag-to-move window controls
+    void beginDrag();
+    void updateDrag();
+    void endDrag();
+    void setWindowPosition(int x, int y);
+    [[nodiscard]] QPoint windowPosition() const noexcept { return QPoint(m_posX, m_posY); }
+
 signals:
     void visibilityChanged(bool visible);
     void screenChanged(QScreen *screen);
@@ -55,6 +62,13 @@ private:
     bool m_canCloseOnInactive{false};
     bool m_isWayland{false};
     int m_cardHeight{600};
+    int m_posX{0};
+    int m_posY{0};
+    bool m_hasCustomPosition{false};
+    bool m_isDragging{false};
+    QPoint m_dragStartCursor;
+    QPoint m_dragStartPos;
+    QPointer<QScreen> m_lastScreen;
 };
 
 } // namespace ravenspot

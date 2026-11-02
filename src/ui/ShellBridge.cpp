@@ -121,6 +121,24 @@ void ShellBridge::hideMenu() {
     emit hideRequested();
 }
 
+void ShellBridge::beginDrag() {
+    if (m_layerShellWindow) {
+        m_layerShellWindow->beginDrag();
+    }
+}
+
+void ShellBridge::updateDrag() {
+    if (m_layerShellWindow) {
+        m_layerShellWindow->updateDrag();
+    }
+}
+
+void ShellBridge::endDrag() {
+    if (m_layerShellWindow) {
+        m_layerShellWindow->endDrag();
+    }
+}
+
 // ── 2. Audio & Volume ──────────────────────────────────────
 
 void ShellBridge::playThock() {
@@ -169,7 +187,7 @@ QVariantMap ShellBridge::getAppAudioInfo() const {
         map[QStringLiteral("volume")] = m_audioEngine->volume();
         map[QStringLiteral("muted")] = m_audioEngine->isMuted();
     } else {
-        map[QStringLiteral("volume")] = 5;
+        map[QStringLiteral("volume")] = 10;
         map[QStringLiteral("muted")] = false;
     }
     return map;
@@ -605,6 +623,87 @@ QString ShellBridge::bash(const QString &script) {
     return QString();
 }
 
+bool ShellBridge::isCommandAvailable(const QString &command) const {
+    const QString cmd = command.trimmed();
+    if (cmd.isEmpty()) return false;
+    if (cmd.startsWith(QLatin1Char('/')) || cmd.startsWith(QLatin1String("~/"))) {
+        QString expanded = cmd;
+        if (expanded.startsWith(QLatin1String("~/"))) {
+            expanded = QDir::homePath() + expanded.mid(1);
+        }
+        return QFile::exists(expanded);
+    }
+    return !QStandardPaths::findExecutable(cmd).isEmpty();
+}
+
+QString ShellBridge::detectGpuVendor() const {
+    QDir driDir(QStringLiteral("/sys/class/drm"));
+    const QStringList cards = driDir.entryList({QStringLiteral("card*")}, QDir::Dirs | QDir::NoDotAndDotDot);
+    for (const auto &c : cards) {
+        if (c.contains(QLatin1Char('-'))) continue;
+        QFile vendorFile(QStringLiteral("/sys/class/drm/%1/device/vendor").arg(c));
+        if (vendorFile.open(QIODevice::ReadOnly)) {
+            const QString v = QString::fromUtf8(vendorFile.readAll()).trimmed().toLower();
+            if (v == QStringLiteral("0x1002")) return QStringLiteral("amd");
+            if (v == QStringLiteral("0x10de")) return QStringLiteral("nvidia");
+            if (v == QStringLiteral("0x8086")) return QStringLiteral("intel");
+        }
+    }
+    if (!QStandardPaths::findExecutable(QStringLiteral("nvidia-smi")).isEmpty()) {
+        return QStringLiteral("nvidia");
+    }
+    return QStringLiteral("amd");
+}
+
+QString ShellBridge::getNashiPath() const {
+    const QString inPath = QStandardPaths::findExecutable(QStringLiteral("nashi"));
+    if (!inPath.isEmpty()) return inPath;
+
+    const QString localBin = QDir::homePath() + QStringLiteral("/.local/bin/nashi");
+    if (QFile::exists(localBin)) return localBin;
+
+    const QString localShare = QDir::homePath() + QStringLiteral("/.local/share/nashi/nashi");
+    if (QFile::exists(localShare)) return localShare;
+
+    const QString desktopPath = QStringLiteral("/home/dokuro/Masaüstü/orkunprogram/nashi-linux/nashi");
+    if (QFile::exists(desktopPath)) return desktopPath;
+
+    return QString();
+}
+
+void ShellBridge::installPackage(const QString &packageName, const QString &customCommand) {
+    if (packageName == QStringLiteral("nashi") || packageName == QStringLiteral("nashi-app") || customCommand == QStringLiteral("install-nashi")) {
+        installNashi();
+        return;
+    }
+
+    QString cmd = customCommand.trimmed();
+    if (cmd.isEmpty()) {
+        cmd = QStringLiteral("sudo pacman -S --noconfirm %1 || yay -S --noconfirm %1").arg(packageName);
+    }
+
+    const QString script = QStringLiteral("%1; echo; echo 'Kurulum tamamlandı. Kapatmak için Enter tuşuna basın...'; read -r _").arg(cmd);
+    runInTerminal(script);
+}
+
+void ShellBridge::installNashi() {
+    const QString script = QStringLiteral(
+        "echo '=== Nashi Kurulumu Başlatılıyor (GitHub: cdokuro/nashi-app) ==='; "
+        "mkdir -p ~/.local/share && cd ~/.local/share && "
+        "if [ -d nashi/.git ]; then "
+        "  echo 'Mevcut kopya güncelleniyor...'; cd nashi && git pull; "
+        "else "
+        "  echo 'GitHub deposu klonlanıyor...'; rm -rf nashi && git clone https://github.com/cdokuro/nashi-app.git nashi && cd nashi; "
+        "fi && "
+        "chmod +x nashi && "
+        "mkdir -p ~/.local/bin && ln -sf ~/.local/share/nashi/nashi ~/.local/bin/nashi && "
+        "echo 'Nashi başarıyla kuruldu (~/.local/bin/nashi)!'; "
+        "notify-send 'Nashi' 'Kurulum tamamlandı ve menüye bağlandı!' 2>/dev/null || true; "
+        "echo; echo 'Devam etmek için Enter tuşuna basın...'; read -r _"
+    );
+    runInTerminal(script);
+}
+
 // ── 6. Power & System Actions ──────────────────────────────
 
 void ShellBridge::powerOff() {
@@ -1027,7 +1126,7 @@ void ShellBridge::updateTelemetry() {
         gpuFile.close();
     }
 
-    const int vol = m_audioEngine ? m_audioEngine->volume() : 5;
+    const int vol = m_audioEngine ? m_audioEngine->volume() : 10;
     const bool muted = m_audioEngine ? m_audioEngine->isMuted() : false;
 
     emit statsUpdated(m_lastCpuPercent, m_lastGpuPercent, vol, muted);
