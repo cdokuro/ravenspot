@@ -9,6 +9,10 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonArray>
+#include <QDBusMessage>
+#include <QDBusConnection>
+#include <QDBusArgument>
+#include <QDBusReply>
 #include <algorithm>
 #include <sys/stat.h>
 
@@ -454,9 +458,106 @@ QString AppIndexer::getAppActionsJson(const QString &desktopPath) const {
     return QString::fromUtf8(QJsonDocument(arr).toJson(QJsonDocument::Compact));
 }
 
+bool AppIndexer::activateExistingWindow(const QString &desktopOrExec) const {
+    const QString trimmed = desktopOrExec.trimmed();
+    if (trimmed.isEmpty()) return false;
+
+    QString appLabel;
+    QString appId;
+    QString appIcon;
+
+    const QFileInfo fi(trimmed);
+    QString baseName = fi.completeBaseName().toLower();
+    if (baseName.endsWith(QStringLiteral(".desktop"))) {
+        baseName.chop(8);
+    }
+
+    auto snapshot = m_snapshot.load();
+    if (snapshot) {
+        auto it = snapshot->desktopPathLookup.find(trimmed);
+        if (it != snapshot->desktopPathLookup.end()) {
+            const auto &app = snapshot->allApps[it->second];
+            appLabel = app.label.toLower();
+            appId = app.id.toLower();
+            appIcon = app.icon.toLower();
+        }
+    }
+
+    auto msg = QDBusMessage::createMethodCall(
+        QStringLiteral("org.kde.KWin"),
+        QStringLiteral("/WindowsRunner"),
+        QStringLiteral("org.kde.krunner1"),
+        QStringLiteral("Match")
+    );
+    msg << QString(); // query all open windows
+
+    auto reply = QDBusConnection::sessionBus().call(msg);
+    if (reply.arguments().isEmpty()) return false;
+
+    const QDBusArgument arg = reply.arguments().at(0).value<QDBusArgument>();
+    if (arg.currentType() != QDBusArgument::ArrayType) return false;
+
+    arg.beginArray();
+    QString foundMatchId;
+    while (!arg.atEnd()) {
+        arg.beginStructure();
+        QString id;
+        QString text;
+        QString iconName;
+        int type;
+        double relevance;
+        QVariantMap properties;
+        arg >> id >> text >> iconName >> type >> relevance >> properties;
+        arg.endStructure();
+
+        if (!foundMatchId.isEmpty()) continue;
+
+        const QString tLow = text.toLower();
+        const QString iLow = iconName.toLower();
+
+        bool iconMatch = (!appIcon.isEmpty() && (appIcon == iLow || iLow.contains(appIcon) || appIcon.contains(iLow)));
+        if (!iconMatch && !baseName.isEmpty()) {
+            iconMatch = (baseName == iLow || iLow.contains(baseName) || baseName.contains(iLow));
+        }
+
+        bool titleMatch = false;
+        if (!appLabel.isEmpty() && tLow.contains(appLabel)) {
+            titleMatch = true;
+        } else if (!appId.isEmpty() && tLow.contains(appId)) {
+            titleMatch = true;
+        } else if (!baseName.isEmpty() && tLow.contains(baseName)) {
+            titleMatch = true;
+        }
+
+        if (iconMatch || titleMatch) {
+            foundMatchId = id;
+        }
+    }
+    arg.endArray();
+
+    if (!foundMatchId.isEmpty()) {
+        auto runMsg = QDBusMessage::createMethodCall(
+            QStringLiteral("org.kde.KWin"),
+            QStringLiteral("/WindowsRunner"),
+            QStringLiteral("org.kde.krunner1"),
+            QStringLiteral("Run")
+        );
+        runMsg << foundMatchId << QString();
+        QDBusConnection::sessionBus().call(runMsg);
+        return true;
+    }
+
+    return false;
+}
+
 void AppIndexer::launchApp(const QString &desktopOrExec) {
     const QString trimmed = desktopOrExec.trimmed();
     if (trimmed.isEmpty()) return;
+
+    // 1. If an existing window is already open, activate and bring to front
+    if (activateExistingWindow(trimmed)) {
+        return;
+    }
 
     if (trimmed.endsWith(QStringLiteral(".desktop")) && QFile::exists(trimmed)) {
         // Preferred: KDE kioclient on Plasma 6 / CachyOS

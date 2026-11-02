@@ -77,6 +77,7 @@ public:
     [[nodiscard]] QString getAppCategoryCountsJson() const;
     [[nodiscard]] QString getAppActionsJson(const QString &desktopPath) const;
     void launchApp(const QString &desktopOrExec);
+    [[nodiscard]] bool activateExistingWindow(const QString &desktopOrExec) const;
 
     // Context Action Helpers
     void openContainingFolder(const QString &desktopPath) const;

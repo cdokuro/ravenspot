@@ -105,6 +105,8 @@ public slots:
     Q_INVOKABLE QString getAppCategoryCounts() const;
     Q_INVOKABLE void launchApp(const QString &desktop);
     Q_INVOKABLE QString getAppActions(const QString &desktop) const;
+    Q_INVOKABLE QString searchWindows(const QString &query) const;
+    Q_INVOKABLE bool activateWindow(const QString &matchId);
     Q_INVOKABLE void editDesktopFile(const QString &desktop);
     Q_INVOKABLE void openInDiscover(const QString &desktop);
     Q_INVOKABLE void openInTerminal(const QString &path);

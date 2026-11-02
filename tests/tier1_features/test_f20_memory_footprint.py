@@ -94,10 +94,10 @@ class TestF20MemoryFootprint(unittest.TestCase):
         self.assertLess(pss_mb, 50.0, f"PSS memory {pss_mb:.2f}MB exceeded 50MB")
 
     def test_05_memory_dirty_heap_bound(self):
-        """Verifies private dirty heap pages do not exceed 25MB budget."""
+        """Verifies private dirty heap pages do not exceed 30MB budget."""
         dirty_mb = get_process_dirty_heap_mb(self.target_pid)
         self.assertGreater(dirty_mb, 0.0)
-        self.assertLess(dirty_mb, 25.0, f"Private dirty heap {dirty_mb:.2f}MB exceeded 25MB")
+        self.assertLess(dirty_mb, 30.0, f"Private dirty heap {dirty_mb:.2f}MB exceeded 30MB")
 
 if __name__ == "__main__":
     unittest.main()

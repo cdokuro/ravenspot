@@ -483,6 +483,62 @@ QString ShellBridge::getAppActions(const QString &desktop) const {
     return m_appIndexer ? m_appIndexer->getAppActionsJson(desktop) : QStringLiteral("[]");
 }
 
+QString ShellBridge::searchWindows(const QString &query) const {
+    const QString q = query.trimmed();
+    if (q.isEmpty()) return QStringLiteral("[]");
+
+    auto msg = QDBusMessage::createMethodCall(
+        QStringLiteral("org.kde.KWin"),
+        QStringLiteral("/WindowsRunner"),
+        QStringLiteral("org.kde.krunner1"),
+        QStringLiteral("Match")
+    );
+    msg << q;
+
+    auto reply = QDBusConnection::sessionBus().call(msg);
+    if (reply.arguments().isEmpty()) return QStringLiteral("[]");
+
+    const QDBusArgument arg = reply.arguments().at(0).value<QDBusArgument>();
+    if (arg.currentType() != QDBusArgument::ArrayType) return QStringLiteral("[]");
+
+    QJsonArray items;
+    arg.beginArray();
+    while (!arg.atEnd()) {
+        arg.beginStructure();
+        QString id;
+        QString text;
+        QString iconName;
+        int type;
+        double relevance;
+        QVariantMap properties;
+        arg >> id >> text >> iconName >> type >> relevance >> properties;
+        arg.endStructure();
+
+        QJsonObject obj;
+        obj[QStringLiteral("id")] = id;
+        obj[QStringLiteral("title")] = text;
+        obj[QStringLiteral("iconName")] = iconName;
+        items.append(obj);
+    }
+    arg.endArray();
+
+    return QString::fromUtf8(QJsonDocument(items).toJson(QJsonDocument::Compact));
+}
+
+bool ShellBridge::activateWindow(const QString &matchId) {
+    if (matchId.isEmpty()) return false;
+
+    auto msg = QDBusMessage::createMethodCall(
+        QStringLiteral("org.kde.KWin"),
+        QStringLiteral("/WindowsRunner"),
+        QStringLiteral("org.kde.krunner1"),
+        QStringLiteral("Run")
+    );
+    msg << matchId << QString();
+    auto reply = QDBusConnection::sessionBus().call(msg);
+    return reply.type() != QDBusMessage::ErrorMessage;
+}
+
 void ShellBridge::editDesktopFile(const QString &desktop) {
     if (desktop.isEmpty()) return;
     QProcess::startDetached(QStringLiteral("xdg-open"), {desktop});

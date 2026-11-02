@@ -677,6 +677,37 @@ Window {
             }
             rows = currentRows.concat(drilldownRows)
 
+            // 0. Açık Pencereler (KWin WindowsRunner)
+            if (Shell.searchWindows && query.trim().length > 0) {
+                try {
+                    var winResults = JSON.parse(Shell.searchWindows(query) || "[]")
+                    for (var wi = winResults.length - 1; wi >= 0; wi--) {
+                        var w = winResults[wi]
+                        rows.unshift({
+                            itemId: "__win_" + w.id + "__",
+                            kind: "action",
+                            icon: "󰖲",
+                            iconName: w.iconName || "window",
+                            iconFont: root.iconFont,
+                            appIcon: w.iconName || "",
+                            appId: "",
+                            label: w.title,
+                            target: "",
+                            detail: "Open Window • Press Enter to switch",
+                            path: "Windows",
+                            childCount: 0,
+                            action: "",
+                            provider: "window-item",
+                            value: w.id,
+                            desktop: "",
+                            disabled: false,
+                            score: -80000,
+                            section: ""
+                        })
+                    }
+                } catch(e) {}
+            }
+
             // 1. Hesap Makinesi
             var mathVal = tryEvalMath(query)
             if (mathVal !== null) {
@@ -1174,6 +1205,11 @@ Window {
             Shell.playCreamy()
             root.opened = false
             Shell.launchApp(row.desktop)
+            Qt.callLater(closeMenu)
+        } else if (row.provider === "window-item") {
+            Shell.playCreamy()
+            root.opened = false
+            Shell.activateWindow(row.value)
             Qt.callLater(closeMenu)
         } else if (row.provider === "clipboard-item") {
             root.opened = false
