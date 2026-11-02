@@ -12,6 +12,7 @@
 #include <QDBusMessage>
 #include <QDBusConnection>
 #include <QDBusArgument>
+#include <QUrl>
 #include <QDBusReply>
 #include <algorithm>
 #include <sys/stat.h>
@@ -554,23 +555,29 @@ void AppIndexer::launchApp(const QString &desktopOrExec) {
     const QString trimmed = desktopOrExec.trimmed();
     if (trimmed.isEmpty()) return;
 
-    // 1. If an existing window is already open, activate and bring to front
-    if (activateExistingWindow(trimmed)) {
-        return;
-    }
-
     if (trimmed.endsWith(QStringLiteral(".desktop")) && QFile::exists(trimmed)) {
-        // Preferred: KDE kioclient on Plasma 6 / CachyOS
-        if (!QStandardPaths::findExecutable(QStringLiteral("kioclient")).isEmpty()) {
-            QProcess::startDetached(QStringLiteral("kioclient"), {QStringLiteral("exec"), trimmed});
-            return;
-        }
-        if (!QStandardPaths::findExecutable(QStringLiteral("gio")).isEmpty()) {
-            QProcess::startDetached(QStringLiteral("gio"), {QStringLiteral("launch"), trimmed});
-            return;
+        QFileInfo fi(trimmed);
+        QString desktopId = fi.fileName();
+        if (desktopId.endsWith(QStringLiteral(".desktop"))) {
+            desktopId.chop(8);
         }
 
-        // Direct fallback: find in index
+        // Tier 1: gtk-launch (standard Freedesktop launcher on modern Linux)
+        if (!QStandardPaths::findExecutable(QStringLiteral("gtk-launch")).isEmpty()) {
+            if (QProcess::startDetached(QStringLiteral("gtk-launch"), {desktopId})) {
+                return;
+            }
+        }
+
+        // Tier 2: KDE kioclient with file:// URL scheme (required by KIO on Plasma 6)
+        if (!QStandardPaths::findExecutable(QStringLiteral("kioclient")).isEmpty()) {
+            const QString fileUrl = QUrl::fromLocalFile(trimmed).toString();
+            if (QProcess::startDetached(QStringLiteral("kioclient"), {QStringLiteral("exec"), fileUrl})) {
+                return;
+            }
+        }
+
+        // Tier 3: Direct execution using parsed Exec= command from AppIndexer snapshot
         auto snapshot = m_snapshot.load();
         if (snapshot) {
             auto it = snapshot->desktopPathLookup.find(trimmed);
@@ -578,7 +585,7 @@ void AppIndexer::launchApp(const QString &desktopOrExec) {
                 const auto &app = snapshot->allApps[it->second];
                 if (app.terminal) {
                     runInTerminal(app.cleanedExec);
-                } else {
+                } else if (!app.cleanedExec.isEmpty()) {
                     QProcess::startDetached(QStringLiteral("/bin/sh"), {QStringLiteral("-c"), app.cleanedExec});
                 }
                 return;
@@ -586,7 +593,7 @@ void AppIndexer::launchApp(const QString &desktopOrExec) {
         }
     }
 
-    // Direct exec string (e.g. from test suites "firefox %u")
+    // Direct exec string (e.g. from test suites "firefox %u" or custom binary)
     const QString cleaned = cleanExecCommand(trimmed);
     if (!cleaned.isEmpty()) {
         QProcess::startDetached(QStringLiteral("/bin/sh"), {QStringLiteral("-c"), cleaned});
