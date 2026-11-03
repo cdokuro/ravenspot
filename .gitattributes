@@ -1,0 +1,4 @@
+# Exclude test suite, legacy Python prototype, and helper tools from GitHub language statistics
+tests/** linguist-detectable=false
+bridge.py linguist-detectable=false
+tools/** linguist-detectable=false
