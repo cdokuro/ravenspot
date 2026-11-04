@@ -1413,15 +1413,16 @@ Window {
             })
         } else if (resolvedPath && resolvedPath.length > 0) {
             // All file or folder items
-            if (rowItem.kind === "menu" || rowItem.kind === "link") {
+            if (rowItem.kind === "menu" || rowItem.kind === "link" || (rowItem.provider && rowItem.provider.startsWith("files-"))) {
                 contextMenuModel.append({
-                    label: "Open in Menu",
+                    label: "Menüde Aç (Open in Menu)",
                     icon: "",
                     actionType: "activateCurrent",
                     actionPayload: "",
                     isDanger: false
                 })
-            } else if (!isDir) {
+            }
+            if (!isDir) {
                 contextMenuModel.append({
                     label: "Open File (Dosyayı Aç)",
                     icon: "",
@@ -1433,7 +1434,7 @@ Window {
 
             // Open Location
             contextMenuModel.append({
-                label: isDir ? "Open Location (Dolphin)" : "Open Containing Folder (Klasörde Göster)",
+                label: isDir ? "Dosya Yöneticisinde Aç (Dolphin)" : "Open Containing Folder (Klasörde Göster)",
                 icon: "󰉋",
                 actionType: isDir ? "openPath" : "openLocation",
                 actionPayload: resolvedPath,
@@ -1724,13 +1725,21 @@ Window {
         opacity: root.opened ? 1.0 : 0.0
         scale: root.opened ? 1.0 : 0.94
 
-        // Pencere içine tıklamak pencereyi kapatmasın; sağ tık ise bir önceki sayfaya döndürsün
+        // Pencere içine tıklamak pencereyi kapatmasın; sağ tık veya mouse back bir önceki sayfaya döndürsün
         MouseArea {
             anchors.fill: parent
-            acceptedButtons: Qt.LeftButton | Qt.RightButton
+            acceptedButtons: Qt.LeftButton | Qt.RightButton | Qt.MiddleButton | Qt.BackButton | Qt.ForwardButton
             propagateComposedEvents: true
             onClicked: function(mouse) {
-                if (mouse.button === Qt.RightButton) {
+                if (mouse.button === Qt.BackButton || mouse.button === 8) {
+                    Shell.playCreamy()
+                    goBack()
+                    mouse.accepted = true
+                } else if (mouse.button === Qt.ForwardButton || mouse.button === 16) {
+                    Shell.playCreamy()
+                    activateIndex(root.selectedIndex)
+                    mouse.accepted = true
+                } else if (mouse.button === Qt.RightButton) {
                     Shell.playCreamy()
                     goBack()
                     mouse.accepted = true
@@ -2603,7 +2612,7 @@ Window {
                     anchors.fill: parent
                     hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
-                    acceptedButtons: Qt.LeftButton | Qt.RightButton | Qt.MiddleButton
+                    acceptedButtons: Qt.LeftButton | Qt.RightButton | Qt.MiddleButton | Qt.BackButton | Qt.ForwardButton
                     onEntered: {
                         if (!model.disabled && root.selectedIndex !== index) {
                             root.selectedIndex = index
@@ -2612,7 +2621,15 @@ Window {
                         }
                     }
                     onClicked: function(mouse) {
-                        if (mouse.button === Qt.RightButton) {
+                        if (mouse.button === Qt.BackButton || mouse.button === 8) {
+                            Shell.playCreamy()
+                            goBack()
+                            mouse.accepted = true
+                        } else if (mouse.button === Qt.ForwardButton || mouse.button === 16) {
+                            Shell.playCreamy()
+                            activateIndex(index)
+                            mouse.accepted = true
+                        } else if (mouse.button === Qt.RightButton) {
                             root.selectedIndex = index
                             resultList.currentIndex = index
                             var pt = mapToItem(root.contentItem, mouse.x, mouse.y)
@@ -2736,6 +2753,7 @@ Window {
                         anchors.fill: parent
                         hoverEnabled: true
                         cursorShape: Qt.PointingHandCursor
+                        acceptedButtons: Qt.LeftButton | Qt.RightButton | Qt.MiddleButton | Qt.BackButton | Qt.ForwardButton
                         onEntered: {
                             if (root.selectedIndex !== index) {
                                 root.selectedIndex = index
@@ -2748,9 +2766,23 @@ Window {
                                 Shell.playThock()
                             }
                         }
-                        onClicked: {
-                            Shell.playCreamy()
-                            activateIndex(index)
+                        onClicked: function(mouse) {
+                            if (mouse.button === Qt.BackButton || mouse.button === 8) {
+                                Shell.playCreamy()
+                                goBack()
+                                mouse.accepted = true
+                            } else if (mouse.button === Qt.ForwardButton || mouse.button === 16) {
+                                Shell.playCreamy()
+                                activateIndex(index)
+                                mouse.accepted = true
+                            } else if (mouse.button === Qt.RightButton) {
+                                Shell.playCreamy()
+                                goBack()
+                                mouse.accepted = true
+                            } else {
+                                Shell.playCreamy()
+                                activateIndex(index)
+                            }
                         }
                     }
                 }

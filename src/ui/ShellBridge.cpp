@@ -322,10 +322,29 @@ bool ShellBridge::isDirectory(const QString &path) const {
 
 QString ShellBridge::resolveItemPath(const QString &itemId, const QString &provider,
                                     const QString &action, const QString &value) const {
-    Q_UNUSED(itemId)
-    Q_UNUSED(provider)
-    Q_UNUSED(action)
-    return value;
+    Q_UNUSED(action);
+    if (!value.isEmpty()) return value;
+
+    if (itemId == QStringLiteral("downloads") || provider == QStringLiteral("files-downloads")) {
+        return QStandardPaths::writableLocation(QStandardPaths::DownloadLocation);
+    }
+    if (provider.startsWith(QStringLiteral("files-"))) {
+        const QString folderName = provider.mid(6);
+        if (folderName == QStringLiteral("downloads")) {
+            return QStandardPaths::writableLocation(QStandardPaths::DownloadLocation);
+        } else if (folderName == QStringLiteral("documents")) {
+            return QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation);
+        } else if (folderName == QStringLiteral("pictures")) {
+            return QStandardPaths::writableLocation(QStandardPaths::PicturesLocation);
+        } else if (folderName == QStringLiteral("music")) {
+            return QStandardPaths::writableLocation(QStandardPaths::MusicLocation);
+        } else if (folderName == QStringLiteral("videos")) {
+            return QStandardPaths::writableLocation(QStandardPaths::MoviesLocation);
+        } else {
+            return QDir::homePath() + QStringLiteral("/") + folderName;
+        }
+    }
+    return QString();
 }
 
 QString ShellBridge::listFolderFiles(const QString &folderName) const {
@@ -368,6 +387,18 @@ void ShellBridge::openPath(const QString &path) {
     if (path.isEmpty()) return;
     if (path.startsWith(QStringLiteral("http://")) || path.startsWith(QStringLiteral("https://"))) {
         QDesktopServices::openUrl(QUrl(path));
+        return;
+    }
+
+    const QFileInfo fi(path);
+    if (fi.isDir()) {
+        const QString folderName = fi.fileName().toLower();
+        if (!QStandardPaths::findExecutable(QStringLiteral("dolphin")).isEmpty()) {
+            QProcess::startDetached(QStringLiteral("dolphin"), {fi.absoluteFilePath()});
+        } else {
+            QDesktopServices::openUrl(QUrl::fromLocalFile(fi.absoluteFilePath()));
+        }
+        activateDolphinWindow(folderName);
     } else {
         QDesktopServices::openUrl(QUrl::fromLocalFile(path));
     }
@@ -377,7 +408,83 @@ void ShellBridge::openContainingFolder(const QString &path) {
     if (path.isEmpty()) return;
     const QFileInfo fi(path);
     const QString folder = fi.isDir() ? fi.absoluteFilePath() : fi.absolutePath();
-    QDesktopServices::openUrl(QUrl::fromLocalFile(folder));
+    const QString folderName = QDir(folder).dirName().toLower();
+
+    if (!QStandardPaths::findExecutable(QStringLiteral("dolphin")).isEmpty()) {
+        if (!fi.isDir() && fi.exists()) {
+            QProcess::startDetached(QStringLiteral("dolphin"), {QStringLiteral("--select"), fi.absoluteFilePath()});
+        } else {
+            QProcess::startDetached(QStringLiteral("dolphin"), {folder});
+        }
+    } else {
+        QDesktopServices::openUrl(QUrl::fromLocalFile(folder));
+    }
+
+    // Unminimize and bring open Dolphin window to the front
+    activateDolphinWindow(folderName);
+}
+
+void ShellBridge::activateDolphinWindow(const QString &folderHint) {
+    auto msg = QDBusMessage::createMethodCall(
+        QStringLiteral("org.kde.KWin"),
+        QStringLiteral("/WindowsRunner"),
+        QStringLiteral("org.kde.krunner1"),
+        QStringLiteral("Match")
+    );
+    msg << QString(); // query all open windows
+
+    auto reply = QDBusConnection::sessionBus().call(msg);
+    if (reply.arguments().isEmpty()) return;
+
+    const QDBusArgument arg = reply.arguments().at(0).value<QDBusArgument>();
+    if (arg.currentType() != QDBusArgument::ArrayType) return;
+
+    arg.beginArray();
+    QString bestMatchId;
+    QString fallbackDolphinId;
+    const QString hintLow = folderHint.toLower().trimmed();
+
+    while (!arg.atEnd()) {
+        arg.beginStructure();
+        QString id;
+        QString text;
+        QString iconName;
+        int type;
+        double relevance;
+        QVariantMap properties;
+        arg >> id >> text >> iconName >> type >> relevance >> properties;
+        arg.endStructure();
+
+        const QString tLow = text.toLower();
+        const QString iLow = iconName.toLower();
+
+        const bool isDolphin = iLow.contains(QStringLiteral("dolphin")) ||
+                               iLow.contains(QStringLiteral("system-file-manager")) ||
+                               tLow.contains(QStringLiteral("dolphin"));
+
+        if (isDolphin) {
+            if (fallbackDolphinId.isEmpty()) {
+                fallbackDolphinId = id;
+            }
+            if (!hintLow.isEmpty() && tLow.contains(hintLow)) {
+                bestMatchId = id;
+                break;
+            }
+        }
+    }
+    arg.endArray();
+
+    const QString targetId = !bestMatchId.isEmpty() ? bestMatchId : fallbackDolphinId;
+    if (!targetId.isEmpty()) {
+        auto runMsg = QDBusMessage::createMethodCall(
+            QStringLiteral("org.kde.KWin"),
+            QStringLiteral("/WindowsRunner"),
+            QStringLiteral("org.kde.krunner1"),
+            QStringLiteral("Run")
+        );
+        runMsg << targetId << QString();
+        QDBusConnection::sessionBus().call(runMsg);
+    }
 }
 
 bool ShellBridge::moveToTrash(const QString &path) {

@@ -154,6 +154,7 @@ public slots:
 
 private:
     void updateTelemetry();
+    void activateDolphinWindow(const QString &folderHint);
 
     bool m_startHidden{false};
     QPointer<LayerShellWindow> m_layerShellWindow;
