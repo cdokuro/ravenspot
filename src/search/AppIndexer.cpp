@@ -522,27 +522,19 @@ bool AppIndexer::activateExistingWindow(const QString &desktopOrExec) const {
 
         if (!foundMatchId.isEmpty()) continue;
 
-        const QString tLow = text.toLower();
-        const QString iLow = iconName.toLower();
+        const QString iLow = iconName.trimmed().toLower();
+        if (iLow.isEmpty() || iLow.length() < 3) continue;
 
-        bool iconMatch = (!appIcon.isEmpty() && (appIcon == iLow || (appIcon.length() >= 4 && (iLow.contains(appIcon) || appIcon.contains(iLow)))));
-        if (!iconMatch && !baseName.isEmpty()) {
+        // Strict match on application window class / icon ONLY - NEVER arbitrary window title text!
+        bool iconMatch = (!appIcon.isEmpty() && appIcon.length() >= 3 && (appIcon == iLow || (appIcon.length() >= 4 && (iLow.contains(appIcon) || appIcon.contains(iLow)))));
+        if (!iconMatch && !baseName.isEmpty() && baseName.length() >= 3) {
             iconMatch = (baseName == iLow || (baseName.length() >= 4 && (iLow.contains(baseName) || baseName.contains(iLow))));
         }
-        if (!iconMatch && !appId.isEmpty()) {
+        if (!iconMatch && !appId.isEmpty() && appId.length() >= 3) {
             iconMatch = (appId == iLow || (appId.length() >= 4 && (iLow.contains(appId) || appId.contains(iLow))));
         }
 
-        bool titleMatch = false;
-        if (!appLabel.isEmpty() && appLabel.length() >= 4 && tLow.contains(appLabel)) {
-            titleMatch = true;
-        } else if (!appId.isEmpty() && appId.length() >= 4 && tLow.contains(appId)) {
-            titleMatch = true;
-        } else if (!baseName.isEmpty() && baseName.length() >= 4 && tLow.contains(baseName)) {
-            titleMatch = true;
-        }
-
-        if (iconMatch || titleMatch) {
+        if (iconMatch) {
             foundMatchId = id;
         }
     }
@@ -704,17 +696,14 @@ bool AppIndexer::activateTrayOrWindow(const QString &desktopOrExec) const {
     const QString trimmed = desktopOrExec.trimmed();
     if (trimmed.isEmpty()) return false;
 
-    bool trayActivated = activateTrayApp(trimmed);
-    bool winActivated = activateExistingWindow(trimmed);
-
-    return trayActivated || winActivated;
+    return activateTrayApp(trimmed);
 }
 
 void AppIndexer::launchApp(const QString &desktopOrExec) {
     const QString trimmed = desktopOrExec.trimmed();
     if (trimmed.isEmpty()) return;
 
-    if (activateTrayOrWindow(trimmed)) {
+    if (activateTrayApp(trimmed)) {
         return;
     }
 
@@ -728,7 +717,19 @@ void AppIndexer::launchApp(const QString &desktopOrExec) {
             desktopId.chop(8);
         }
 
-        // Tier 1: gtk-launch (standard Freedesktop launcher on modern Linux)
+        const QString fileUrl = QUrl::fromLocalFile(trimmed).toString();
+
+        // Tier 1: KDE kioclient with file:// URL scheme (native on Plasma 6)
+        if (!QStandardPaths::findExecutable(QStringLiteral("kioclient")).isEmpty()) {
+            if (hasSystemdRun && QProcess::startDetached(QStringLiteral("systemd-run"), {QStringLiteral("--user"), QStringLiteral("--scope"), QStringLiteral("kioclient"), QStringLiteral("exec"), fileUrl})) {
+                return;
+            }
+            if (QProcess::startDetached(QStringLiteral("kioclient"), {QStringLiteral("exec"), fileUrl})) {
+                return;
+            }
+        }
+
+        // Tier 2: gtk-launch (standard Freedesktop launcher on modern Linux)
         if (!QStandardPaths::findExecutable(QStringLiteral("gtk-launch")).isEmpty()) {
             if (hasSystemdRun && QProcess::startDetached(QStringLiteral("systemd-run"), {QStringLiteral("--user"), QStringLiteral("--scope"), QStringLiteral("gtk-launch"), desktopFileName})) {
                 return;
@@ -740,17 +741,6 @@ void AppIndexer::launchApp(const QString &desktopOrExec) {
                 return;
             }
             if (QProcess::startDetached(QStringLiteral("gtk-launch"), {desktopId})) {
-                return;
-            }
-        }
-
-        // Tier 2: KDE kioclient with file:// URL scheme (required by KIO on Plasma 6)
-        if (!QStandardPaths::findExecutable(QStringLiteral("kioclient")).isEmpty()) {
-            const QString fileUrl = QUrl::fromLocalFile(trimmed).toString();
-            if (hasSystemdRun && QProcess::startDetached(QStringLiteral("systemd-run"), {QStringLiteral("--user"), QStringLiteral("--scope"), QStringLiteral("kioclient"), QStringLiteral("exec"), fileUrl})) {
-                return;
-            }
-            if (QProcess::startDetached(QStringLiteral("kioclient"), {QStringLiteral("exec"), fileUrl})) {
                 return;
             }
         }
