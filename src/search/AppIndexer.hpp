@@ -78,6 +78,8 @@ public:
     [[nodiscard]] QString getAppActionsJson(const QString &desktopPath) const;
     void launchApp(const QString &desktopOrExec);
     [[nodiscard]] bool activateExistingWindow(const QString &desktopOrExec) const;
+    [[nodiscard]] bool activateTrayApp(const QString &desktopOrExec) const;
+    [[nodiscard]] bool activateTrayOrWindow(const QString &desktopOrExec) const;
 
     // Context Action Helpers
     void openContainingFolder(const QString &desktopPath) const;

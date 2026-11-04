@@ -14,6 +14,7 @@
 #include <QDBusArgument>
 #include <QUrl>
 #include <QDBusReply>
+#include <QDBusInterface>
 #include <algorithm>
 #include <sys/stat.h>
 
@@ -481,6 +482,14 @@ bool AppIndexer::activateExistingWindow(const QString &desktopOrExec) const {
             appLabel = app.label.toLower();
             appId = app.id.toLower();
             appIcon = app.icon.toLower();
+        } else {
+            auto itId = snapshot->idLookup.find(baseName);
+            if (itId != snapshot->idLookup.end()) {
+                const auto &app = snapshot->allApps[itId->second];
+                appLabel = app.label.toLower();
+                appId = app.id.toLower();
+                appIcon = app.icon.toLower();
+            }
         }
     }
 
@@ -516,17 +525,20 @@ bool AppIndexer::activateExistingWindow(const QString &desktopOrExec) const {
         const QString tLow = text.toLower();
         const QString iLow = iconName.toLower();
 
-        bool iconMatch = (!appIcon.isEmpty() && (appIcon == iLow || iLow.contains(appIcon) || appIcon.contains(iLow)));
+        bool iconMatch = (!appIcon.isEmpty() && (appIcon == iLow || (appIcon.length() >= 4 && (iLow.contains(appIcon) || appIcon.contains(iLow)))));
         if (!iconMatch && !baseName.isEmpty()) {
-            iconMatch = (baseName == iLow || iLow.contains(baseName) || baseName.contains(iLow));
+            iconMatch = (baseName == iLow || (baseName.length() >= 4 && (iLow.contains(baseName) || baseName.contains(iLow))));
+        }
+        if (!iconMatch && !appId.isEmpty()) {
+            iconMatch = (appId == iLow || (appId.length() >= 4 && (iLow.contains(appId) || appId.contains(iLow))));
         }
 
         bool titleMatch = false;
-        if (!appLabel.isEmpty() && tLow.contains(appLabel)) {
+        if (!appLabel.isEmpty() && appLabel.length() >= 4 && tLow.contains(appLabel)) {
             titleMatch = true;
-        } else if (!appId.isEmpty() && tLow.contains(appId)) {
+        } else if (!appId.isEmpty() && appId.length() >= 4 && tLow.contains(appId)) {
             titleMatch = true;
-        } else if (!baseName.isEmpty() && tLow.contains(baseName)) {
+        } else if (!baseName.isEmpty() && baseName.length() >= 4 && tLow.contains(baseName)) {
             titleMatch = true;
         }
 
@@ -551,21 +563,179 @@ bool AppIndexer::activateExistingWindow(const QString &desktopOrExec) const {
     return false;
 }
 
+bool AppIndexer::activateTrayApp(const QString &desktopOrExec) const {
+    const QString trimmed = desktopOrExec.trimmed();
+    if (trimmed.isEmpty()) return false;
+
+    QString appLabel;
+    QString appId;
+    QString appIcon;
+    QString cleanedExec;
+
+    const QFileInfo fi(trimmed);
+    QString baseName = fi.completeBaseName().toLower();
+    if (baseName.endsWith(QStringLiteral(".desktop"))) {
+        baseName.chop(8);
+    }
+
+    auto snapshot = m_snapshot.load();
+    if (snapshot) {
+        auto it = snapshot->desktopPathLookup.find(trimmed);
+        if (it != snapshot->desktopPathLookup.end()) {
+            const auto &app = snapshot->allApps[it->second];
+            appLabel = app.label;
+            appId = app.id;
+            appIcon = app.icon;
+            cleanedExec = app.cleanedExec;
+        } else {
+            auto itId = snapshot->idLookup.find(baseName);
+            if (itId != snapshot->idLookup.end()) {
+                const auto &app = snapshot->allApps[itId->second];
+                appLabel = app.label;
+                appId = app.id;
+                appIcon = app.icon;
+                cleanedExec = app.cleanedExec;
+            }
+        }
+    }
+
+    auto normalizeKey = [](const QString &s) -> QString {
+        QString res;
+        res.reserve(s.size());
+        for (const QChar &ch : s) {
+            if (ch.isLetterOrNumber()) {
+                res.append(ch.toLower());
+            }
+        }
+        return res;
+    };
+
+    static const std::unordered_set<QString> stopwords = {
+        QStringLiteral("org"), QStringLiteral("com"), QStringLiteral("net"),
+        QStringLiteral("io"), QStringLiteral("kde"), QStringLiteral("gnome"),
+        QStringLiteral("desktop"), QStringLiteral("application"), QStringLiteral("app"),
+        QStringLiteral("client"), QStringLiteral("bin")
+    };
+
+    std::vector<QString> candidates;
+    auto addCandidate = [&](const QString &str) {
+        if (str.isEmpty()) return;
+        const QString norm = normalizeKey(str);
+        if (norm.length() >= 3 && stopwords.find(norm) == stopwords.end()) {
+            if (std::find(candidates.begin(), candidates.end(), norm) == candidates.end()) {
+                candidates.push_back(norm);
+            }
+        }
+        const QStringList parts = str.split(QRegularExpression(QStringLiteral("[._\\-\\s]+")), Qt::SkipEmptyParts);
+        for (const QString &p : parts) {
+            const QString pNorm = normalizeKey(p);
+            if (pNorm.length() >= 3 && stopwords.find(pNorm) == stopwords.end()) {
+                if (std::find(candidates.begin(), candidates.end(), pNorm) == candidates.end()) {
+                    candidates.push_back(pNorm);
+                }
+            }
+        }
+    };
+
+    addCandidate(appLabel);
+    addCandidate(appId);
+    addCandidate(appIcon);
+    addCandidate(cleanedExec);
+    addCandidate(baseName);
+    addCandidate(fi.baseName());
+
+    if (candidates.empty()) return false;
+
+    QDBusInterface watcher(QStringLiteral("org.kde.StatusNotifierWatcher"),
+                           QStringLiteral("/StatusNotifierWatcher"),
+                           QStringLiteral("org.kde.StatusNotifierWatcher"),
+                           QDBusConnection::sessionBus());
+    if (!watcher.isValid()) return false;
+
+    const QStringList items = watcher.property("RegisteredStatusNotifierItems").toStringList();
+    if (items.isEmpty()) return false;
+
+    for (const QString &item : items) {
+        int slash = item.indexOf(QLatin1Char('/'));
+        QString svc = slash != -1 ? item.left(slash) : item;
+        QString path = slash != -1 ? item.mid(slash) : QStringLiteral("/StatusNotifierItem");
+
+        QDBusInterface sni(svc, path, QStringLiteral("org.kde.StatusNotifierItem"), QDBusConnection::sessionBus());
+        if (!sni.isValid()) continue;
+
+        const QString idStr = sni.property("Id").toString();
+        const QString titleStr = sni.property("Title").toString();
+        const QString iconStr = sni.property("IconName").toString();
+
+        const QString normId = normalizeKey(idStr);
+        const QString normTitle = normalizeKey(titleStr);
+        const QString normIcon = normalizeKey(iconStr);
+
+        bool matched = false;
+        for (const QString &cand : candidates) {
+            for (const QString &target : {normId, normTitle, normIcon}) {
+                if (target.isEmpty()) continue;
+                if (cand == target) {
+                    matched = true;
+                    break;
+                }
+                if (cand.length() >= 4 && target.contains(cand)) {
+                    matched = true;
+                    break;
+                }
+                if (target.length() >= 4 && cand.contains(target)) {
+                    matched = true;
+                    break;
+                }
+            }
+            if (matched) break;
+        }
+
+        if (matched) {
+            sni.call(QStringLiteral("Activate"), 0, 0);
+            return true;
+        }
+    }
+
+    return false;
+}
+
+bool AppIndexer::activateTrayOrWindow(const QString &desktopOrExec) const {
+    const QString trimmed = desktopOrExec.trimmed();
+    if (trimmed.isEmpty()) return false;
+
+    bool trayActivated = activateTrayApp(trimmed);
+    bool winActivated = activateExistingWindow(trimmed);
+
+    return trayActivated || winActivated;
+}
+
 void AppIndexer::launchApp(const QString &desktopOrExec) {
     const QString trimmed = desktopOrExec.trimmed();
     if (trimmed.isEmpty()) return;
+
+    if (activateTrayOrWindow(trimmed)) {
+        return;
+    }
 
     const bool hasSystemdRun = !QStandardPaths::findExecutable(QStringLiteral("systemd-run")).isEmpty();
 
     if (trimmed.endsWith(QStringLiteral(".desktop")) && QFile::exists(trimmed)) {
         QFileInfo fi(trimmed);
-        QString desktopId = fi.fileName();
+        const QString desktopFileName = fi.fileName();
+        QString desktopId = desktopFileName;
         if (desktopId.endsWith(QStringLiteral(".desktop"))) {
             desktopId.chop(8);
         }
 
         // Tier 1: gtk-launch (standard Freedesktop launcher on modern Linux)
         if (!QStandardPaths::findExecutable(QStringLiteral("gtk-launch")).isEmpty()) {
+            if (hasSystemdRun && QProcess::startDetached(QStringLiteral("systemd-run"), {QStringLiteral("--user"), QStringLiteral("--scope"), QStringLiteral("gtk-launch"), desktopFileName})) {
+                return;
+            }
+            if (QProcess::startDetached(QStringLiteral("gtk-launch"), {desktopFileName})) {
+                return;
+            }
             if (hasSystemdRun && QProcess::startDetached(QStringLiteral("systemd-run"), {QStringLiteral("--user"), QStringLiteral("--scope"), QStringLiteral("gtk-launch"), desktopId})) {
                 return;
             }
