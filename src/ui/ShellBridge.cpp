@@ -44,6 +44,36 @@ ShellBridge::ShellBridge(bool startHidden, QObject *parent)
         this,
         SIGNAL(sleepInhibitedChanged(bool))
     );
+
+    connect(this, &ShellBridge::sleepInhibitedChanged, this, [this](bool inhibited) {
+        m_sleepInhibited = inhibited;
+    });
+
+    // Query initial power profile & sleep inhibit state once at startup (0ms overhead during open)
+    QTimer::singleShot(0, this, [this]() {
+        auto msg = QDBusMessage::createMethodCall(
+            QStringLiteral("net.hadess.PowerProfiles"),
+            QStringLiteral("/net/hadess/PowerProfiles"),
+            QStringLiteral("org.freedesktop.DBus.Properties"),
+            QStringLiteral("Get")
+        );
+        msg << QStringLiteral("net.hadess.PowerProfiles") << QStringLiteral("ActiveProfile");
+        QDBusReply<QDBusVariant> reply = QDBusConnection::systemBus().call(msg);
+        if (reply.isValid()) {
+            m_powerProfile = reply.value().variant().toString();
+        }
+
+        auto inMsg = QDBusMessage::createMethodCall(
+            QStringLiteral("org.freedesktop.PowerManagement.Inhibit"),
+            QStringLiteral("/org/freedesktop/PowerManagement/Inhibit"),
+            QStringLiteral("org.freedesktop.PowerManagement.Inhibit"),
+            QStringLiteral("HasInhibit")
+        );
+        QDBusReply<bool> inReply = QDBusConnection::sessionBus().call(inMsg);
+        if (inReply.isValid()) {
+            m_sleepInhibited = inReply.value();
+        }
+    });
 }
 
 ShellBridge::~ShellBridge() {
@@ -102,7 +132,9 @@ void ShellBridge::onMenuVisibilityChanged(bool visible) {
         if (!m_telemetryTimer.isActive()) {
             m_telemetryTimer.start();
         }
-        updateTelemetry();
+        // Do not block initial frame rendering with synchronous sysfs/proc reads;
+        // let telemetry update on next event loop tick or timer interval.
+        QTimer::singleShot(50, this, &ShellBridge::updateTelemetry);
     } else {
         m_telemetryTimer.stop();
         ::malloc_trim(0);
@@ -808,17 +840,6 @@ void ShellBridge::applyPowerProfile(const QString &profile) {
 }
 
 QString ShellBridge::getPowerProfile() const {
-    auto msg = QDBusMessage::createMethodCall(
-        QStringLiteral("net.hadess.PowerProfiles"),
-        QStringLiteral("/net/hadess/PowerProfiles"),
-        QStringLiteral("org.freedesktop.DBus.Properties"),
-        QStringLiteral("Get")
-    );
-    msg << QStringLiteral("net.hadess.PowerProfiles") << QStringLiteral("ActiveProfile");
-    QDBusReply<QDBusVariant> reply = QDBusConnection::systemBus().call(msg);
-    if (reply.isValid()) {
-        return reply.value().variant().toString();
-    }
     return m_powerProfile;
 }
 
@@ -850,18 +871,7 @@ bool ShellBridge::setPowerProfile(const QString &profile) {
 }
 
 bool ShellBridge::isSleepInhibited() const {
-    if (m_sleepInhibitCookie != 0) return true;
-    auto msg = QDBusMessage::createMethodCall(
-        QStringLiteral("org.freedesktop.PowerManagement.Inhibit"),
-        QStringLiteral("/org/freedesktop/PowerManagement/Inhibit"),
-        QStringLiteral("org.freedesktop.PowerManagement.Inhibit"),
-        QStringLiteral("HasInhibit")
-    );
-    QDBusReply<bool> reply = QDBusConnection::sessionBus().call(msg);
-    if (reply.isValid()) {
-        return reply.value();
-    }
-    return false;
+    return (m_sleepInhibitCookie != 0) || m_sleepInhibited;
 }
 
 bool ShellBridge::setSleepInhibited(bool inhibit) {
@@ -878,6 +888,7 @@ bool ShellBridge::setSleepInhibited(bool inhibit) {
         QDBusReply<uint> reply = QDBusConnection::sessionBus().call(msg);
         if (reply.isValid() && reply.value() != 0) {
             m_sleepInhibitCookie = reply.value();
+            m_sleepInhibited = true;
             emit sleepInhibitedChanged(true);
             return true;
         }
@@ -894,6 +905,7 @@ bool ShellBridge::setSleepInhibited(bool inhibit) {
         msg << m_sleepInhibitCookie;
         QDBusConnection::sessionBus().call(msg);
         m_sleepInhibitCookie = 0;
+        m_sleepInhibited = false;
         emit sleepInhibitedChanged(false);
         return true;
     }

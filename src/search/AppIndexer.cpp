@@ -555,6 +555,8 @@ void AppIndexer::launchApp(const QString &desktopOrExec) {
     const QString trimmed = desktopOrExec.trimmed();
     if (trimmed.isEmpty()) return;
 
+    const bool hasSystemdRun = !QStandardPaths::findExecutable(QStringLiteral("systemd-run")).isEmpty();
+
     if (trimmed.endsWith(QStringLiteral(".desktop")) && QFile::exists(trimmed)) {
         QFileInfo fi(trimmed);
         QString desktopId = fi.fileName();
@@ -564,6 +566,9 @@ void AppIndexer::launchApp(const QString &desktopOrExec) {
 
         // Tier 1: gtk-launch (standard Freedesktop launcher on modern Linux)
         if (!QStandardPaths::findExecutable(QStringLiteral("gtk-launch")).isEmpty()) {
+            if (hasSystemdRun && QProcess::startDetached(QStringLiteral("systemd-run"), {QStringLiteral("--user"), QStringLiteral("--scope"), QStringLiteral("gtk-launch"), desktopId})) {
+                return;
+            }
             if (QProcess::startDetached(QStringLiteral("gtk-launch"), {desktopId})) {
                 return;
             }
@@ -572,6 +577,9 @@ void AppIndexer::launchApp(const QString &desktopOrExec) {
         // Tier 2: KDE kioclient with file:// URL scheme (required by KIO on Plasma 6)
         if (!QStandardPaths::findExecutable(QStringLiteral("kioclient")).isEmpty()) {
             const QString fileUrl = QUrl::fromLocalFile(trimmed).toString();
+            if (hasSystemdRun && QProcess::startDetached(QStringLiteral("systemd-run"), {QStringLiteral("--user"), QStringLiteral("--scope"), QStringLiteral("kioclient"), QStringLiteral("exec"), fileUrl})) {
+                return;
+            }
             if (QProcess::startDetached(QStringLiteral("kioclient"), {QStringLiteral("exec"), fileUrl})) {
                 return;
             }
@@ -586,6 +594,9 @@ void AppIndexer::launchApp(const QString &desktopOrExec) {
                 if (app.terminal) {
                     runInTerminal(app.cleanedExec);
                 } else if (!app.cleanedExec.isEmpty()) {
+                    if (hasSystemdRun && QProcess::startDetached(QStringLiteral("systemd-run"), {QStringLiteral("--user"), QStringLiteral("--scope"), QStringLiteral("/bin/sh"), QStringLiteral("-c"), app.cleanedExec})) {
+                        return;
+                    }
                     QProcess::startDetached(QStringLiteral("/bin/sh"), {QStringLiteral("-c"), app.cleanedExec});
                 }
                 return;
@@ -596,6 +607,9 @@ void AppIndexer::launchApp(const QString &desktopOrExec) {
     // Direct exec string (e.g. from test suites "firefox %u" or custom binary)
     const QString cleaned = cleanExecCommand(trimmed);
     if (!cleaned.isEmpty()) {
+        if (hasSystemdRun && QProcess::startDetached(QStringLiteral("systemd-run"), {QStringLiteral("--user"), QStringLiteral("--scope"), QStringLiteral("/bin/sh"), QStringLiteral("-c"), cleaned})) {
+            return;
+        }
         QProcess::startDetached(QStringLiteral("/bin/sh"), {QStringLiteral("-c"), cleaned});
     }
 }

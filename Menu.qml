@@ -143,15 +143,16 @@ Window {
                     var baseName = root.items[cId].label.replace(/\s*\(\d+\)$/, "")
                     root.items[cId].label = baseName + " (" + counts[catMap[cId]] + ")"
                 }
-                loadAppsCategory(cId, catMap[cId])
+                loadAppsCategory(cId, catMap[cId], true)
                 root.providersLoaded[cId] = true
             }
         } catch(e) {
-            loadAppsCategory("apps.all", "all")
+            loadAppsCategory("apps.all", "all", true)
             root.providersLoaded["apps.all"] = true
         }
 
         evaluateGuards()
+        rebuildDisplay()
     }
 
     function evaluateGuards() {
@@ -292,7 +293,7 @@ Window {
         rebuildDisplay()
     }
 
-    function loadAppsCategory(id, cat) {
+    function loadAppsCategory(id, cat, skipRebuild) {
         var arr = JSON.parse(Shell.listAppsCategory(cat) || "[]")
         var rows = []
         var taken = ({})
@@ -327,7 +328,9 @@ Window {
         var merged = MenuModel.swapProviderRows(root.items, root.itemOrder, id, rows)
         root.items = merged.items
         root.itemOrder = merged.itemOrder
-        rebuildDisplay()
+        if (!skipRebuild) {
+            rebuildDisplay()
+        }
     }
 
     function loadApps(id) {
@@ -1348,7 +1351,7 @@ Window {
         if (rowItem.kind === "app" || (rowItem.desktop && rowItem.desktop.length > 0)) {
             // 1. Launch
             contextMenuModel.append({
-                label: "Launch",
+                label: "Launch (Başlat)",
                 icon: "",
                 actionType: "launchApp",
                 actionPayload: rowItem.desktop,
@@ -1420,7 +1423,7 @@ Window {
                 })
             } else if (!isDir) {
                 contextMenuModel.append({
-                    label: "Open File",
+                    label: "Open File (Dosyayı Aç)",
                     icon: "",
                     actionType: "openPath",
                     actionPayload: resolvedPath,
@@ -1430,7 +1433,7 @@ Window {
 
             // Open Location
             contextMenuModel.append({
-                label: isDir ? "Open Location (Dolphin)" : "Open Containing Folder (Dolphin)",
+                label: isDir ? "Open Location (Dolphin)" : "Open Containing Folder (Klasörde Göster)",
                 icon: "󰉋",
                 actionType: isDir ? "openPath" : "openLocation",
                 actionPayload: resolvedPath,
@@ -1575,16 +1578,18 @@ Window {
             root.sysVolume = ainfo.volume
             root.sysMuted = ainfo.muted
         }
-        root.sysUpdateInfo = Shell.getUpdateInfo()
 
         root.canCloseOnInactive = false
         root.visible = true
         root.opened = true
-        if (!root.loaded) loadItems()
-        else { evaluateGuards() }
+        if (!root.loaded) {
+            loadItems()
+        } else {
+            // Hotkey open path: guards evaluated asynchronously so UI opens instantaneously
+            Qt.callLater(evaluateGuards)
+        }
         rebuildDisplay()
         startProvider(root.activeMenu)
-        Shell.onMenuVisibilityChanged(true)
         Qt.callLater(function(){
             root.requestActivate()
             searchInput.forceActiveFocus()
@@ -4000,7 +4005,10 @@ Window {
         }
         root.sysUpdateInfo = Shell.getUpdateInfo()
         root.sysMonitor = Shell.getSysMonitorInfo()
-        root.sysUpdateInfo = Shell.getUpdateInfo()
+
+        // Preload menu items and application catalog in background
+        loadItems()
+
         if (!Shell.startHidden) {
             openMenu("root")
         } else {

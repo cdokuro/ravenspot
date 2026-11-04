@@ -102,8 +102,14 @@ void LayerShellWindow::updateBlurRegion(int cardHeight) {
 QScreen* LayerShellWindow::resolveActiveScreen() {
     const auto screens = QGuiApplication::screens();
     if (screens.isEmpty()) return nullptr;
+    if (screens.size() == 1) return screens.first();
 
-    // 1. Query KWin activeOutputName via D-Bus
+    // 1. Fast check: Screen under cursor (0ms in-memory calculation)
+    if (QScreen *cursorScreen = QGuiApplication::screenAt(QCursor::pos())) {
+        return cursorScreen;
+    }
+
+    // 2. Query KWin activeOutputName via D-Bus
     auto msg = QDBusMessage::createMethodCall(
         QStringLiteral("org.kde.KWin"),
         QStringLiteral("/KWin"),
@@ -121,11 +127,6 @@ QScreen* LayerShellWindow::resolveActiveScreen() {
         }
     }
 
-    // 2. Fallback: Cursor position
-    if (QScreen *cursorScreen = QGuiApplication::screenAt(QCursor::pos())) {
-        return cursorScreen;
-    }
-
     // 3. Fallback: Primary screen
     return QGuiApplication::primaryScreen();
 }
@@ -138,12 +139,11 @@ void LayerShellWindow::showOnActiveScreen() {
         if (m_lastScreen != target) {
             m_lastScreen = target;
             m_hasCustomPosition = false; // re-center on new screen
+            if (m_layerWindow) {
+                m_layerWindow->setScreen(target);
+            }
+            m_window->setScreen(target);
         }
-
-        if (m_layerWindow) {
-            m_layerWindow->setScreen(target);
-        }
-        m_window->setScreen(target);
 
         const QRect geom = target->geometry();
         const int winW = m_window->width() > 0 ? m_window->width() : 543;

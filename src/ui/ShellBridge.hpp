@@ -162,6 +162,7 @@ private:
     AppIndexer *m_appIndexer{nullptr};
 
     uint m_sleepInhibitCookie{0};
+    bool m_sleepInhibited{false};
     QString m_powerProfile{QStringLiteral("balanced")};
     QTimer m_telemetryTimer;
 
