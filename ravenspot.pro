@@ -59,7 +59,8 @@ HEADERS += \
     src/search/KRunnerActions.hpp \
     src/search/CalcConverter.hpp \
     src/run/CommandAnalyzer.hpp \
-    src/run/CommandRunner.hpp
+    src/run/CommandRunner.hpp \
+    src/run/CommandHistory.hpp
 
 SOURCES += \
     src/main.cpp \
@@ -76,4 +77,5 @@ SOURCES += \
     src/search/KRunnerActions.cpp \
     src/search/CalcConverter.cpp \
     src/run/CommandAnalyzer.cpp \
-    src/run/CommandRunner.cpp
+    src/run/CommandRunner.cpp \
+    src/run/CommandHistory.cpp
