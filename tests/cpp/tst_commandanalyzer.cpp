@@ -1,4 +1,5 @@
 #include <QtTest>
+#include <QProcess>
 #include "run/CommandAnalyzer.hpp"
 
 using namespace ravenspot::cmd;
@@ -22,10 +23,47 @@ private slots:
         QCOMPARE(detect("git status", fakeExec), Signal::Weak);
         QCOMPARE(detect("unknowncmd foo", fakeExec), Signal::None);
     }
+    void danger_reviewFalseNegatives() {
+        for (const QString &t : {QStringLiteral("rm -rf ~/*"), QStringLiteral("rm -rf $HOME/*"),
+                                 QStringLiteral("rm -rf ${HOME}"), QStringLiteral("rm --recursive --force /"),
+                                 QStringLiteral("rm -rf /home/dokuro"), QStringLiteral("rm -rf /usr"),
+                                 QStringLiteral("rm -rf build /"), QStringLiteral("rm -rf *"),
+                                 QStringLiteral("cd ~ && rm -rf ."), QStringLiteral("rm -fr /"),
+                                 QStringLiteral("rm -r -f /"), QStringLiteral("sudo  rm -rf /"),
+                                 QStringLiteral("rm -rf / --no-preserve-root"), QStringLiteral("rm -rf \"$HOME\""),
+                                 QStringLiteral("rm -rf /etc/")}) {
+            QVERIFY2(isDangerous(t), qPrintable(t));
+        }
+        for (const QString &t : {QStringLiteral("rm -rf ./build"), QStringLiteral("rm -rf ~/tmp/x"),
+                                 QStringLiteral("rm -rf *.o"), QStringLiteral("rm -rf /tmp/foo"),
+                                 QStringLiteral("rm -rf /home/dokuro/tmp"), QStringLiteral("rm file /"),
+                                 QStringLiteral("dd if=x of=/dev/null")}) {
+            QVERIFY2(!isDangerous(t), qPrintable(t));
+        }
+    }
+    void detect_singlePathTokenIsWeak() {
+        QCOMPARE(detect("/usr/share", fakeExec), Signal::Weak);
+        QCOMPARE(detect("~/Downloads", fakeExec), Signal::Weak);
+        QCOMPARE(detect("./run.sh --fast", fakeExec), Signal::Strong);
+    }
+    void terminal_survivesSyntaxError() {
+        // Kapanmamış tırnak: bash -c ayrıştırma hatasında bile çıkış satırına ulaşılmalı
+        QStringList args = terminalArgs(QStringLiteral("echo \"foo"));
+        QCOMPARE(args.takeFirst(), QStringLiteral("-e"));
+        const QString program = args.takeFirst();
+        QProcess p;
+        QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
+        env.insert("SHELL", "/bin/true");
+        p.setProcessEnvironment(env);
+        p.setProcessChannelMode(QProcess::MergedChannels);
+        p.start(program, args);
+        QVERIFY(p.waitForFinished(3000));
+        QVERIFY2(p.readAll().contains("[exit"), "terminal script must reach the exit line");
+    }
     void detect_strongSignals() {
         for (const QString &t : {QStringLiteral("sudo pacman -Syu"), QStringLiteral("ls | head"),
                                  QStringLiteral("a && b"), QStringLiteral("echo a\necho b"),
-                                 QStringLiteral("./run.sh"), QStringLiteral("~/bin/x"),
+                                 QStringLiteral("./run.sh -v"), QStringLiteral("~/bin/x --y"),
                                  QStringLiteral("echo $(date)")}) {
             QVERIFY2(detect(t, fakeExec) == Signal::Strong, qPrintable(t));
         }
@@ -59,7 +97,8 @@ private slots:
         const QString cmd = QStringLiteral("echo '$x' \"$(date)\" `id` \\n\nprintf ok");
         const QStringList expectedTerm = {
             QStringLiteral("-e"), QStringLiteral("bash"), QStringLiteral("-c"),
-            cmd + QStringLiteral("\nprintf \"\\n[exit %s] \" $?; exec \"${SHELL:-bash}\" -i")};
+            QStringLiteral("eval \"$1\"; printf \"\\n[exit %s] \" $?; exec \"${SHELL:-bash}\" -i"),
+            QStringLiteral("ravenspot"), cmd};
         QCOMPARE(terminalArgs(cmd), expectedTerm);
         QCOMPARE(inlineArgs(cmd), (QStringList{QStringLiteral("-c"), cmd}));
     }
