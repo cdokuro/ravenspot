@@ -15,6 +15,7 @@ struct ClipEntry {
     QString text;
     QString fingerprint;
     qint64 timestamp{0};
+    bool truncated{false}; // kMaxChars'ta kesildi (geri yapıştırınca tamamı gelmez)
 };
 
 // orkun-clipboard-daemon'un NDJSON olaylarına abone olur ve son metinleri

@@ -897,7 +897,9 @@ function pcRows(kind, items) {
     var it = items[i]
     if (kind === "clip") {
       out.push(pcRow({ itemId: "__clip_" + i + "__", provider: "clipboard-item", value: it.value,
-                       label: it.label, detail: "Clipboard history · Enter: copy", path: "Clipboard",
+                       label: it.label,
+                       detail: it.truncated ? "Clipboard history · truncated to 4 KB · Enter: copy"
+                                            : "Clipboard history · Enter: copy", path: "Clipboard",
                        iconName: "org.kde.plasma.clipboard", score: -70000 + i }))
     } else if (kind === "kill") {
       out.push(pcRow({ itemId: "__kill_" + it.pid + "__", provider: "kill-process", value: String(it.pid),

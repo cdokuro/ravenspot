@@ -37,7 +37,12 @@ std::optional<ClipEntry> ClipboardHistory::parseEvent(const QByteArray &line) {
 
 void ClipboardHistory::ingest(const ClipEntry &entry) {
     ClipEntry e = entry;
-    if (e.text.size() > kMaxChars) e.text.truncate(kMaxChars);
+    if (e.text.size() > kMaxChars) {
+        qsizetype cut = kMaxChars;
+        if (e.text.at(cut - 1).isHighSurrogate()) --cut; // vekil çifti bölme (emoji vb.)
+        e.text.truncate(cut);
+        e.truncated = true;
+    }
     // Aynı içerik tekrar kopyalanırsa başa taşı (çoğaltma)
     m_entries.erase(std::remove_if(m_entries.begin(), m_entries.end(),
                                    [&](const ClipEntry &x) { return x.fingerprint == e.fingerprint; }),

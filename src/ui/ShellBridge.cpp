@@ -1324,7 +1324,8 @@ static QString clipEntriesJson(const QList<ClipEntry> &entries) {
     for (const ClipEntry &e : entries) {
         QString label = e.text.trimmed().section(QLatin1Char('\n'), 0, 0).simplified();
         if (label.size() > 90) label = label.left(89) + QChar(0x2026);
-        arr.append(QJsonObject{{QStringLiteral("label"), label}, {QStringLiteral("value"), e.text}});
+        arr.append(QJsonObject{{QStringLiteral("label"), label}, {QStringLiteral("value"), e.text},
+                               {QStringLiteral("truncated"), e.truncated}});
     }
     return QString::fromUtf8(QJsonDocument(arr).toJson(QJsonDocument::Compact));
 }

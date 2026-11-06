@@ -294,7 +294,7 @@ Window {
             rows.push({
                 id: rowId, parent: id, kind: "action",
                 icon: "󰅇", iconFont: "", iconName: "org.kde.plasma.clipboard",
-                label: c.label, title: "", target: "", description: "Panoya kopyala",
+                label: c.label, title: "", target: "", description: c.truncated ? "Panoya kopyala · 4 KB'a kısaltıldı" : "Panoya kopyala",
                 action: "", provider: "clipboard-item", aliases: [], searchTerms: [],
                 when: "", checked: "", disabled: "", value: c.value, order: j
             })

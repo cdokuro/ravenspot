@@ -87,6 +87,18 @@ private slots:
         c->flush();
         QTRY_COMPARE_WITH_TIMEOUT(h.entries().size(), 1, 2000);
     }
+    void ingest_truncationMarkedAndKeepsSurrogates() {
+        ClipboardHistory h;
+        // kMaxChars-1 'x' + bir emoji (2 UTF-16 birimi): sınır vekil çiftin ortasına düşer
+        const QString text = QString(ClipboardHistory::kMaxChars - 1, 'x') + QString::fromUtf8("\xF0\x9F\x91\x8D") + "tail";
+        h.ingest({text, "t", 1});
+        const ClipEntry e = h.entries().first();
+        QVERIFY(e.truncated);
+        QVERIFY(e.text.size() <= ClipboardHistory::kMaxChars);
+        QVERIFY(!e.text.back().isHighSurrogate());
+        h.ingest({"short", "s", 2});
+        QVERIFY(!h.entries().first().truncated);
+    }
 };
 
 QObject *makeTestClipboardHistory() { return new TestClipboardHistory; }
