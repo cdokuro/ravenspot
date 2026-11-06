@@ -1131,55 +1131,14 @@ Window {
                 }
             }
 
-            // 7. Terminal komut modu ('>' öneki)
-            if (query.startsWith(">")) {
-                var termCmd = query.substring(1).trim()
-                if (!termCmd) {
-                    rows.push({
-                        itemId: "__term_hint__",
-                        kind: "action",
-                        icon: "",
-                        iconName: "utilities-terminal",
-                        iconFont: "",
-                        appIcon: "",
-                        appId: "",
-                        label: "Terminal Komutu Çalıştır...",
-                        target: "",
-                        detail: "Örn: > htop veya > btop",
-                        path: "Terminal",
-                        childCount: 0,
-                        action: "konsole",
-                        provider: "",
-                        value: "",
-                        desktop: "",
-                        disabled: false,
-                        score: -99999,
-                        section: ""
-                    })
-                } else {
-                    rows.unshift({
-                        itemId: "__term__",
-                        kind: "action",
-                        icon: "",
-                        iconName: "terminal",
-                        iconFont: "",
-                        appIcon: "",
-                        appId: "",
-                        label: "Terminal: " + termCmd,
-                        target: "",
-                        detail: "Konsole ile çalıştır",
-                        path: "Terminal",
-                        childCount: 0,
-                        action: "konsole -e bash -c \"" + termCmd.replace(/"/g, '\\"') + "; exec bash\"",
-                        provider: "",
-                        value: "",
-                        desktop: "",
-                        disabled: false,
-                        score: -99998,
-                        section: ""
-                    })
-                }
-            }
+            // 7. Yapıştır-çalıştır komutları ('>' öneki zorlar; açık bir komut
+            //    metni öneksiz de algılanır, tek kelime asla algılanmaz)
+            var cmdText = query.startsWith(">") ? query.substring(1).trim() : query
+            var cmdAnalysis = Shell.analyzeCommand(cmdText)
+            var cmdResult = MenuModel.commandRows(query, cmdAnalysis,
+                                                  query.startsWith(">") ? Shell.commandHistory(cmdText) : [])
+            if (cmdResult.position === "first") rows = cmdResult.rows.concat(rows)
+            else if (cmdResult.position === "last") rows = rows.concat(cmdResult.rows)
 
             // 8. Web Arama (Fallback veya '?' öneki)
             var isWebQuery = query.startsWith("?")
@@ -1325,10 +1284,39 @@ Window {
         return true
     }
 
-    function activateIndex(index) {
+    // Tehlikeli komut için ilk Enter'da "kurulan" satır; başka bir tuş sıfırlar.
+    property string armedRunId: ""
+    property bool outputPanelOpen: false
+
+    function runCommandRow(index, row, inline) {
+        // Tehlike kontrolü çalıştırma anında (geçmiş satırları dahil)
+        if (Shell.analyzeCommand(row.value).dangerous && root.armedRunId !== row.itemId) {
+            root.armedRunId = row.itemId
+            displayModel.setProperty(index, "detail", "\u26a0 Press Enter again to run this dangerous command")
+            Shell.playThock()
+            return
+        }
+        root.armedRunId = ""
+        Shell.playCreamy()
+        if (inline) {
+            if (Shell.runner.running) { root.outputPanelOpen = true; return } // önce mevcut çalışmayı göster
+            if (Shell.runCommandInline(row.value)) { root.outputPanelOpen = true; return }
+            // false: sudo/etkileşimli -> terminalde açıldı
+        } else {
+            Shell.runCommandInTerminal(row.value)
+        }
+        root.opened = false
+        Qt.callLater(closeMenu)
+    }
+
+    function activateIndex(index, opts) {
         if (index < 0 || index >= displayModel.count) return
         var row = displayModel.get(index)
         if (row.disabled) return
+        if (row.provider === "run-command") {
+            runCommandRow(index, row, !!(opts && opts.inline))
+            return
+        }
         if (row.kind === "menu" || row.kind === "link") {
             setActiveMenu(row.target || row.itemId, true)
         } else if (row.kind === "app") {
@@ -1932,6 +1920,11 @@ Window {
         Item {
             id: keyHandler
             Keys.onPressed: function(event) {
+                if (root.armedRunId && event.key !== Qt.Key_Return && event.key !== Qt.Key_Enter
+                        && event.key !== Qt.Key_Shift) {
+                    root.armedRunId = ""
+                    rebuildPreservingSelection() // uyarı metnini geri al
+                }
                 if (event.key === Qt.Key_Escape) {
                     if (root.depModalOpen) {
                         root.depModalOpen = false
@@ -2015,6 +2008,10 @@ Window {
                     select(6); event.accepted = true
                 } else if ((event.key === Qt.Key_Return || event.key === Qt.Key_Enter) && (event.modifiers & Qt.ControlModifier)) {
                     openItemLocation(displayModel.get(root.selectedIndex))
+                    event.accepted = true
+                } else if ((event.key === Qt.Key_Return || event.key === Qt.Key_Enter) && (event.modifiers & Qt.ShiftModifier)) {
+                    // Shift+Enter: komutu RavenSpot içinde çalıştır (çıktı paneli)
+                    activateIndex(root.selectedIndex, { inline: true })
                     event.accepted = true
                 } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter || event.key === Qt.Key_Right) {
                     activateIndex(root.selectedIndex)

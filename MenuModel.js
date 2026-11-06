@@ -780,3 +780,42 @@ function syncRows(model, rows) {
   for (var j = shared; j < rows.length; j++) model.append(normalizeRow(rows[j]))
   if (model.count > rows.length) model.remove(rows.length, model.count - rows.length)
 }
+
+// ── Yapıştır-çalıştır satırları ────────────────────────────────────────────
+// query: arama metni (">" öneki komut modunu zorlar)
+// analysis: Shell.analyzeCommand(komut) -> {signal 0/1/2, dangerous, firstLine, extraLines}
+// history: Shell.commandHistory(komut) -> en yeni başta eşleşen komutlar
+// Dönüş: { position: "first" | "last" | "none", rows: [...] }
+function commandRows(query, analysis, history) {
+  var forced = String(query).charAt(0) === ">"
+  var command = forced ? String(query).substring(1).trim() : String(query).trim()
+  var signal = analysis ? analysis.signal : 0
+  var hist = history || []
+
+  if (!forced && signal === 0) return { position: "none", rows: [] }
+
+  var rows = []
+  if (command) {
+    var extra = analysis ? analysis.extraLines : 0
+    var first = (analysis && analysis.firstLine) ? analysis.firstLine : command
+    var danger = !!(analysis && analysis.dangerous)
+    rows.push({
+      itemId: "__run__", kind: "action", provider: "run-command", value: command,
+      icon: "", iconName: danger ? "dialog-warning" : "utilities-terminal",
+      label: first + (extra > 0 ? "  (+" + extra + " lines)" : ""),
+      detail: danger ? "Dangerous command — press Enter twice to run"
+                     : "Enter: run in terminal · Shift+Enter: run here",
+      path: "Run command", isDanger: danger
+    })
+  }
+  for (var i = 0; i < hist.length; i++) {
+    if (hist[i] === command) continue
+    rows.push({
+      itemId: "__hist_" + i + "__", kind: "action", provider: "run-command", value: hist[i],
+      icon: "", iconName: "document-open-recent", label: hist[i],
+      detail: "History · Enter: terminal · Shift+Enter: run here", path: "Run command", isDanger: false
+    })
+  }
+  var position = (forced || signal === 2) ? "first" : "last"
+  return { position: rows.length ? position : "none", rows: rows }
+}
