@@ -18,6 +18,8 @@ bool isArchive(const QString &path);
 QStringList extractArgs(const QString &path);
 QStringList compressArgs(const QString &path);
 QStringList terminalInDirArgs(const QString &dir);
+// "~", "~/x", olmayan dizin, dosya -> terminalin açılacağı mevcut dizin
+QString resolveTerminalDir(const QString &path, const QString &home);
 
 struct DesktopApp {
     QString file;
@@ -25,6 +27,7 @@ struct DesktopApp {
     QString icon;
     QStringList mimeTypes;
     bool noDisplay{false};
+    bool hidden{false}; // Hidden=true: silinmiş sayılır (NoDisplay ise yalnızca menüde gizli)
 };
 
 DesktopApp parseDesktopFile(const QString &file);

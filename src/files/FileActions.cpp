@@ -56,8 +56,8 @@ QString validateNewName(const QString &dir, const QString &newName) {
     return QString();
 }
 
-QString renamePath(const QString &path, const QString &newName) {
-    const QFileInfo fi(path);
+QString renamePath(const QString &rawPath, const QString &newName) {
+    const QFileInfo fi(QDir::cleanPath(rawPath)); // fd klasörleri sonda "/" ile verir
     if (!fi.exists() && !fi.isSymLink()) return QStringLiteral("File not found");
     if (newName == fi.fileName()) return QString();
     const QString dir = fi.absolutePath();
@@ -68,8 +68,8 @@ QString renamePath(const QString &path, const QString &newName) {
     return QString();
 }
 
-QVariantMap properties(const QString &path) {
-    const QFileInfo fi(path);
+QVariantMap properties(const QString &rawPath) {
+    const QFileInfo fi(QDir::cleanPath(rawPath));
     QMimeDatabase db;
     const QMimeType mt = db.mimeTypeForFile(fi);
     QVariantMap m;
@@ -129,6 +129,16 @@ QStringList terminalInDirArgs(const QString &dir) {
             QStringLiteral("cd -- \"$1\" && exec \"${SHELL:-bash}\" -i"), QStringLiteral("ravenspot"), dir};
 }
 
+QString resolveTerminalDir(const QString &path, const QString &home) {
+    QString p = path.trimmed();
+    if (p.isEmpty() || p == QLatin1String("~")) return QDir::cleanPath(home);
+    if (p.startsWith(QLatin1String("~/"))) p = home + p.mid(1);
+    const QFileInfo fi(QDir::cleanPath(p));
+    if (fi.isDir()) return fi.absoluteFilePath();
+    if (fi.exists()) return fi.absolutePath(); // dosya: içinde bulunduğu klasör
+    return QDir::cleanPath(home);               // olmayan yol: ev dizini (sessizce başarısız olma)
+}
+
 DesktopApp parseDesktopFile(const QString &file) {
     DesktopApp app;
     app.file = file;
@@ -147,8 +157,8 @@ DesktopApp parseDesktopFile(const QString &file) {
         if (key == QLatin1String("Name")) app.name = val;
         else if (key == QLatin1String("Icon")) app.icon = val;
         else if (key == QLatin1String("MimeType")) app.mimeTypes = val.split(QLatin1Char(';'), Qt::SkipEmptyParts);
-        else if ((key == QLatin1String("NoDisplay") || key == QLatin1String("Hidden")) && val == QLatin1String("true"))
-            app.noDisplay = true;
+        else if (key == QLatin1String("NoDisplay") && val == QLatin1String("true")) app.noDisplay = true;
+        else if (key == QLatin1String("Hidden") && val == QLatin1String("true")) app.hidden = true;
     }
     return app;
 }
@@ -160,7 +170,8 @@ QVariantList openWithApps(const QString &path, const QList<DesktopApp> &apps, co
 
     QList<DesktopApp> matched;
     for (const DesktopApp &a : apps) {
-        if (a.noDisplay || a.name.isEmpty()) continue;
+        // NoDisplay işleyiciler (ör. font yükleyici) dosya türü için geçerlidir; yalnızca Hidden silinmiş sayılır
+        if (a.hidden || a.name.isEmpty()) continue;
         for (const QString &m : a.mimeTypes) {
             if (names.contains(m)) { matched << a; break; }
         }

@@ -90,7 +90,7 @@ private slots:
             {"/x/zed.desktop", "Zed", "zed", {"text/plain"}, false},
             {"/x/kate.desktop", "Kate", "kate", {"text/plain"}, false},
             {"/x/gimp.desktop", "GIMP", "gimp", {"image/png"}, false},
-            {"/x/hidden.desktop", "Hidden", "", {"text/plain"}, true}};
+            {"/x/hidden.desktop", "Hidden", "", {"text/plain"}, false, true}};
         const QVariantList r = openWithApps(d.filePath("n.txt"), apps, "zed.desktop");
         QCOMPARE(r.size(), 2);
         QCOMPARE(r.at(0).toMap().value("name").toString(), QStringLiteral("Zed"));
@@ -124,6 +124,41 @@ private slots:
     void uninstall_noOwnerIsEmpty() {
         auto owner = [](const QString &) { return QString(); };
         QCOMPARE(uninstallCommand(QDir::homePath() + "/.local/share/applications/my.desktop", owner), QString());
+    }
+    void rename_trailingSlashDir() {
+        // fd klasörleri sonda "/" ile verir
+        QTemporaryDir d; QDir(d.path()).mkdir("sub");
+        QCOMPARE(renamePath(d.filePath("sub") + "/", "renamed"), QString());
+        QVERIFY(QFileInfo(d.filePath("renamed")).isDir());
+    }
+    void properties_trailingSlashDir() {
+        QTemporaryDir d; QDir(d.path()).mkdir("sub");
+        QCOMPARE(properties(d.filePath("sub") + "/").value("name").toString(), QStringLiteral("sub"));
+    }
+    void openWith_includesNoDisplayHandler() {
+        QTemporaryDir d; touch(d.filePath("n.txt"), "hello");
+        QList<DesktopApp> apps = {{"/x/fontinst.desktop", "Font Installer", "", {"text/plain"}, true, false},
+                                  {"/x/gone.desktop", "Gone", "", {"text/plain"}, false, true}};
+        const QVariantList r = openWithApps(d.filePath("n.txt"), apps, "fontinst.desktop");
+        QCOMPARE(r.size(), 1);
+        QCOMPARE(r.at(0).toMap().value("isDefault").toBool(), true);
+    }
+    void parseDesktop_hiddenVsNoDisplay() {
+        QTemporaryDir d;
+        const DesktopApp a = parseDesktopFile(writeDesktop(d.path(), "a.desktop", "[Desktop Entry]\nName=A\nNoDisplay=true\n"));
+        const DesktopApp b = parseDesktopFile(writeDesktop(d.path(), "b.desktop", "[Desktop Entry]\nName=B\nHidden=true\n"));
+        QVERIFY(a.noDisplay && !a.hidden);
+        QVERIFY(b.hidden);
+    }
+    void terminalDir_resolves() {
+        QTemporaryDir d; touch(d.filePath("f.txt"));
+        const QString home = d.path();
+        QCOMPARE(resolveTerminalDir("~", home), home);
+        QCOMPARE(resolveTerminalDir("", home), home);
+        QCOMPARE(resolveTerminalDir("/definitely/missing/dir", home), home);
+        QCOMPARE(resolveTerminalDir(d.filePath("f.txt"), home), QDir::cleanPath(d.path()));
+        QDir(d.path()).mkdir("w");
+        QCOMPARE(resolveTerminalDir("~/w", home), QDir::cleanPath(d.filePath("w")));
     }
 };
 

@@ -545,7 +545,7 @@ static QString fileSearchOutputToJson(const QByteArray &raw) {
 
     QJsonArray items;
     for (const QString &rawPath : lines) {
-        const QString fullPath = rawPath.trimmed();
+        const QString fullPath = QDir::cleanPath(rawPath.trimmed()); // fd klasörleri "/" ile bitirir
         if (fullPath.isEmpty()) continue;
 
         QFileInfo fi(fullPath);
@@ -818,10 +818,7 @@ void ShellBridge::openInDiscover(const QString &desktop) {
 static QString resolveTerminal(); // aşağıda tanımlı
 
 void ShellBridge::openInTerminal(const QString &path) {
-    QString targetDir = path.isEmpty() ? QDir::homePath() : path;
-    if (targetDir.startsWith(QLatin1String("~/"))) targetDir = QDir::homePath() + targetDir.mid(1);
-    const QFileInfo fi(targetDir);
-    if (fi.exists() && !fi.isDir()) targetDir = fi.absolutePath(); // dosya: içinde bulunduğu klasör
+    const QString targetDir = files::resolveTerminalDir(path, QDir::homePath());
     // Yol tek argv öğesi: eskiden "cd \"<yol>\"" metni /bin/sh'ta genişliyordu.
     QProcess::startDetached(resolveTerminal(), files::terminalInDirArgs(targetDir), targetDir);
 }
