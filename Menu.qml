@@ -1246,6 +1246,7 @@ Window {
     }
 
     function setFilter(next) {
+        if (root.outputPanelOpen && next !== root.filterText) root.outputPanelOpen = false // yeni arama
         root.filterText = next
         root.selectedIndex = 0
         if (!next.trim()) {
@@ -1715,6 +1716,8 @@ Window {
     }
 
     function closeMenu() {
+        root.outputPanelOpen = false // komut arka planda sürer; bitince bildirim gelir
+        root.armedRunId = ""
         if (root.depModalOpen) root.depModalOpen = false
         if (root.powerFlyoutOpen) root.powerFlyoutOpen = false
         if (root.audioFlyoutOpen) root.audioFlyoutOpen = false
@@ -1839,7 +1842,8 @@ Window {
         objectName: "card"
         width: root.cardWidth
         height: {
-            var contentH = (root.activeMenu === "system" && !root.filterText.length)
+            var contentH = root.outputPanelOpen ? 420
+                : (root.activeMenu === "system" && !root.filterText.length)
                 ? Math.ceil(displayModel.count / 2) * 64 + 18
                 : displayModel.count * rowHeight + 12
             return Math.min(headerHeight + 1 + contentH + footerHeight, root.maxCardHeight)
@@ -1926,6 +1930,12 @@ Window {
                     rebuildPreservingSelection() // uyarı metnini geri al
                 }
                 if (event.key === Qt.Key_Escape) {
+                    if (root.outputPanelOpen) {
+                        // Esc paneli kapatır, menüyü değil (komut çalışmaya devam eder)
+                        root.outputPanelOpen = false
+                        event.accepted = true
+                        return
+                    }
                     if (root.depModalOpen) {
                         root.depModalOpen = false
                         event.accepted = true
@@ -2590,9 +2600,27 @@ Window {
         }
 
         // Sonuç listesi
+        // Satır içi komut çıktısı (Shift+Enter); açıkken sonuç listesinin yerini alır
+        CommandOutputPanel {
+            id: outputPanel
+            visible: root.outputPanelOpen
+            anchors.top: parent.top
+            anchors.topMargin: headerHeight + 1 + 6
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.bottom: footerMonitorBar.top
+            anchors.bottomMargin: 4
+            runner: Shell.runner
+            fgColor: root.fgColor
+            dimColor: root.fgDim
+            accentColor: root.selBg
+            onCopyRequested: function(text) { Shell.setClipboard(text); Shell.playCreamy() }
+            onCloseRequested: { root.outputPanelOpen = false; searchInput.forceActiveFocus() }
+        }
+
         ListView {
             id: resultList
-            visible: root.activeMenu !== "system" || root.filterText.length > 0
+            visible: !root.outputPanelOpen && (root.activeMenu !== "system" || root.filterText.length > 0)
             anchors.top: parent.top
             anchors.topMargin: headerHeight + 1 + 6
             anchors.left: parent.left
