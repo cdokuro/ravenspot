@@ -4210,7 +4210,10 @@ Window {
                     Shell.playThock(); event.accepted = true
                 } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter || event.key === Qt.Key_Right) {
                     var e = contextMenuModel.get(contextList.currentIndex)
-                    if (e) { Shell.playCreamy(); executeContextAction(e.actionType, e.actionPayload) }
+                    var k = event.key === Qt.Key_Right ? "right" : "enter"
+                    if (e && MenuModel.contextKeyActivates(k, e.actionType)) {
+                        Shell.playCreamy(); executeContextAction(e.actionType, e.actionPayload)
+                    }
                     event.accepted = true
                 } else if (event.key === Qt.Key_Escape || event.key === Qt.Key_Left || event.key === Qt.Key_Backspace) {
                     if (root.contextMode !== "list") root.contextBack()

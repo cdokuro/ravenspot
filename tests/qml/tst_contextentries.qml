@@ -70,4 +70,12 @@ TestCase {
         var un = u.filter(function(x) { return x.actionType === "uninstall" })[0]
         compare(un.isDanger, true)
     }
+
+    // contextKeyActivates(key, actionType): Enter her şeyi, sağ ok yalnızca alt menü açar
+    function test_rightArrowOnlyOpensSubmenu() {
+        verify(MenuModel.contextKeyActivates("right", "openWithMenu"))
+        verify(!MenuModel.contextKeyActivates("right", "moveToTrash"))
+        verify(!MenuModel.contextKeyActivates("right", "uninstall"))
+        verify(MenuModel.contextKeyActivates("enter", "moveToTrash"))
+    }
 }

@@ -146,7 +146,12 @@ void ShellBridge::centerWindowOnActiveScreen(QObject *qquickWindow) {
 }
 
 void ShellBridge::onMenuVisibilityChanged(bool visible) {
-    if (!visible) m_execCache.clear();
+    if (!visible) {
+        m_execCache.clear();
+        // Open With listesi menü kapanınca yeniden taranır: sonradan kurulan uygulamalar görünsün
+        m_desktopApps.clear();
+        m_desktopAppsLoaded = false;
+    }
     if (visible) {
         if (!m_telemetryTimer.isActive()) {
             m_telemetryTimer.start();
@@ -913,7 +918,8 @@ void ShellBridge::uninstallApp(const QString &desktopFile) {
             QStringLiteral("Cannot uninstall"), QStringLiteral("No package owns ") + QFileInfo(desktopFile).fileName()});
         return;
     }
-    runCommandInTerminal(cmd); // paket yöneticisi kendi onayını sorar
+    // Komut geçmişine yazma (">" önerilerinde "kaldır" tekrar çıkmasın); paket yöneticisi onay sorar
+    QProcess::startDetached(resolveTerminal(), cmd::terminalArgs(cmd), QDir::homePath());
 }
 
 static QString resolveTerminal() {

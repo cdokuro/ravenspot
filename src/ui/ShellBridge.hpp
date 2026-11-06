@@ -203,8 +203,8 @@ private:
     CommandRunner *m_commandRunner{nullptr};
     CommandHistory *m_commandHistory{nullptr};
     mutable QHash<QString, bool> m_execCache;
-    mutable QList<ravenspot::files::DesktopApp> m_desktopApps; // Open With için tembel tarama
-    mutable bool m_desktopAppsLoaded{false}; // PATH araması önbelleği (menü kapanınca temizlenir)
+    mutable QList<ravenspot::files::DesktopApp> m_desktopApps; // Open With için tembel tarama (menü kapanınca temizlenir)
+    mutable bool m_desktopAppsLoaded{false};
 
     bool m_startHidden{false};
     QPointer<LayerShellWindow> m_layerShellWindow;

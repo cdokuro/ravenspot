@@ -874,3 +874,11 @@ function appContextEntries(info) {
   if (info.canUninstall) out.push(ctxEntry("Uninstall…", "", "uninstall", d, true))
   return out
 }
+
+// Sağ tık popup tuşları: Enter her girdiyi çalıştırır; sağ ok yalnızca alt menü
+// açar (fare üzerinde dururken "→" ile çöpe taşıma / kaldırma tetiklenmesin).
+function contextKeyActivates(key, actionType) {
+  if (key === "enter") return true
+  if (key === "right") return actionType === "openWithMenu"
+  return false
+}
