@@ -77,6 +77,7 @@ public slots:
     Q_INVOKABLE void endDrag();
     Q_INVOKABLE void setCardHeight(int height);
     Q_INVOKABLE bool isSwitchingScreen() const;
+    Q_INVOKABLE bool perfLogging() const { return qEnvironmentVariableIsSet("RAVENSPOT_PERF"); }
 
     // ── 2. Audio & Volume ──────────────────────────────────────
     Q_INVOKABLE void playThock();

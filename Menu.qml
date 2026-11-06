@@ -572,9 +572,20 @@ Window {
         return null
     }
 
+    // RAVENSPOT_PERF=1 ile her yeniden kurulumun süresi loglanır (varsayılan kapalı).
+    readonly property bool perfLogging: Shell.perfLogging()
+
     function rebuildDisplay() {
-        displayModel.clear()
-        if (!root.loaded) return
+        if (!root.perfLogging) { rebuildDisplayInner(); return }
+        var t0 = Date.now()
+        rebuildDisplayInner()
+        console.log("rebuildDisplay", Date.now() - t0, "ms rows=", displayModel.count)
+    }
+
+    // Satırlar MenuModel.syncRows ile yerinde güncellenir: delegate'ler her
+    // tuşta yok edilip yeniden yaratılmaz, yalnızca kuyruk eklenir/silinir.
+    function rebuildDisplayInner() {
+        if (!root.loaded) { MenuModel.syncRows(displayModel, []); return }
 
         var active = root.item(root.activeMenu) ? root.activeMenu : "root"
         root.activeMenu = active
@@ -693,7 +704,7 @@ Window {
                         console.log("Dosya arama hatası:", e)
                     }
                 }
-                for (var m = 0; m < rows.length; m++) displayModel.append(rows[m])
+                MenuModel.syncRows(displayModel, rows)
                 settleCursor()
                 return
             }
@@ -1237,7 +1248,7 @@ Window {
             }
         }
 
-        for (var k = 0; k < rows.length; k++) displayModel.append(rows[k])
+        MenuModel.syncRows(displayModel, rows)
         settleCursor()
     }
 
@@ -2609,6 +2620,12 @@ Window {
                 width: resultList.width
                 height: root.rowHeight
                 radius: 6
+                // Yalnızca kuyruğa eklenen satırlar belirir; yerinde güncellenenler
+                // (syncRows) hareket etmez: hızlı yazarken liste sakin kalır.
+                ListView.onAdd: NumberAnimation {
+                    target: row; property: "opacity"; from: 0; to: 1
+                    duration: 120; easing.type: Easing.OutCubic
+                }
                 color: (index === resultList.currentIndex && !model.disabled) ? "transparent" : "transparent"
 
                 Text {
