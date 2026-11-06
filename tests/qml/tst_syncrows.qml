@@ -60,4 +60,12 @@ TestCase {
         compare(removedCount, 0)
         compare(m.get(1).label, "e")
     }
+
+    // ListModel role türü ilk değerle sabitlenir; set() farklı türü reddedip
+    // eski değeri bırakır. normalizeRow değeri varsayılanın türüne çevirmeli.
+    function test_typeMismatchCoerced() {
+        MenuModel.syncRows(m, [{ itemId: "a", label: "App", value: "firefox.desktop" }])
+        MenuModel.syncRows(m, [{ itemId: "k", label: "Kill", value: 4242 }])
+        compare(m.get(0).value, "4242")
+    }
 }

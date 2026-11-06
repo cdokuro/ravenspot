@@ -752,6 +752,16 @@ function defaultFor(value) {
   return ""
 }
 
+// ListModel bir role'ün türünü ilk değerle sabitler (clear() sonrası da);
+// set() farklı türü reddedip önceki satırın değerini bırakır. Değeri role'ün
+// varsayılan türüne çevir (ör. kill satırının sayısal value'su -> "4242").
+function coerceTo(defaultValue, v) {
+  if (typeof defaultValue === "string") return (v === undefined || v === null) ? "" : String(v)
+  if (typeof defaultValue === "number") { var n = Number(v); return isNaN(n) ? 0 : n }
+  if (typeof defaultValue === "boolean") return !!v
+  return v
+}
+
 function normalizeRow(row) {
   var out = {}
   var k
@@ -759,7 +769,7 @@ function normalizeRow(row) {
   for (k in extraRoleDefaults) out[k] = extraRoleDefaults[k]
   for (k in row) {
     if (!(k in ROW_DEFAULTS) && !(k in extraRoleDefaults)) extraRoleDefaults[k] = defaultFor(row[k])
-    out[k] = row[k]
+    out[k] = coerceTo(k in ROW_DEFAULTS ? ROW_DEFAULTS[k] : extraRoleDefaults[k], row[k])
   }
   return out
 }
