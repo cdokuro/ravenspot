@@ -60,7 +60,8 @@ HEADERS += \
     src/search/CalcConverter.hpp \
     src/run/CommandAnalyzer.hpp \
     src/run/CommandRunner.hpp \
-    src/run/CommandHistory.hpp
+    src/run/CommandHistory.hpp \
+    src/files/FileActions.hpp
 
 SOURCES += \
     src/main.cpp \
@@ -78,4 +79,5 @@ SOURCES += \
     src/search/CalcConverter.cpp \
     src/run/CommandAnalyzer.cpp \
     src/run/CommandRunner.cpp \
-    src/run/CommandHistory.cpp
+    src/run/CommandHistory.cpp \
+    src/files/FileActions.cpp
