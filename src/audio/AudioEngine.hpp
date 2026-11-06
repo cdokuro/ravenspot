@@ -16,6 +16,9 @@ class AudioEngine : public QObject {
     Q_OBJECT
 
 public:
+    // Sesleri (QSoundEffect + FFmpeg backend) önceden yükler; aksi halde ilk
+    // play*() çağrısında UI thread'inde yüklenip ilk açılışı takıldırıyordu.
+    void warmUp() { setupVoices(); }
     static constexpr size_t THOCK_POOL_SIZE = 4;
     static constexpr float THOCK_BASE_VOLUME = 0.28f;
     static constexpr float CREAMY_BASE_VOLUME = 0.32f;

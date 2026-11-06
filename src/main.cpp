@@ -29,6 +29,7 @@
 #include "ui/ThemeManager.hpp"
 #include "ui/IconProviders.hpp"
 #include "audio/AudioEngine.hpp"
+#include <QTimer>
 #include "search/AppIndexer.hpp"
 
 namespace {
@@ -180,6 +181,8 @@ int main(int argc, char *argv[]) {
 
     shellBridge->setThemeManager(themeManager.get());
     shellBridge->setAudioEngine(audioEngine.get());
+    // Olay döngüsü başladıktan kısa süre sonra sesleri ısıt (yapıcıda değil: açılışı geciktirmesin)
+    QTimer::singleShot(250, audioEngine.get(), &ravenspot::AudioEngine::warmUp);
     shellBridge->setAppIndexer(appIndexer.get());
 
     auto *appIconProvider = new ravenspot::AppIconProvider();
