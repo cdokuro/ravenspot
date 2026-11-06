@@ -6,6 +6,7 @@
 #include <QVariantMap>
 #include <QPointer>
 #include <QTimer>
+#include <QHash>
 
 class QProcess;
 
@@ -17,6 +18,8 @@ class LayerShellWindow;
 class ThemeManager;
 class AudioEngine;
 class AppIndexer;
+class CommandRunner;
+class CommandHistory;
 
 class ShellBridge : public QObject {
     Q_OBJECT
@@ -24,6 +27,8 @@ class ShellBridge : public QObject {
     // QML Root Properties
     Q_PROPERTY(bool startHidden READ startHidden CONSTANT)
     Q_PROPERTY(QString version READ version CONSTANT)
+    // Satır içi komut çalıştırıcı (QML çıktı paneli buna bağlanır)
+    Q_PROPERTY(QObject *runner READ runner CONSTANT)
 
 public:
     explicit ShellBridge(bool startHidden = false, QObject *parent = nullptr);
@@ -128,6 +133,16 @@ public slots:
     Q_INVOKABLE void openInTerminal(const QString &path);
     Q_INVOKABLE void runInTerminal(const QString &desktopOrCmd);
     Q_INVOKABLE void runDetached(const QString &command);
+
+    // ── Yapıştır-çalıştır komut çalıştırıcı ───────────────────
+    // analyzeCommand -> {signal:int(0 none,1 weak,2 strong), dangerous, needsTerminal, firstLine, extraLines}
+    Q_INVOKABLE QVariantMap analyzeCommand(const QString &text) const;
+    Q_INVOKABLE void runCommandInTerminal(const QString &command);
+    // false: sudo/etkileşimli olduğu için terminale yönlendirildi ya da zaten bir komut çalışıyor
+    Q_INVOKABLE bool runCommandInline(const QString &command);
+    Q_INVOKABLE void stopInlineCommand();
+    Q_INVOKABLE QStringList commandHistory(const QString &query) const;
+    [[nodiscard]] QObject *runner() const;
     Q_INVOKABLE void executeCommand(const QString &cmdStr, bool inTerminal = false);
     Q_INVOKABLE QString bash(const QString &script);
     Q_INVOKABLE bool isCommandAvailable(const QString &command) const;
@@ -169,6 +184,9 @@ private:
     void activateDolphinWindow(const QString &folderHint);
 
     QProcess *m_fileSearchProc{nullptr}; // devam eden async fd araması (yeni sorgu gelince iptal)
+    CommandRunner *m_commandRunner{nullptr};
+    CommandHistory *m_commandHistory{nullptr};
+    mutable QHash<QString, bool> m_execCache; // PATH araması önbelleği (menü kapanınca temizlenir)
 
     bool m_startHidden{false};
     QPointer<LayerShellWindow> m_layerShellWindow;

@@ -3,6 +3,9 @@
 #include "../audio/AudioEngine.hpp"
 #include "../core/LayerShellWindow.hpp"
 #include "../search/AppIndexer.hpp"
+#include "../run/CommandAnalyzer.hpp"
+#include "../run/CommandRunner.hpp"
+#include "../run/CommandHistory.hpp"
 
 #include <QGuiApplication>
 #include <QClipboard>
@@ -36,6 +39,18 @@ ShellBridge::ShellBridge(bool startHidden, QObject *parent)
 {
     m_telemetryTimer.setInterval(1000);
     connect(&m_telemetryTimer, &QTimer::timeout, this, &ShellBridge::updateTelemetry);
+
+    m_commandRunner = new CommandRunner(this);
+    m_commandHistory = new CommandHistory(CommandHistory::defaultPath(), this);
+    connect(m_commandRunner, &CommandRunner::finished, this, [this](int code, bool crashed) {
+        // Menü kapalıyken biten satır içi komutu bildir (argv; kabuk yok).
+        if (m_layerShellWindow && m_layerShellWindow->isVisible()) return;
+        const QString title = crashed ? QStringLiteral("Command stopped") : QStringLiteral("Command finished");
+        QProcess::startDetached(QStringLiteral("notify-send"), {
+            QStringLiteral("-a"), QStringLiteral("RavenSpot"),
+            QStringLiteral("-i"), QStringLiteral("utilities-terminal"),
+            title, cmd::firstLine(m_commandRunner->command()) + QStringLiteral(" — exit ") + QString::number(code)});
+    });
 
     // Sync sleep inhibition state with KDE / FreeDesktop PowerManagement
     QDBusConnection::sessionBus().connect(
@@ -130,6 +145,7 @@ void ShellBridge::centerWindowOnActiveScreen(QObject *qquickWindow) {
 }
 
 void ShellBridge::onMenuVisibilityChanged(bool visible) {
+    if (!visible) m_execCache.clear();
     if (visible) {
         if (!m_telemetryTimer.isActive()) {
             m_telemetryTimer.start();
@@ -798,6 +814,61 @@ void ShellBridge::openInDiscover(const QString &desktop) {
 void ShellBridge::openInTerminal(const QString &path) {
     const QString targetDir = path.isEmpty() ? QDir::homePath() : path;
     runInTerminal(QStringLiteral("cd \"") + targetDir + QStringLiteral("\" && exec $SHELL"));
+}
+
+static QString resolveTerminal() {
+    QString term = QString::fromUtf8(qgetenv("TERMINAL"));
+    if (term.isEmpty()) {
+        const QStringList candidates = {
+            QStringLiteral("konsole"), QStringLiteral("kitty"), QStringLiteral("alacritty"),
+            QStringLiteral("foot"), QStringLiteral("wezterm"), QStringLiteral("xterm")
+        };
+        for (const auto &c : candidates) {
+            if (!QStandardPaths::findExecutable(c).isEmpty()) return c;
+        }
+    }
+    return term.isEmpty() ? QStringLiteral("xterm") : term;
+}
+
+QVariantMap ShellBridge::analyzeCommand(const QString &text) const {
+    return cmd::analyze(text, [this](const QString &tok) {
+        auto it = m_execCache.constFind(tok);
+        if (it != m_execCache.constEnd()) return it.value();
+        const bool found = !QStandardPaths::findExecutable(tok).isEmpty();
+        m_execCache.insert(tok, found);
+        return found;
+    });
+}
+
+void ShellBridge::runCommandInTerminal(const QString &command) {
+    if (command.trimmed().isEmpty()) return;
+    // Komut tek argv öğesi olarak bash'e gider: RavenSpot hiçbir şeyi genişletmez.
+    QProcess::startDetached(resolveTerminal(), cmd::terminalArgs(command), QDir::homePath());
+    m_commandHistory->add(command);
+}
+
+bool ShellBridge::runCommandInline(const QString &command) {
+    if (command.trimmed().isEmpty()) return false;
+    if (cmd::needsTerminal(command)) {
+        runCommandInTerminal(command); // sudo / etkileşimli program: terminal gerekir
+        return false;
+    }
+    if (!m_commandRunner->start(command)) return false;
+    m_commandHistory->add(command);
+    return true;
+}
+
+void ShellBridge::stopInlineCommand() {
+    m_commandRunner->stop();
+}
+
+QStringList ShellBridge::commandHistory(const QString &query) const {
+    return query.trimmed().isEmpty() ? m_commandHistory->matching(QString(), 10)
+                                     : m_commandHistory->matching(query, 5);
+}
+
+QObject *ShellBridge::runner() const {
+    return m_commandRunner;
 }
 
 void ShellBridge::runInTerminal(const QString &desktopOrCmd) {
