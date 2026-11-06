@@ -6,6 +6,8 @@
 #include <QDBusConnection>
 #include <QDBusReply>
 #include <QDebug>
+#include <algorithm>
+#include <cmath>
 #include <KF6/KWindowSystem/kwindoweffects.h>
 
 namespace ravenspot {
@@ -55,6 +57,13 @@ void LayerShellWindow::initWindow() {
     connect(&m_graceTimer, &QTimer::timeout, this, &LayerShellWindow::onGraceTimerTriggered);
 
     connect(m_window.data(), &QQuickWindow::activeChanged, this, &LayerShellWindow::onWindowActiveChanged);
+    connect(m_window.data(), &QQuickWindow::afterAnimating, this, &LayerShellWindow::flushPendingMove);
+
+    if (m_isWayland && !m_relativePointer) {
+        m_relativePointer = new RelativePointer(this);
+        connect(m_relativePointer, &RelativePointer::motion, this, &LayerShellWindow::onRelativeMotion);
+        (void)m_relativePointer->ensureReady(); // manager'ı açılışta bağla; ilk drag'de gecikme olmasın
+    }
     if (qGuiApp) {
         connect(qGuiApp, &QGuiApplication::focusWindowChanged, this, &LayerShellWindow::onFocusWindowChanged);
     }
@@ -175,32 +184,60 @@ void LayerShellWindow::showOnActiveScreen() {
     emit visibilityChanged(true);
 }
 
-void LayerShellWindow::beginDrag(double localX, double localY) {
-    Q_UNUSED(localX);
-    Q_UNUSED(localY);
-    m_dragStartWinPos = QPoint(m_posX, m_posY);
+void LayerShellWindow::beginDrag(double initialDx, double initialDy) {
+    // Wayland'de konumdan bağımsız ham delta kaynağını tercih et.
+    m_dragUsesRelativePointer = m_relativePointer && m_relativePointer->ensureReady();
     m_accumulatedDeltaX = 0.0;
     m_accumulatedDeltaY = 0.0;
+    m_pendingDx = 0.0;
+    m_pendingDy = 0.0;
     m_isDragging = true;
+    // Deadzone boyunca kat edilen mesafe: pencere henüz hareket etmediği için
+    // QML local koordinatları burada hâlâ geçerli.
+    queueMove(initialDx, initialDy);
 }
 
 QPoint LayerShellWindow::dragBy(double deltaX, double deltaY) {
-    if (!m_isDragging) return QPoint(0, 0);
+    // Relative pointer aktifken QML local delta'ları kendi hareketimizi
+    // geri beslediği için yok sayılır (yarı hız + titreme kök nedeni).
+    if (!m_isDragging || m_dragUsesRelativePointer) return QPoint(0, 0);
+    queueMove(deltaX, deltaY);
+    return QPoint(0, 0);
+}
 
-    m_accumulatedDeltaX += deltaX;
-    m_accumulatedDeltaY += deltaY;
+void LayerShellWindow::onRelativeMotion(double dx, double dy) {
+    if (m_isDragging && m_dragUsesRelativePointer) {
+        queueMove(dx, dy);
+    }
+}
+
+void LayerShellWindow::queueMove(double dx, double dy) {
+    if (dx == 0.0 && dy == 0.0) return;
+    const bool wasIdle = (m_pendingDx == 0.0 && m_pendingDy == 0.0);
+    m_pendingDx += dx;
+    m_pendingDy += dy;
+    // 8kHz olayları kare başına tek margin güncellemesine indirger;
+    // uygulama afterAnimating'de (GUI thread, sync'ten hemen önce) yapılır.
+    if (wasIdle && m_window) {
+        m_window->requestUpdate();
+    }
+}
+
+void LayerShellWindow::flushPendingMove() {
+    if (m_pendingDx == 0.0 && m_pendingDy == 0.0) return;
+
+    m_accumulatedDeltaX += m_pendingDx;
+    m_accumulatedDeltaY += m_pendingDy;
+    m_pendingDx = 0.0;
+    m_pendingDy = 0.0;
 
     const int intDx = static_cast<int>(std::round(m_accumulatedDeltaX));
     const int intDy = static_cast<int>(std::round(m_accumulatedDeltaY));
-
-    if (intDx == 0 && intDy == 0) return QPoint(0, 0);
-
+    if (intDx == 0 && intDy == 0) return;
     m_accumulatedDeltaX -= intDx;
     m_accumulatedDeltaY -= intDy;
 
     QScreen *screen = m_window ? m_window->screen() : nullptr;
-    if (!screen) screen = resolveActiveScreen();
-
     const int maxW = screen ? screen->geometry().width() : 2560;
     const int maxH = screen ? screen->geometry().height() : 1440;
     const int winW = m_window ? m_window->width() : 543;
@@ -208,27 +245,19 @@ QPoint LayerShellWindow::dragBy(double deltaX, double deltaY) {
 
     const int newX = std::clamp(m_posX + intDx, 0, std::max(0, maxW - winW));
     const int newY = std::clamp(m_posY + intDy, 0, std::max(0, maxH - winH));
-
-    const int appliedDx = newX - m_posX;
-    const int appliedDy = newY - m_posY;
-
-    if (appliedDx == 0 && appliedDy == 0) return QPoint(0, 0);
+    if (newX == m_posX && newY == m_posY) return;
 
     m_posX = newX;
     m_posY = newY;
     m_hasCustomPosition = true;
 
     if (m_layerWindow) {
+        // Bu karenin commit'iyle birlikte uygulanır (double-buffered state).
         m_layerWindow->setMargins(QMargins(m_posX, m_posY, 0, 0));
-    }
-    if (m_window) {
-        m_window->requestUpdate();
     }
     if (!m_isWayland && m_window && screen) {
         m_window->setPosition(screen->geometry().x() + m_posX, screen->geometry().y() + m_posY);
     }
-
-    return QPoint(appliedDx, appliedDy);
 }
 
 void LayerShellWindow::updateDrag(double localX, double localY) {
@@ -237,9 +266,13 @@ void LayerShellWindow::updateDrag(double localX, double localY) {
 }
 
 void LayerShellWindow::endDrag() {
+    flushPendingMove();
     m_isDragging = false;
+    m_dragUsesRelativePointer = false;
     m_accumulatedDeltaX = 0.0;
     m_accumulatedDeltaY = 0.0;
+    m_pendingDx = 0.0;
+    m_pendingDy = 0.0;
 }
 
 void LayerShellWindow::setWindowPosition(int x, int y) {

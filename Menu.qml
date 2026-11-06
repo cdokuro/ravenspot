@@ -1965,7 +1965,6 @@ Window {
                             lastX = mouse.x
                             lastY = mouse.y
                             isDragging = false
-                            Shell.beginDrag()
                         }
 
                         onPositionChanged: function(mouse) {
@@ -1975,8 +1974,13 @@ Window {
                                 var dist = Math.hypot(mouse.x - pressX, mouse.y - pressY)
                                 if (dist < 4) return // 4px deadzone: clicking never jumps
                                 isDragging = true
+                                // Deadzone mesafesini de uygula: imleç tutma noktasında kalsın.
+                                // Wayland'de sonraki hareket zwp_relative_pointer'dan gelir;
+                                // aşağıdaki dragBy yalnızca protokol yoksa (X11) kullanılır.
+                                Shell.beginDrag(mouse.x - pressX, mouse.y - pressY)
                                 lastX = mouse.x
                                 lastY = mouse.y
+                                return
                             }
 
                             var dx = mouse.x - lastX
@@ -1990,13 +1994,13 @@ Window {
                         }
 
                         onReleased: {
+                            if (isDragging) Shell.endDrag()
                             isDragging = false
-                            Shell.endDrag()
                         }
 
                         onCanceled: {
+                            if (isDragging) Shell.endDrag()
                             isDragging = false
-                            Shell.endDrag()
                         }
                     }
                 }
@@ -2211,6 +2215,7 @@ Window {
                         anchors.top: parent.top
                         anchors.bottom: parent.bottom
                         verticalAlignment: TextInput.AlignVCenter
+                        clip: true  // autoScroll metni sola kaydırır; kırpılmazsa kutu dışına taşar
                         color: root.fgColor
                         font.pixelSize: 15
                         font.family: root.textFont

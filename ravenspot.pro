@@ -7,7 +7,25 @@ QT += core gui quick qml dbus multimedia network
 CONFIG += c++20 release link_pkgconfig
 
 # FreeDesktop & KDE Frameworks integration
-PKGCONFIG += KF6WindowSystem
+PKGCONFIG += KF6WindowSystem wayland-client
+
+# Wayland protocol bindings (vendored XML -> wayland-scanner at build time)
+WAYLAND_PROTOCOLS = protocols/relative-pointer-unstable-v1.xml
+
+wayland_header.input = WAYLAND_PROTOCOLS
+wayland_header.output = ${QMAKE_FILE_BASE}-client-protocol.h
+wayland_header.commands = wayland-scanner client-header ${QMAKE_FILE_IN} ${QMAKE_FILE_OUT}
+wayland_header.variable_out = HEADERS
+wayland_header.CONFIG += no_link target_predeps
+
+wayland_code.input = WAYLAND_PROTOCOLS
+wayland_code.output = ${QMAKE_FILE_BASE}-protocol.c
+wayland_code.commands = wayland-scanner private-code ${QMAKE_FILE_IN} ${QMAKE_FILE_OUT}
+wayland_code.variable_out = SOURCES
+wayland_code.depends = ${QMAKE_FILE_BASE}-client-protocol.h
+
+QMAKE_EXTRA_COMPILERS += wayland_header wayland_code
+INCLUDEPATH += $$OUT_PWD
 
 # Wayland Layer-Shell Qt interface
 INCLUDEPATH += /usr/include/LayerShellQt
@@ -30,6 +48,7 @@ HEADERS += \
     src/core/DaemonServer.hpp \
     src/core/LayerShellWindow.hpp \
     src/core/SingleInstance.hpp \
+    src/core/RelativePointer.hpp \
     src/ui/ShellBridge.hpp \
     src/ui/ThemeManager.hpp \
     src/ui/IconProviders.hpp \
@@ -45,6 +64,7 @@ SOURCES += \
     src/core/DaemonServer.cpp \
     src/core/LayerShellWindow.cpp \
     src/core/SingleInstance.cpp \
+    src/core/RelativePointer.cpp \
     src/ui/ShellBridge.cpp \
     src/ui/ThemeManager.cpp \
     src/ui/IconProviders.cpp \

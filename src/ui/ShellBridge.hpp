@@ -65,7 +65,7 @@ public slots:
     Q_INVOKABLE void toggleMenu();
     Q_INVOKABLE void showMenu();
     Q_INVOKABLE void hideMenu();
-    Q_INVOKABLE void beginDrag(double localX = 0, double localY = 0);
+    Q_INVOKABLE void beginDrag(double initialDx = 0, double initialDy = 0);
     Q_INVOKABLE QPoint dragBy(double deltaX, double deltaY);
     Q_INVOKABLE void updateDrag(double localX = 0, double localY = 0);
     Q_INVOKABLE void endDrag();

@@ -153,9 +153,9 @@ void ShellBridge::hideMenu() {
     emit hideRequested();
 }
 
-void ShellBridge::beginDrag(double localX, double localY) {
+void ShellBridge::beginDrag(double initialDx, double initialDy) {
     if (m_layerShellWindow) {
-        m_layerShellWindow->beginDrag(localX, localY);
+        m_layerShellWindow->beginDrag(initialDx, initialDy);
     }
 }
 

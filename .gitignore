@@ -12,3 +12,5 @@ moc_*
 Makefile*
 .qmake.stash
 ravenspot
+*-protocol.c
+*-client-protocol.h

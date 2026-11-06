@@ -8,6 +8,8 @@
 #include <QElapsedTimer>
 #include <LayerShellQt/Window>
 
+#include "core/RelativePointer.hpp"
+
 namespace ravenspot {
 
 class LayerShellWindow : public QObject {
@@ -35,7 +37,7 @@ public:
     [[nodiscard]] int cardHeight() const noexcept { return m_cardHeight; }
 
     // Drag-to-move window controls
-    void beginDrag(double localX = 0, double localY = 0);
+    void beginDrag(double initialDx = 0, double initialDy = 0);
     QPoint dragBy(double deltaX, double deltaY);
     void updateDrag(double localX = 0, double localY = 0);
     void endDrag();
@@ -50,12 +52,15 @@ private slots:
     void onGraceTimerTriggered();
     void onWindowActiveChanged();
     void onFocusWindowChanged(QWindow *focusWindow);
+    void onRelativeMotion(double dx, double dy);
+    void flushPendingMove();
 
 private:
     void initWindow();
     void initLayerShell();
     void setupBlur();
     QScreen* resolveActiveScreen();
+    void queueMove(double dx, double dy);
 
     QPointer<QQuickWindow> m_window;
     bool m_ownsWindow{false};
@@ -70,8 +75,10 @@ private:
     bool m_isDragging{false};
     double m_accumulatedDeltaX{0.0};
     double m_accumulatedDeltaY{0.0};
-    QPoint m_dragStartWinPos;
-    QPointF m_globalStartPos;
+    bool m_dragUsesRelativePointer{false};
+    double m_pendingDx{0.0};
+    double m_pendingDy{0.0};
+    RelativePointer *m_relativePointer{nullptr};
     QPointer<QScreen> m_lastScreen;
 };
 
