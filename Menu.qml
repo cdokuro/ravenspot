@@ -1755,7 +1755,6 @@ Window {
             root.sysVolume = vol
             root.sysMuted = muted
             root.sysMonitor = Shell.getSysMonitorInfo()
-        root.sysUpdateInfo = Shell.getUpdateInfo()
             root.sysUpdateInfo = Shell.getUpdateInfo()
         }
         function onThemeChanged() {

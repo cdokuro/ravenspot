@@ -113,12 +113,17 @@ QScreen* LayerShellWindow::resolveActiveScreen() {
     if (screens.isEmpty()) return nullptr;
     if (screens.size() == 1) return screens.first();
 
-    // 1. Fast check: Screen under cursor (0ms in-memory calculation)
-    if (QScreen *cursorScreen = QGuiApplication::screenAt(QCursor::pos())) {
-        return cursorScreen;
+    // X11: global imleç konumu geçerlidir, ekranı doğrudan buradan bul.
+    // Wayland: istemciler global imleç konumunu göremez; QCursor::pos() hep
+    // (0,0) döner ve screenAt() her zaman (0,0)'daki ekranı (DP-1) seçerdi.
+    if (!m_isWayland) {
+        if (QScreen *cursorScreen = QGuiApplication::screenAt(QCursor::pos())) {
+            return cursorScreen;
+        }
     }
 
-    // 2. Query KWin activeOutputName via D-Bus
+    // KWin'in aktif çıkışı (odak/imleç politikasına göre). Süreç içinde ~60-150µs;
+    // KWin yanıt vermezse hotkey'i dondurmamak için kısa zaman aşımı.
     auto msg = QDBusMessage::createMethodCall(
         QStringLiteral("org.kde.KWin"),
         QStringLiteral("/KWin"),
@@ -126,7 +131,7 @@ QScreen* LayerShellWindow::resolveActiveScreen() {
         QStringLiteral("activeOutputName")
     );
 
-    QDBusReply<QString> reply = QDBusConnection::sessionBus().call(msg);
+    QDBusReply<QString> reply = QDBusConnection::sessionBus().call(msg, QDBus::Block, 50);
     if (reply.isValid()) {
         const QString activeName = reply.value();
         for (QScreen *s : screens) {
