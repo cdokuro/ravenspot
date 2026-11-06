@@ -15,3 +15,5 @@ ravenspot
 *-protocol.c
 *-client-protocol.h
 .superpowers/
+tests/cpp/cmdtests
+*.moc

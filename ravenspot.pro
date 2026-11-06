@@ -57,7 +57,8 @@ HEADERS += \
     src/search/SearchResultItem.hpp \
     src/search/AppIndexer.hpp \
     src/search/KRunnerActions.hpp \
-    src/search/CalcConverter.hpp
+    src/search/CalcConverter.hpp \
+    src/run/CommandAnalyzer.hpp
 
 SOURCES += \
     src/main.cpp \
@@ -72,4 +73,5 @@ SOURCES += \
     src/audio/SoundConfig.cpp \
     src/search/AppIndexer.cpp \
     src/search/KRunnerActions.cpp \
-    src/search/CalcConverter.cpp
+    src/search/CalcConverter.cpp \
+    src/run/CommandAnalyzer.cpp
