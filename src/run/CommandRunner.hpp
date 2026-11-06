@@ -5,6 +5,7 @@
 #include <QProcess>
 #include <QStringList>
 #include <QTimer>
+#include <QStringDecoder>
 
 namespace ravenspot {
 
@@ -21,6 +22,7 @@ class CommandRunner : public QObject {
 public:
     static constexpr int kMaxLines = 2000;
     static constexpr int kKillGraceMs = 2000;
+    static constexpr int kMaxLineChars = 4000; // tek satır sınırı (küçültülmüş JSON, ikili çıktı)
 
     explicit CommandRunner(QObject *parent = nullptr);
     ~CommandRunner() override;
@@ -47,6 +49,9 @@ private:
     QString m_command;
     QStringList m_lines;
     QString m_partial; // satır sonu gelmemiş son parça
+    bool m_partialTruncated{false}; // kMaxLineChars aşıldı: satır sonuna kadar at
+    QStringDecoder m_decoder{QStringDecoder::Utf8}; // chunk sınırında bölünen UTF-8'i birleştirir
+    qint64 m_pgid{0}; // komutun süreç grubu (kendi oturumunda başlar)
     int m_exitCode{0};
     QTimer m_emitTimer;
 };

@@ -48,6 +48,48 @@ private slots:
         QVERIFY(done.wait(3000));
         QCOMPARE(r.output(), QStringLiteral("$HOME"));
     }
+    void stop_killsWholeProcessGroup() {
+        CommandRunner r;
+        QSignalSpy done(&r, &CommandRunner::finished);
+        QVERIFY(r.start("sleep 731.5 & sleep 732.5 | cat; wait"));
+        QTest::qWait(300);
+        r.stop();
+        QVERIFY(done.wait(3500));
+        QTest::qWait(200);
+        QProcess pg;
+        pg.start("pgrep", {"-f", "sleep 73[12].5"});
+        pg.waitForFinished(2000);
+        QVERIFY2(pg.readAllStandardOutput().trimmed().isEmpty(), "orphaned children left running");
+    }
+    void output_longLineCapped() {
+        CommandRunner r;
+        QSignalSpy done(&r, &CommandRunner::finished);
+        QVERIFY(r.start("head -c 200000 /dev/zero | tr '\\0' x"));
+        QVERIFY(done.wait(5000));
+        QVERIFY2(r.output().size() <= CommandRunner::kMaxLineChars + 1, qPrintable(QString::number(r.output().size())));
+    }
+    void output_carriageReturnSplitsLines() {
+        CommandRunner r;
+        QSignalSpy done(&r, &CommandRunner::finished);
+        QVERIFY(r.start("printf 'a\\rb\\n'"));
+        QVERIFY(done.wait(3000));
+        QCOMPARE(r.output(), QStringLiteral("a\nb"));
+    }
+    void stdin_isClosed() {
+        CommandRunner r;
+        QSignalSpy done(&r, &CommandRunner::finished);
+        QVERIFY(r.start("read x; echo got"));
+        QVERIFY2(done.wait(2000), "command reading stdin must not hang");
+        if (r.isRunning()) r.stop();
+    }
+    void utf8_splitAcrossChunks() {
+        CommandRunner r;
+        QSignalSpy done(&r, &CommandRunner::finished);
+        QVERIFY(r.start("printf '\\304'; sleep 0.3; printf '\\237\\n'"));
+        QVERIFY(done.wait(3000));
+        QCOMPARE(r.output(), QString::fromUtf8("\xc4\x9f"));
+    }
+
 };
 
 QObject *makeTestCommandRunner() { return new TestCommandRunner; }
