@@ -174,6 +174,16 @@ void ShellBridge::updateDrag(double localX, double localY) {
     }
 }
 
+bool ShellBridge::isSwitchingScreen() const {
+    return m_layerShellWindow && m_layerShellWindow->isSwitchingScreen();
+}
+
+void ShellBridge::setCardHeight(int height) {
+    if (m_layerShellWindow) {
+        m_layerShellWindow->setCardHeight(height);
+    }
+}
+
 void ShellBridge::endDrag() {
     if (m_layerShellWindow) {
         m_layerShellWindow->endDrag();
@@ -977,17 +987,51 @@ void ShellBridge::suspendSystem() {
 }
 
 void ShellBridge::logoutUser() {
+    // org.kde.Shutdown.logout() argümansızdır. Eskiden (1,2,2) gönderiliyordu:
+    // imza eşleşmediği için "No such method" dönüyor ve oturum
+    // `loginctl terminate-session` ile kaydedilmeden, uygulamalar kapanmadan
+    // öldürülüyordu. Bu çağrı oturumu düzgün kapatır (ayarlıysa kaydeder).
     auto msg = QDBusMessage::createMethodCall(
         QStringLiteral("org.kde.Shutdown"),
         QStringLiteral("/Shutdown"),
         QStringLiteral("org.kde.Shutdown"),
         QStringLiteral("logout")
     );
-    msg << 1 << 2 << 2; // prompt, confirmation, etc.
-    QDBusReply<void> reply = QDBusConnection::sessionBus().call(msg);
-    if (!reply.isValid()) {
-        QProcess::startDetached(QStringLiteral("loginctl"), {QStringLiteral("terminate-session"), QStringLiteral("self")});
-    }
+    auto *watcher = new QDBusPendingCallWatcher(QDBusConnection::sessionBus().asyncCall(msg), this);
+    connect(watcher, &QDBusPendingCallWatcher::finished, this, [](QDBusPendingCallWatcher *w) {
+        if (w->isError()) {
+            qWarning() << "logout failed:" << w->error().message() << "- falling back to KDE logout prompt";
+            // Asla sert sonlandırma yapma: KDE'nin onay penceresini göster.
+            QDBusConnection::sessionBus().asyncCall(QDBusMessage::createMethodCall(
+                QStringLiteral("org.kde.LogoutPrompt"), QStringLiteral("/LogoutPrompt"),
+                QStringLiteral("org.kde.LogoutPrompt"), QStringLiteral("promptLogout")));
+        }
+        w->deleteLater();
+    });
+}
+
+void ShellBridge::saveSession() {
+    // KDE "Save Session": açık uygulamaları kaydeder; oturum açılışında
+    // "Restore manually saved session" (ksmserverrc loginMode=restoreSavedSession)
+    // ile geri yüklenir. İstemciler tek tek kaydettiği için async çağrılır.
+    auto msg = QDBusMessage::createMethodCall(
+        QStringLiteral("org.kde.ksmserver"),
+        QStringLiteral("/KSMServer"),
+        QStringLiteral("org.kde.KSMServerInterface"),
+        QStringLiteral("saveCurrentSession")
+    );
+    auto *watcher = new QDBusPendingCallWatcher(QDBusConnection::sessionBus().asyncCall(msg, 30000), this);
+    connect(watcher, &QDBusPendingCallWatcher::finished, this, [](QDBusPendingCallWatcher *w) {
+        const bool ok = !w->isError();
+        if (!ok) qWarning() << "saveCurrentSession failed:" << w->error().message();
+        QProcess::startDetached(QStringLiteral("notify-send"), {
+            QStringLiteral("-a"), QStringLiteral("RavenSpot"),
+            QStringLiteral("-i"), ok ? QStringLiteral("document-save") : QStringLiteral("dialog-error"),
+            ok ? QStringLiteral("Session saved") : QStringLiteral("Session could not be saved"),
+            ok ? QStringLiteral("Open apps will be restored at next login.") : w->error().message()
+        });
+        w->deleteLater();
+    });
 }
 
 void ShellBridge::restartPlasma() {

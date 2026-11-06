@@ -9,8 +9,12 @@ import "MenuModel.js" as MenuModel
 Window {
     id: root
     visible: !Shell.startHidden
-    width: card.width + 48
-    height: card.height + 48
+    // Sabit yüzey boyutu: pencere kartla birlikte boyutlanırsa Wayland layer
+    // yüzeyi her animasyon karesinde yeniden configure edilir ve yazarken
+    // titrer. Kart bu alan içinde animasyonla büyür; dışı input mask ile
+    // tıklamayı alttaki pencereye geçirir (LayerShellWindow::setCardHeight).
+    width: root.cardWidth + 48
+    height: root.maxCardHeight + 48
     color: "transparent"
     flags: Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint
 
@@ -82,7 +86,8 @@ Window {
     onActiveChanged: {
         if (active) {
             enableCloseOnInactiveTimer.restart()
-        } else if (root.opened && root.canCloseOnInactive) {
+        } else if (root.opened && root.canCloseOnInactive && !Shell.isSwitchingScreen()) {
+            // Sürüklerken başka monitöre geçişte yüzey yeniden yaratılır; o anki odak kaybı kapatmaz
             closeMenu()
         }
     }
@@ -101,6 +106,7 @@ Window {
     property string iconFont: "FantasqueSansM Nerd Font"
     property string textFont: "Inter"
     property int cardWidth: 495
+    readonly property int maxCardHeight: 720
     property int rowHeight: 48
     property int headerHeight: 114
     property int cpuPercent: 0
@@ -889,11 +895,18 @@ Window {
                     actionId: "sleep"
                 },
                 {
-                    triggers: ["çıkış", "cikis", "logout", "log out", "oturum kapat"],
+                    triggers: ["çıkış", "cikis", "logout", "log out", "oturum kapat", "oturumu kapat"],
                     label: "Log Out",
-                    detail: "End current user session",
+                    detail: "End the session cleanly",
                     icon: "󰗽",
                     actionId: "logout"
+                },
+                {
+                    triggers: ["save session", "oturumu kaydet", "oturum kaydet", "session save"],
+                    label: "Save Session",
+                    detail: "Save open apps to restore at next login",
+                    icon: "󰆓",
+                    actionId: "save_session"
                 },
                 {
                     triggers: ["restart plasma", "plasma restart", "kwin restart"],
@@ -1343,6 +1356,7 @@ Window {
             else if (row.value === "lock") Shell.lockScreen()
             else if (row.value === "sleep") Shell.suspendSystem()
             else if (row.value === "logout") Shell.logoutUser()
+            else if (row.value === "save_session") Shell.saveSession()
             else if (row.value === "restart_plasma") Shell.restartPlasma()
             Qt.callLater(closeMenu)
         } else if (row.provider === "set-volume") {
@@ -1596,7 +1610,8 @@ Window {
         var pw = contextPopup.width
         var ph = contextPopup.height
         contextPopup.x = Math.max(16, Math.min(globalX, root.width - pw - 16))
-        contextPopup.y = Math.max(16, Math.min(globalY, root.height - ph - 16))
+        // Yüzey artık sabit/uzun; popup kartın görünen alanında kalsın (dışı tıklama geçirir)
+        contextPopup.y = Math.max(16, Math.min(globalY, card.y + card.height + 24 - ph - 16))
         contextPopup.open()
     }
 
@@ -1828,9 +1843,11 @@ Window {
             var contentH = (root.activeMenu === "system" && !root.filterText.length)
                 ? Math.ceil(displayModel.count / 2) * 64 + 18
                 : displayModel.count * rowHeight + 12
-            return Math.min(headerHeight + 1 + contentH + footerHeight, 720)
+            return Math.min(headerHeight + 1 + contentH + footerHeight, root.maxCardHeight)
         }
-        anchors.centerIn: parent
+        anchors.top: parent.top
+        anchors.topMargin: 24
+        anchors.horizontalCenter: parent.horizontalCenter
         color: root.bgColor
         border.color: root.bgBorder
         border.width: 1
@@ -1891,9 +1908,10 @@ Window {
             onActiveChanged: if (active) root.startSystemMove()
         }
 
-        onHeightChanged: {
-            // Keep card at its dragged position or reasonable visible range
-        }
+        // Blur ve input bölgesini kartın gerçek yüksekliğine eşitle (her kare;
+        // double-buffered, yüzey commit'iyle birlikte uygulanır).
+        onHeightChanged: Shell.setCardHeight(Math.ceil(height))
+        Component.onCompleted: Shell.setCardHeight(Math.ceil(height))
 
         // ── Klavye işleyici ─────────────────────────────────
         // Odağı searchInput tutar; tuşlar Keys.forwardTo ile buraya gelir.
@@ -2834,6 +2852,7 @@ Window {
                                     model.itemId === "system.reboot" ? "#ffa726" :
                                     model.itemId === "system.lock" ? "#42a5f5" :
                                     model.itemId === "system.logout" ? "#ab47bc" :
+                                    model.itemId === "system.save_session" ? "#66bb6a" :
                                     model.itemId === "system.suspend" ? "#26c6da" : root.fgColor
                                 )
                             }

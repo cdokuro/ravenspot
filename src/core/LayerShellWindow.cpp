@@ -52,6 +52,19 @@ void LayerShellWindow::initWindow() {
     initLayerShell();
     setupBlur();
 
+    m_postSwitchIdle.setInterval(1500);
+    m_postSwitchIdle.setSingleShot(true);
+    connect(&m_postSwitchIdle, &QTimer::timeout, this, [this]() {
+        if (m_isDragging && m_dragSwitched) {
+            qWarning() << "RavenSpot drag: no motion 1.5s after output switch -> ending drag";
+            endDrag();
+        }
+    });
+
+    m_switchGuard.setInterval(800);
+    m_switchGuard.setSingleShot(true);
+    connect(&m_switchGuard, &QTimer::timeout, this, [this]() { m_switchingScreen = false; });
+
     m_graceTimer.setInterval(350);
     m_graceTimer.setSingleShot(true);
     connect(&m_graceTimer, &QTimer::timeout, this, &LayerShellWindow::onGraceTimerTriggered);
@@ -62,6 +75,19 @@ void LayerShellWindow::initWindow() {
     if (m_isWayland && !m_relativePointer) {
         m_relativePointer = new RelativePointer(this);
         connect(m_relativePointer, &RelativePointer::motion, this, &LayerShellWindow::onRelativeMotion);
+        // Ekran değişiminde Qt bırakma olayını kaçırabilir; ham düğme olayı kesin kaynak.
+        connect(m_relativePointer, &RelativePointer::leftButtonReleased, this, [this]() {
+            if (!m_isDragging) return;
+            if (m_dragSwitched) qInfo() << "RavenSpot drag: release received after output switch";
+            endDrag();
+        });
+        connect(m_relativePointer, &RelativePointer::leftButtonPressed, this, [this]() {
+            // Geçişten sonra yeni bir basış: bırakmayı kaçırmışız demektir.
+            if (m_isDragging && m_dragSwitched) {
+                qWarning() << "RavenSpot drag: new press while dragging after switch -> ending drag (missed release)";
+                endDrag();
+            }
+        });
         (void)m_relativePointer->ensureReady(); // manager'ı açılışta bağla; ilk drag'de gecikme olmasın
     }
     if (qGuiApp) {
@@ -92,6 +118,7 @@ void LayerShellWindow::setupBlur() {
 }
 
 void LayerShellWindow::setCardHeight(int height) {
+    if (height <= 0 || height == m_cardHeight) return;
     m_cardHeight = height;
     updateBlurRegion(m_cardHeight);
 }
@@ -106,6 +133,15 @@ void LayerShellWindow::updateBlurRegion(int cardHeight) {
 
     KWindowEffects::enableBlurBehind(m_window.data(), true, blurRegion);
     KWindowEffects::enableBackgroundContrast(m_window.data(), true, 1.0, 1.0, 1.0, blurRegion);
+
+    // Yüzey sabit boyutlu; kartın dışındaki şeffaf alan tıklamaları
+    // alttaki pencereye geçirsin (Wayland: wl_surface input region).
+    m_window->setMask(blurRegion);
+}
+
+int LayerShellWindow::visibleHeight() const {
+    // Konumlandırma/sınırlama için görünen alan: kart + üst/alt 24px gölge payı.
+    return m_cardHeight + 48;
 }
 
 QScreen* LayerShellWindow::resolveActiveScreen() {
@@ -161,7 +197,7 @@ void LayerShellWindow::showOnActiveScreen() {
 
         const QRect geom = target->geometry();
         const int winW = m_window->width() > 0 ? m_window->width() : 543;
-        const int winH = m_window->height() > 0 ? m_window->height() : 648;
+        const int winH = visibleHeight();
 
         if (!m_hasCustomPosition) {
             m_posX = (geom.width() - winW) / 2;
@@ -197,6 +233,9 @@ void LayerShellWindow::beginDrag(double initialDx, double initialDy) {
     m_pendingDx = 0.0;
     m_pendingDy = 0.0;
     m_isDragging = true;
+    m_dragSwitched = false;
+    m_loggedFirstMotionAfterSwitch = false;
+    m_dragVirtual = globalWindowPos();
     // Deadzone boyunca kat edilen mesafe: pencere henüz hareket etmediği için
     // QML local koordinatları burada hâlâ geçerli.
     queueMove(initialDx, initialDy);
@@ -212,6 +251,13 @@ QPoint LayerShellWindow::dragBy(double deltaX, double deltaY) {
 
 void LayerShellWindow::onRelativeMotion(double dx, double dy) {
     if (m_isDragging && m_dragUsesRelativePointer) {
+        if (m_dragSwitched) {
+            if (!m_loggedFirstMotionAfterSwitch) {
+                m_loggedFirstMotionAfterSwitch = true;
+                qInfo() << "RavenSpot drag: relative motion resumed after output switch";
+            }
+            m_postSwitchIdle.start();
+        }
         queueMove(dx, dy);
     }
 }
@@ -225,6 +271,29 @@ void LayerShellWindow::queueMove(double dx, double dy) {
     // uygulama afterAnimating'de (GUI thread, sync'ten hemen önce) yapılır.
     if (wasIdle && m_window) {
         m_window->requestUpdate();
+    }
+}
+
+QPoint LayerShellWindow::globalWindowPos() const {
+    QScreen *screen = m_window ? m_window->screen() : nullptr;
+    const QPoint origin = screen ? screen->geometry().topLeft() : QPoint(0, 0);
+    return origin + QPoint(m_posX, m_posY);
+}
+
+QRect LayerShellWindow::desktopBounds() const {
+    QRect bounds;
+    for (QScreen *s : QGuiApplication::screens()) bounds = bounds.united(s->geometry());
+    return bounds;
+}
+
+void LayerShellWindow::applyMargins() {
+    if (m_layerWindow) {
+        // Bu karenin commit'iyle birlikte uygulanır (double-buffered state).
+        m_layerWindow->setMargins(QMargins(m_posX, m_posY, 0, 0));
+    }
+    QScreen *screen = m_window ? m_window->screen() : nullptr;
+    if (!m_isWayland && m_window && screen) {
+        m_window->setPosition(screen->geometry().x() + m_posX, screen->geometry().y() + m_posY);
     }
 }
 
@@ -242,27 +311,93 @@ void LayerShellWindow::flushPendingMove() {
     m_accumulatedDeltaX -= intDx;
     m_accumulatedDeltaY -= intDy;
 
-    QScreen *screen = m_window ? m_window->screen() : nullptr;
-    const int maxW = screen ? screen->geometry().width() : 2560;
-    const int maxH = screen ? screen->geometry().height() : 1440;
-    const int winW = m_window ? m_window->width() : 543;
-    const int winH = m_window ? m_window->height() : 648;
+    QScreen *current = m_window ? m_window->screen() : nullptr;
+    if (!current) return;
 
-    const int newX = std::clamp(m_posX + intDx, 0, std::max(0, maxW - winW));
-    const int newY = std::clamp(m_posY + intDy, 0, std::max(0, maxH - winH));
-    if (newX == m_posX && newY == m_posY) return;
+    const int winW = m_window->width();
+    const int winH = visibleHeight();
+    const QPoint centerOffset(winW / 2, winH / 2);
 
-    m_posX = newX;
-    m_posY = newY;
+    // Sanal konum imleci birebir izler; yalnızca tüm masaüstü sınırına sıkıştırılır.
+    const QRect desk = desktopBounds();
+    m_dragVirtual += QPoint(intDx, intDy);
+    m_dragVirtual.setX(std::clamp(m_dragVirtual.x(), desk.left(), std::max(desk.left(), desk.right() + 1 - winW)));
+    m_dragVirtual.setY(std::clamp(m_dragVirtual.y(), desk.top(), std::max(desk.top(), desk.bottom() + 1 - winH)));
+
+    // Kartın merkezi hangi ekrandaysa pencere o ekrana aittir. Merkez hiçbir
+    // ekranda değilse (ör. farklı yükseklikteki monitörlerin boşluğu) mevcut
+    // ekranda kal ve merkezi o ekranın içinde tut.
+    QScreen *target = QGuiApplication::screenAt(m_dragVirtual + centerOffset);
+    if (!target) {
+        target = current;
+        const QRect g = current->geometry();
+        QPoint c = m_dragVirtual + centerOffset;
+        c.setX(std::clamp(c.x(), g.left(), g.right()));
+        c.setY(std::clamp(c.y(), g.top(), g.bottom()));
+        m_dragVirtual = c - centerOffset;
+    }
+
+    // Hedef ekranda konum: dikeyde tamamen içeride; yatayda komşu ekrana taşabilir
+    // (merkez hâlâ bu ekranda olduğu sürece), böylece geçiş sınırda takılmaz.
+    const QRect tg = target->geometry();
+    QPoint local = m_dragVirtual - tg.topLeft();
+    local.setY(std::clamp(local.y(), 0, std::max(0, tg.height() - winH)));
+    if (!desk.contains(QRect(m_dragVirtual, QSize(winW, winH)))) {
+        local.setX(std::clamp(local.x(), 0, std::max(0, tg.width() - winW)));
+    }
+
+    m_posX = local.x();
+    m_posY = local.y();
     m_hasCustomPosition = true;
 
-    if (m_layerWindow) {
-        // Bu karenin commit'iyle birlikte uygulanır (double-buffered state).
-        m_layerWindow->setMargins(QMargins(m_posX, m_posY, 0, 0));
+    if (!m_isWayland) {
+        // X11: global konumlandırma serbest; Qt ekranı kendisi günceller.
+        m_window->setPosition(tg.topLeft() + local);
+        return;
     }
-    if (!m_isWayland && m_window && screen) {
-        m_window->setPosition(screen->geometry().x() + m_posX, screen->geometry().y() + m_posY);
+    if (target != current) {
+        m_switchTarget = target;
+        if (!m_switchQueued) {
+            m_switchQueued = true;
+            // afterAnimating içinde kendi yüzeyimizi yok etmeyelim: olay döngüsüne ertele.
+            QMetaObject::invokeMethod(this, &LayerShellWindow::performScreenSwitch, Qt::QueuedConnection);
+        }
+        return;
     }
+    applyMargins();
+}
+
+void LayerShellWindow::performScreenSwitch() {
+    m_switchQueued = false;
+    QScreen *target = m_switchTarget;
+    if (!target || !m_window || target == m_window->screen()) return;
+
+    qInfo().noquote() << "RavenSpot drag: switching output" << m_window->screen()->name() << "->" << target->name()
+                      << "at" << m_posX << m_posY << "dragging=" << m_isDragging;
+
+    // Odak kaybı ve QML MouseArea iptali menüyü kapatmasın / sürüklemeyi bitirmesin.
+    m_switchingScreen = true;
+    m_switchGuard.start();
+    m_graceTimer.stop();
+    m_inRemap = true;
+
+    m_window->setVisible(false);
+    if (m_layerWindow) m_layerWindow->setScreen(target);
+    m_window->setScreen(target);
+    m_lastScreen = target;
+    applyMargins();
+    m_window->setVisible(true);
+    m_window->requestActivate();
+
+    m_inRemap = false;
+    if (m_isDragging) {
+        m_dragSwitched = true;
+        m_loggedFirstMotionAfterSwitch = false;
+        m_postSwitchIdle.start();
+    }
+    m_canCloseOnInactive = false;
+    m_graceTimer.start();
+    emit screenChanged(target);
 }
 
 void LayerShellWindow::updateDrag(double localX, double localY) {
@@ -271,8 +406,27 @@ void LayerShellWindow::updateDrag(double localX, double localY) {
 }
 
 void LayerShellWindow::endDrag() {
+    // Yüzey yeniden yaratılırken QML MouseArea onCanceled -> endDrag gelir;
+    // sürükleme gerçekte devam ediyor (bitişi ham düğme olayı belirler).
+    if (m_inRemap) return;
+    if (!m_isDragging) return;
     flushPendingMove();
+    // Bırakınca kartı bulunduğu ekranın tamamen içine al (komşu ekrana taşmış kalmasın).
+    if (QScreen *screen = m_window ? m_window->screen() : nullptr) {
+        const int maxX = std::max(0, screen->geometry().width() - m_window->width());
+        const int maxY = std::max(0, screen->geometry().height() - visibleHeight());
+        const int x = std::clamp(m_posX, 0, maxX);
+        const int y = std::clamp(m_posY, 0, maxY);
+        if (x != m_posX || y != m_posY) {
+            m_posX = x;
+            m_posY = y;
+            applyMargins();
+            m_window->requestUpdate();
+        }
+    }
     m_isDragging = false;
+    m_dragSwitched = false;
+    m_postSwitchIdle.stop();
     m_dragUsesRelativePointer = false;
     m_accumulatedDeltaX = 0.0;
     m_accumulatedDeltaY = 0.0;
@@ -323,6 +477,7 @@ QScreen* LayerShellWindow::activeScreen() const {
 
 void LayerShellWindow::onGraceTimerTriggered() {
     m_canCloseOnInactive = true;
+    if (m_switchingScreen) return;
     if (m_window && !m_window->isActive()) {
         hideWindow();
     }
@@ -331,6 +486,10 @@ void LayerShellWindow::onGraceTimerTriggered() {
 void LayerShellWindow::onWindowActiveChanged() {
     if (!m_window) return;
 
+    if (m_switchingScreen) {
+        if (m_window->isActive()) m_switchingScreen = false; // yeni ekranda odak geri geldi
+        return;
+    }
     if (m_window->isActive()) {
         m_graceTimer.start();
     } else if (m_canCloseOnInactive && m_window->isVisible()) {
@@ -339,7 +498,7 @@ void LayerShellWindow::onWindowActiveChanged() {
 }
 
 void LayerShellWindow::onFocusWindowChanged(QWindow *focusWindow) {
-    if (!m_window || !m_window->isVisible() || !m_canCloseOnInactive) return;
+    if (!m_window || !m_window->isVisible() || !m_canCloseOnInactive || m_switchingScreen) return;
 
     if (focusWindow != m_window.data()) {
         hideWindow();

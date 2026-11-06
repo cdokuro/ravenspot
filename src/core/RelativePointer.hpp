@@ -32,11 +32,18 @@ public:
 signals:
     // Hızlandırılmış (imleçle birebir) delta, logical pixel.
     void motion(double dx, double dy);
+    // Sol tuş bırakıldı (kendi wl_pointer nesnemizden; Qt'nin olay durumundan
+    // bağımsız). Sürükleme sırasında yüzey başka ekranda yeniden yaratılınca
+    // Qt bırakma olayını basılmamış bir yüzeye ait diye düşürebilir.
+    void leftButtonReleased();
+    void leftButtonPressed();
 
 private:
     static void onRegistryGlobal(void *data, wl_registry *registry, uint32_t name,
                                  const char *interface, uint32_t version);
     static void onRegistryGlobalRemove(void *data, wl_registry *registry, uint32_t name);
+    static void onPointerButton(void *data, wl_pointer *pointer, uint32_t serial,
+                                uint32_t time, uint32_t button, uint32_t state);
     static void onRelativeMotion(void *data, zwp_relative_pointer_v1 *rp,
                                  uint32_t utimeHi, uint32_t utimeLo,
                                  int32_t dx, int32_t dy, int32_t dxUnaccel, int32_t dyUnaccel);
@@ -47,6 +54,7 @@ private:
     zwp_relative_pointer_manager_v1 *m_manager{nullptr};
     zwp_relative_pointer_v1 *m_relPointer{nullptr};
     wl_pointer *m_boundPointer{nullptr};
+    wl_pointer *m_ownPointer{nullptr}; // yalnızca düğme durumunu izlemek için
 };
 
 } // namespace ravenspot

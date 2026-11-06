@@ -75,6 +75,8 @@ public slots:
     Q_INVOKABLE QPoint dragBy(double deltaX, double deltaY);
     Q_INVOKABLE void updateDrag(double localX = 0, double localY = 0);
     Q_INVOKABLE void endDrag();
+    Q_INVOKABLE void setCardHeight(int height);
+    Q_INVOKABLE bool isSwitchingScreen() const;
 
     // ── 2. Audio & Volume ──────────────────────────────────────
     Q_INVOKABLE void playThock();
@@ -139,6 +141,7 @@ public slots:
     Q_INVOKABLE void lockScreen();
     Q_INVOKABLE void suspendSystem();
     Q_INVOKABLE void logoutUser();
+    Q_INVOKABLE void saveSession();
     Q_INVOKABLE void restartPlasma();
     Q_INVOKABLE QString listPowerProfiles() const;
     Q_INVOKABLE void applyPowerProfile(const QString &profile);
