@@ -727,3 +727,46 @@ if (typeof module !== "undefined") {
     applyTranslations: applyTranslations
   }
 }
+
+// ── In-place satır güncelleme ───────────────────────────────────────────────
+// displayModel her tuşta clear()+append ile kurulunca tüm delegate'ler yok
+// edilip yeniden yaratılıyordu. syncRows mevcut indekslerin üzerine yazar,
+// yalnızca kuyrukta ekler/siler. ListModel role'leri kalıcı olduğundan her
+// satır sabit bir role kümesiyle yazılır: eksik role eski değerini korumasın
+// (ör. dosya satırının filePath'i sonraki uygulama satırına sızmasın).
+var ROW_DEFAULTS = {
+  itemId: "", parent: "", kind: "", icon: "", iconName: "", iconFont: "",
+  appIcon: "", appId: "", label: "", target: "", detail: "", path: "",
+  childCount: 0, action: "", provider: "", value: "", desktop: "",
+  disabled: false, score: 0, section: "", isFavorite: false, isCurrent: false,
+  themeKey: "", themeSection: "", filePath: "", isDir: false
+}
+
+// ROW_DEFAULTS dışında bir satırda görülen role'ler (ör. copyVal); görüldükten
+// sonra her satıra türüne uygun varsayılanla yazılır.
+var extraRoleDefaults = {}
+
+function defaultFor(value) {
+  if (typeof value === "number") return 0
+  if (typeof value === "boolean") return false
+  return ""
+}
+
+function normalizeRow(row) {
+  var out = {}
+  var k
+  for (k in ROW_DEFAULTS) out[k] = ROW_DEFAULTS[k]
+  for (k in extraRoleDefaults) out[k] = extraRoleDefaults[k]
+  for (k in row) {
+    if (!(k in ROW_DEFAULTS) && !(k in extraRoleDefaults)) extraRoleDefaults[k] = defaultFor(row[k])
+    out[k] = row[k]
+  }
+  return out
+}
+
+function syncRows(model, rows) {
+  var shared = Math.min(model.count, rows.length)
+  for (var i = 0; i < shared; i++) model.set(i, normalizeRow(rows[i]))
+  for (var j = shared; j < rows.length; j++) model.append(normalizeRow(rows[j]))
+  if (model.count > rows.length) model.remove(rows.length, model.count - rows.length)
+}

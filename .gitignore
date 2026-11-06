@@ -14,3 +14,4 @@ Makefile*
 ravenspot
 *-protocol.c
 *-client-protocol.h
+.superpowers/
