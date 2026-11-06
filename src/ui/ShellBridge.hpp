@@ -8,6 +8,8 @@
 #include <QTimer>
 #include <QHash>
 
+#include "files/FileActions.hpp"
+
 class QProcess;
 
 class QQuickWindow;
@@ -131,6 +133,20 @@ public slots:
     Q_INVOKABLE void editDesktopFile(const QString &desktop);
     Q_INVOKABLE void openInDiscover(const QString &desktop);
     Q_INVOKABLE void openInTerminal(const QString &path);
+
+    // ── Sağ tık: dosya / klasör / uygulama ────────────────────
+    Q_INVOKABLE QVariantMap fileProperties(const QString &path) const;
+    Q_INVOKABLE QString renamePath(const QString &path, const QString &newName); // "" = ok, aksi halde hata
+    Q_INVOKABLE bool isArchive(const QString &path) const;
+    Q_INVOKABLE void extractHere(const QString &path);
+    Q_INVOKABLE void compressPath(const QString &path);
+    Q_INVOKABLE QString openWithApps(const QString &path) const; // JSON [{file,name,icon,isDefault}]
+    Q_INVOKABLE void openWith(const QString &path, const QString &desktopFile);
+    Q_INVOKABLE void copyFileToClipboard(const QString &path);
+    Q_INVOKABLE bool isAutostart(const QString &desktopFile) const;
+    Q_INVOKABLE bool setAutostart(const QString &desktopFile, bool enabled);
+    Q_INVOKABLE bool canUninstall(const QString &desktopFile) const;
+    Q_INVOKABLE void uninstallApp(const QString &desktopFile);
     Q_INVOKABLE void runInTerminal(const QString &desktopOrCmd);
     Q_INVOKABLE void runDetached(const QString &command);
 
@@ -186,7 +202,9 @@ private:
     QProcess *m_fileSearchProc{nullptr}; // devam eden async fd araması (yeni sorgu gelince iptal)
     CommandRunner *m_commandRunner{nullptr};
     CommandHistory *m_commandHistory{nullptr};
-    mutable QHash<QString, bool> m_execCache; // PATH araması önbelleği (menü kapanınca temizlenir)
+    mutable QHash<QString, bool> m_execCache;
+    mutable QList<ravenspot::files::DesktopApp> m_desktopApps; // Open With için tembel tarama
+    mutable bool m_desktopAppsLoaded{false}; // PATH araması önbelleği (menü kapanınca temizlenir)
 
     bool m_startHidden{false};
     QPointer<LayerShellWindow> m_layerShellWindow;

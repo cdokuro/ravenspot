@@ -8,6 +8,7 @@
 #include "../run/CommandHistory.hpp"
 
 #include <QGuiApplication>
+#include <QMimeData>
 #include <QClipboard>
 #include <QProcess>
 #include <QDesktopServices>
@@ -811,9 +812,108 @@ void ShellBridge::openInDiscover(const QString &desktop) {
     QProcess::startDetached(QStringLiteral("plasma-discover"), {QStringLiteral("--app"), desktop});
 }
 
+static QString resolveTerminal(); // aşağıda tanımlı
+
 void ShellBridge::openInTerminal(const QString &path) {
-    const QString targetDir = path.isEmpty() ? QDir::homePath() : path;
-    runInTerminal(QStringLiteral("cd \"") + targetDir + QStringLiteral("\" && exec $SHELL"));
+    QString targetDir = path.isEmpty() ? QDir::homePath() : path;
+    if (targetDir.startsWith(QLatin1String("~/"))) targetDir = QDir::homePath() + targetDir.mid(1);
+    const QFileInfo fi(targetDir);
+    if (fi.exists() && !fi.isDir()) targetDir = fi.absolutePath(); // dosya: içinde bulunduğu klasör
+    // Yol tek argv öğesi: eskiden "cd \"<yol>\"" metni /bin/sh'ta genişliyordu.
+    QProcess::startDetached(resolveTerminal(), files::terminalInDirArgs(targetDir), targetDir);
+}
+
+QVariantMap ShellBridge::fileProperties(const QString &path) const {
+    return files::properties(path);
+}
+
+QString ShellBridge::renamePath(const QString &path, const QString &newName) {
+    return files::renamePath(path, newName);
+}
+
+bool ShellBridge::isArchive(const QString &path) const {
+    return files::isArchive(path);
+}
+
+void ShellBridge::extractHere(const QString &path) {
+    QProcess::startDetached(QStringLiteral("ark"), files::extractArgs(path), QFileInfo(path).absolutePath());
+}
+
+void ShellBridge::compressPath(const QString &path) {
+    QProcess::startDetached(QStringLiteral("ark"), files::compressArgs(path), QFileInfo(path).absolutePath());
+}
+
+QString ShellBridge::openWithApps(const QString &path) const {
+    if (!m_desktopAppsLoaded) {
+        m_desktopAppsLoaded = true;
+        QStringList dirs = QStandardPaths::standardLocations(QStandardPaths::ApplicationsLocation);
+        dirs << QStringLiteral("/var/lib/flatpak/exports/share/applications")
+             << QDir::homePath() + QStringLiteral("/.local/share/flatpak/exports/share/applications");
+        QStringList seen;
+        for (const QString &d : dirs) {
+            for (const QFileInfo &fi : QDir(d).entryInfoList({QStringLiteral("*.desktop")}, QDir::Files)) {
+                if (seen.contains(fi.fileName())) continue; // XDG önceliği: ilk bulunan kazanır
+                seen << fi.fileName();
+                m_desktopApps << files::parseDesktopFile(fi.absoluteFilePath());
+            }
+        }
+    }
+    // Sistem varsayılanı (xdg-mime); kullanıcı eylemiyle tetiklenir, kısa zaman aşımı
+    QString defaultId;
+    QProcess q;
+    q.start(QStringLiteral("xdg-mime"), {QStringLiteral("query"), QStringLiteral("default"),
+                                         files::properties(path).value(QStringLiteral("mime")).toString()});
+    if (q.waitForFinished(800)) defaultId = QString::fromUtf8(q.readAllStandardOutput()).trimmed();
+    else q.kill();
+    return QString::fromUtf8(QJsonDocument(QJsonArray::fromVariantList(
+        files::openWithApps(path, m_desktopApps, defaultId))).toJson(QJsonDocument::Compact));
+}
+
+void ShellBridge::openWith(const QString &path, const QString &desktopFile) {
+    if (path.isEmpty() || desktopFile.isEmpty()) return;
+    // gio launch .desktop Exec alan kodlarını (%f/%u) doğru genişletir; kendi scope'unda başlar
+    QProcess::startDetached(QStringLiteral("systemd-run"), {
+        QStringLiteral("--user"), QStringLiteral("--scope"), QStringLiteral("--quiet"),
+        QStringLiteral("gio"), QStringLiteral("launch"), desktopFile, path});
+}
+
+void ShellBridge::copyFileToClipboard(const QString &path) {
+    const QUrl url = QUrl::fromLocalFile(QFileInfo(path).absoluteFilePath());
+    auto *mime = new QMimeData;
+    mime->setUrls({url});
+    mime->setData(QStringLiteral("x-special/gnome-copied-files"), QByteArray("copy\n") + url.toEncoded());
+    mime->setText(QFileInfo(path).absoluteFilePath());
+    QGuiApplication::clipboard()->setMimeData(mime); // Dolphin'e "yapıştır" ile dosya kopyalanır
+}
+
+bool ShellBridge::isAutostart(const QString &desktopFile) const {
+    return files::isAutostart(desktopFile);
+}
+
+bool ShellBridge::setAutostart(const QString &desktopFile, bool enabled) {
+    return files::setAutostart(desktopFile, enabled);
+}
+
+bool ShellBridge::canUninstall(const QString &desktopFile) const {
+    // Menü açılışında pacman sorgusu yapmamak için yola göre karar; sahip tıklamada çözülür
+    return desktopFile.contains(QLatin1String("/flatpak/exports/share/applications/"))
+        || desktopFile.startsWith(QLatin1String("/usr/"));
+}
+
+void ShellBridge::uninstallApp(const QString &desktopFile) {
+    const QString cmd = files::uninstallCommand(desktopFile, [](const QString &file) {
+        QProcess p;
+        p.start(QStringLiteral("pacman"), {QStringLiteral("-Qqo"), file});
+        if (!p.waitForFinished(3000)) { p.kill(); return QString(); }
+        return p.exitCode() == 0 ? QString::fromUtf8(p.readAllStandardOutput()).trimmed() : QString();
+    });
+    if (cmd.isEmpty()) {
+        QProcess::startDetached(QStringLiteral("notify-send"), {QStringLiteral("-a"), QStringLiteral("RavenSpot"),
+            QStringLiteral("-i"), QStringLiteral("dialog-information"),
+            QStringLiteral("Cannot uninstall"), QStringLiteral("No package owns ") + QFileInfo(desktopFile).fileName()});
+        return;
+    }
+    runCommandInTerminal(cmd); // paket yöneticisi kendi onayını sorar
 }
 
 static QString resolveTerminal() {
