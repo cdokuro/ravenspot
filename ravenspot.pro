@@ -62,7 +62,8 @@ HEADERS += \
     src/run/CommandRunner.hpp \
     src/run/CommandHistory.hpp \
     src/files/FileActions.hpp \
-    src/pc/ClipboardHistory.hpp
+    src/pc/ClipboardHistory.hpp \
+    src/pc/ProcessList.hpp
 
 SOURCES += \
     src/main.cpp \
@@ -82,4 +83,5 @@ SOURCES += \
     src/run/CommandRunner.cpp \
     src/run/CommandHistory.cpp \
     src/files/FileActions.cpp \
-    src/pc/ClipboardHistory.cpp
+    src/pc/ClipboardHistory.cpp \
+    src/pc/ProcessList.cpp
