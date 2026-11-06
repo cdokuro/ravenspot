@@ -1843,7 +1843,7 @@ Window {
         shadowHorizontalOffset: 0
         shadowVerticalOffset: 0
         opacity: root.opened ? 1.0 : 0.0
-        Behavior on opacity { NumberAnimation { duration: root.opened ? 180 : 120; easing.type: root.opened ? Easing.OutQuint : Easing.InCubic } }
+        Behavior on opacity { id: glowOpacityB; OpenCloseAnimation { behavior: glowOpacityB; threshold: 0.5 } }
     }
 
     Rectangle {
@@ -1888,9 +1888,9 @@ Window {
                 }
             }
         }
-        Behavior on opacity { enabled: !reopenAnim.running; NumberAnimation { duration: root.opened ? 180 : 120; easing.type: root.opened ? Easing.OutQuint : Easing.InCubic } }
+        Behavior on opacity { id: cardOpacityB; enabled: !reopenAnim.running; OpenCloseAnimation { behavior: cardOpacityB; threshold: 0.5 } }
         // Yumuşak, hedefi aşmayan açılış (OutBack zıplatıyordu); kapanış hızlı ve sakin
-        Behavior on scale { enabled: !reopenAnim.running; NumberAnimation { duration: root.opened ? 180 : 120; easing.type: root.opened ? Easing.OutQuint : Easing.InCubic } }
+        Behavior on scale { id: cardScaleB; enabled: !reopenAnim.running; OpenCloseAnimation { behavior: cardScaleB; threshold: 0.985 } }
         Behavior on height { NumberAnimation { duration: 130; easing.type: Easing.OutQuint } }
 
         // Kartı sürükle: Alt veya Meta tuşuna basılı tutulduğunda KWin pencereyi doğrudan pürüzsüz taşır
@@ -2623,10 +2623,12 @@ Window {
                 radius: 6
                 // Yalnızca kuyruğa eklenen satırlar belirir; yerinde güncellenenler
                 // (syncRows) hareket etmez: hızlı yazarken liste sakin kalır.
-                ListView.onAdd: NumberAnimation {
+                NumberAnimation {
+                    id: addFade
                     target: row; property: "opacity"; from: 0; to: 1
                     duration: 120; easing.type: Easing.OutCubic
                 }
+                ListView.onAdd: addFade.restart()
                 color: (index === resultList.currentIndex && !model.disabled) ? "transparent" : "transparent"
 
                 Text {
