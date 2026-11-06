@@ -160,6 +160,19 @@ int main(int argc, char *argv[]) {
     QQuickWindow::setGraphicsApi(QSGRendererInterface::OpenGL);
 
     QGuiApplication app(argc, argv);
+
+    // Qt SVG "Invalid path data; path truncated." uyarısı hangi dosyadan geldiğini
+    // söylemiyor: son istenen ikon kimliğini ekleyerek logla (bir sonraki
+    // tekrarında bozuk ikon kesinleşsin).
+    static QtMessageHandler previousHandler = nullptr;
+    previousHandler = qInstallMessageHandler([](QtMsgType type, const QMessageLogContext &ctx, const QString &msg) {
+        if (msg.startsWith(QLatin1String("Invalid path data"))) {
+            const QString annotated = msg + QStringLiteral(" [last icon request: ") + ravenspot::lastRequestedIcon() + QLatin1Char(']');
+            if (previousHandler) previousHandler(type, ctx, annotated);
+            return;
+        }
+        if (previousHandler) previousHandler(type, ctx, msg);
+    });
     QGuiApplication::setApplicationName(QStringLiteral("ravenspot"));
     QGuiApplication::setApplicationVersion(QStringLiteral("0.3.0"));
     QGuiApplication::setOrganizationName(QStringLiteral("CachyOS"));

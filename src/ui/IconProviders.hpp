@@ -59,4 +59,8 @@ private:
 // Global helper to configure QIcon search paths & default theme
 void setupIconThemeEnvironment();
 
+// Tanılama: son istenen ikon kimliği (Qt SVG "Invalid path data" uyarısını
+// hangi ikonun ürettiğini loglamak için; bkz. main.cpp mesaj işleyicisi).
+QString lastRequestedIcon();
+
 } // namespace ravenspot

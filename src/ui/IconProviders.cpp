@@ -1,5 +1,8 @@
 #include "IconProviders.hpp"
 
+#include <QMutex>
+#include <QMutexLocker>
+
 #include <QIcon>
 #include <QPixmap>
 #include <QFileInfo>
@@ -10,6 +13,20 @@
 #include <algorithm>
 
 namespace ravenspot {
+
+namespace {
+QMutex g_lastIconMutex;
+QString g_lastIcon;
+void noteRequestedIcon(const QString &provider, const QString &id) {
+    QMutexLocker lock(&g_lastIconMutex);
+    g_lastIcon = provider + QLatin1Char(':') + id;
+}
+} // namespace
+
+QString lastRequestedIcon() {
+    QMutexLocker lock(&g_lastIconMutex);
+    return g_lastIcon;
+}
 
 // =============================================================================
 // LRU IconCache Implementation (Thread-Safe, Cap: 500 items)
@@ -134,6 +151,7 @@ QString AppIconProvider::sanitizeIdentifier(const QString &rawId) {
 
 QImage AppIconProvider::requestImage(const QString &id, QSize *size, const QSize &requestedSize) {
     const QString cleanId = sanitizeIdentifier(id);
+    noteRequestedIcon(QStringLiteral("appicon"), cleanId);
     const int w = std::max(requestedSize.width() > 0 ? requestedSize.width() : 64, 64);
     const int h = std::max(requestedSize.height() > 0 ? requestedSize.height() : 64, 64);
     const QSize targetSize(w, h);
@@ -218,6 +236,7 @@ QString ThemeIconProvider::resolveThemeAlias(const QString &cleanId) {
 
 QImage ThemeIconProvider::requestImage(const QString &id, QSize *size, const QSize &requestedSize) {
     const QString cleanId = resolveThemeAlias(sanitizeIdentifier(id));
+    noteRequestedIcon(QStringLiteral("themeicon"), cleanId);
     const int w = std::max(requestedSize.width() > 0 ? requestedSize.width() : 64, 64);
     const int h = std::max(requestedSize.height() > 0 ? requestedSize.height() : 64, 64);
     const QSize targetSize(w, h);
