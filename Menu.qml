@@ -1807,8 +1807,8 @@ Window {
     SequentialAnimation {
         id: reopenAnim
         ParallelAnimation {
-            NumberAnimation { target: card; property: "opacity"; to: 0.15; duration: 90; easing.type: Easing.OutQuad }
-            NumberAnimation { target: card; property: "scale"; to: 0.94; duration: 90; easing.type: Easing.OutQuad }
+            NumberAnimation { target: card; property: "opacity"; to: 0.15; duration: 90; easing.type: Easing.InCubic }
+            NumberAnimation { target: card; property: "scale"; to: 0.97; duration: 90; easing.type: Easing.InCubic }
         }
         ScriptAction {
             script: {
@@ -1816,8 +1816,8 @@ Window {
             }
         }
         ParallelAnimation {
-            NumberAnimation { target: card; property: "opacity"; to: 1.0; duration: 140; easing.type: Easing.OutBack }
-            NumberAnimation { target: card; property: "scale"; to: 1.0; duration: 140; easing.type: Easing.OutBack }
+            NumberAnimation { target: card; property: "opacity"; to: 1.0; duration: 180; easing.type: Easing.OutQuint }
+            NumberAnimation { target: card; property: "scale"; to: 1.0; duration: 180; easing.type: Easing.OutQuint }
         }
     }
 
@@ -1843,7 +1843,7 @@ Window {
         shadowHorizontalOffset: 0
         shadowVerticalOffset: 0
         opacity: root.opened ? 1.0 : 0.0
-        Behavior on opacity { NumberAnimation { duration: 140; easing.type: Easing.OutCubic } }
+        Behavior on opacity { NumberAnimation { duration: root.opened ? 180 : 120; easing.type: root.opened ? Easing.OutQuint : Easing.InCubic } }
     }
 
     Rectangle {
@@ -1865,7 +1865,7 @@ Window {
         radius: 14
         clip: true
         opacity: root.opened ? 1.0 : 0.0
-        scale: root.opened ? 1.0 : 0.94
+        scale: root.opened ? 1.0 : 0.97
 
         // Pencere içine tıklamak pencereyi kapatmasın; sağ tık veya mouse back bir önceki sayfaya döndürsün
         MouseArea {
@@ -1888,9 +1888,10 @@ Window {
                 }
             }
         }
-        Behavior on opacity { enabled: !reopenAnim.running; NumberAnimation { duration: 140; easing.type: Easing.OutCubic } }
-        Behavior on scale { enabled: !reopenAnim.running; NumberAnimation { duration: 160; easing.type: Easing.OutBack } }
-        Behavior on height { NumberAnimation { duration: 130; easing.type: Easing.OutCubic } }
+        Behavior on opacity { enabled: !reopenAnim.running; NumberAnimation { duration: root.opened ? 180 : 120; easing.type: root.opened ? Easing.OutQuint : Easing.InCubic } }
+        // Yumuşak, hedefi aşmayan açılış (OutBack zıplatıyordu); kapanış hızlı ve sakin
+        Behavior on scale { enabled: !reopenAnim.running; NumberAnimation { duration: root.opened ? 180 : 120; easing.type: root.opened ? Easing.OutQuint : Easing.InCubic } }
+        Behavior on height { NumberAnimation { duration: 130; easing.type: Easing.OutQuint } }
 
         // Kartı sürükle: Alt veya Meta tuşuna basılı tutulduğunda KWin pencereyi doğrudan pürüzsüz taşır
         MouseArea {
@@ -2612,7 +2613,7 @@ Window {
                 border.color: Qt.rgba(root.selFg.r, root.selFg.g, root.selFg.b, 0.18)
                 border.width: 1
             }
-            highlightMoveDuration: 55
+            highlightMoveDuration: 110
             highlightMoveVelocity: -1
 
             delegate: Rectangle {
