@@ -1078,9 +1078,9 @@ Window {
                     detail: "Konsole ile bu klasörde başlat",
                     path: "Terminal",
                     childCount: 0,
-                    action: "konsole --workdir " + (cleanPath.startsWith("~") ? "$HOME/" + cleanPath.substring(2) : cleanPath),
-                    provider: "",
-                    value: "",
+                    action: "",
+                    provider: "open-folder-terminal",
+                    value: cleanPath,
                     desktop: "",
                     disabled: false,
                     score: -99995,
@@ -1380,8 +1380,12 @@ Window {
         } else if (row.provider === "open-folder-path") {
             Shell.playCreamy()
             root.opened = false
-            var pth = row.value.startsWith("~") ? "$HOME/" + row.value.substring(2) : row.value
-            Shell.runDetached("xdg-open " + pth)
+            Shell.openPath(row.value) // argv; eskiden "xdg-open <yol>" /bin/sh'ta genişliyordu
+            Qt.callLater(closeMenu)
+        } else if (row.provider === "open-folder-terminal") {
+            Shell.playCreamy()
+            root.opened = false
+            Shell.openInTerminal(row.value)
             Qt.callLater(closeMenu)
         } else {
             Shell.playCreamy()
@@ -1441,6 +1445,51 @@ Window {
 
     // ── Sağ Tık Bağlam Menüsü (Context Menu) ──────────────────────
     property var contextRow: null
+    // Sağ tık popup modu: "list" | "openWith" | "properties" | "rename"
+    property string contextMode: "list"
+    property string contextPath: ""
+    property var contextMainEntries: []
+    property string renameError: ""
+
+    function snapshotContextEntries() {
+        var out = []
+        for (var i = 0; i < contextMenuModel.count; i++) {
+            var e = contextMenuModel.get(i)
+            out.push({ label: e.label, icon: e.icon, actionType: e.actionType, actionPayload: e.actionPayload, isDanger: e.isDanger })
+        }
+        return out
+    }
+    function showContextSubmenu(mode, entries) {
+        if (root.contextMode === "list") root.contextMainEntries = snapshotContextEntries()
+        contextMenuModel.clear()
+        contextMenuModel.append({ label: "\u2039 Back", icon: "", actionType: "contextBack", actionPayload: "", isDanger: false })
+        for (var i = 0; i < entries.length; i++) contextMenuModel.append(entries[i])
+        root.contextMode = mode
+        contextList.currentIndex = entries.length ? 1 : 0
+    }
+    function contextBack() {
+        contextMenuModel.clear()
+        for (var i = 0; i < root.contextMainEntries.length; i++) contextMenuModel.append(root.contextMainEntries[i])
+        root.contextMode = "list"
+        root.renameError = ""
+        contextList.currentIndex = 0
+        contextList.forceActiveFocus()
+    }
+    function submitRename(newName) {
+        var err = Shell.renamePath(root.contextPath, newName)
+        if (err) { root.renameError = err; Shell.playThock(); return }
+        Shell.playCreamy()
+        contextPopup.close()
+        refreshAfterFileChange()
+    }
+    // Yeniden adlandırma/çöpe taşıma sonrası görünür listeleri tazele
+    function refreshAfterFileChange() {
+        if (root.activeMenu === "downloads") {
+            root.providersLoaded["downloads"] = false
+            loadFolderFiles("downloads", "downloads")
+        }
+        if (root.filterText.trim().startsWith("*")) { root.fileResultsQuery = ""; dispatchAsyncSearch() }
+    }
     ListModel { id: contextMenuModel }
 
     function openContextMenu(rowItem, globalX, globalY) {
@@ -1507,6 +1556,49 @@ Window {
     }
 
     function executeContextAction(actionType, payload) {
+        // Popup içinde kalan eylemler (alt menü / özellikler / yeniden adlandırma)
+        if (actionType === "contextBack") { contextBack(); return }
+        if (actionType === "openWithMenu") {
+            root.contextPath = payload
+            var apps = []
+            try { apps = JSON.parse(Shell.openWithApps(payload) || "[]") } catch (e) {}
+            var rows = apps.map(function(a) {
+                return { label: a.name + (a.isDefault ? "  (default)" : ""), icon: "", actionType: "openWithApp",
+                         actionPayload: a.file, isDanger: false }
+            })
+            if (!rows.length) rows = [{ label: "No applications found", icon: "", actionType: "", actionPayload: "", isDanger: false }]
+            showContextSubmenu("openWith", rows)
+            return
+        }
+        if (actionType === "showProperties") {
+            var pr = Shell.fileProperties(payload)
+            var info = [
+                ["Name", pr.name], ["Type", (pr.mimeComment || "") + "  (" + pr.mime + ")"],
+                [pr.isDir ? "Contents" : "Size", pr.sizeText], ["Modified", pr.modified],
+                ["Permissions", pr.permissions + "  " + pr.owner], ["Location", pr.path]
+            ]
+            if (pr.isSymlink) info.push(["Link target", pr.target])
+            showContextSubmenu("properties", info.map(function(kv) {
+                // tıklayınca değer panoya kopyalanır
+                return { label: kv[0] + ":  " + kv[1], icon: "", actionType: "copyText", actionPayload: String(kv[1]), isDanger: false }
+            }))
+            return
+        }
+        if (actionType === "startRename") {
+            if (root.contextMode === "list") root.contextMainEntries = snapshotContextEntries()
+            root.contextPath = payload
+            root.renameError = ""
+            root.contextMode = "rename"
+            var nm = payload.split("/").pop()
+            renameInput.text = nm
+            var dot = nm.lastIndexOf(".")
+            renameInput.select(0, dot > 0 ? dot : nm.length) // uzantı hariç seç
+            renameInput.forceActiveFocus()
+            return
+        }
+        if (actionType === "copyText") { Shell.setClipboard(payload); Shell.playCreamy(); return }
+        if (actionType === "") return
+
         contextPopup.close()
         var r = root.contextRow
         if (!r) return
@@ -1551,14 +1643,27 @@ Window {
             root.opened = false
             Shell.editDesktopFile(r.desktop)
             Qt.callLater(closeMenu)
+        } else if (actionType === "openWithApp") {
+            root.opened = false
+            Shell.openWith(root.contextPath, payload)
+            Qt.callLater(closeMenu)
+        } else if (actionType === "copyFile") {
+            Shell.copyFileToClipboard(payload)
+        } else if (actionType === "compress") {
+            Shell.compressPath(payload)
+        } else if (actionType === "extract") {
+            Shell.extractHere(payload)
+        } else if (actionType === "toggleAutostart") {
+            Shell.setAutostart(payload, !Shell.isAutostart(payload))
+        } else if (actionType === "uninstall") {
+            root.opened = false
+            Shell.uninstallApp(payload) // terminal açılır; paket yöneticisi onay sorar
+            Qt.callLater(closeMenu)
         } else if (actionType === "copyPath") {
             Shell.setClipboard(payload)
         } else if (actionType === "moveToTrash") {
             Shell.moveToTrash(payload || r.filePath)
-            if (root.activeMenu === "downloads") {
-                root.providersLoaded["downloads"] = false
-                loadFolderFiles("downloads", "downloads")
-            }
+            refreshAfterFileChange()
         } else if (actionType === "activateCurrent") {
             activateIndex(resultList.currentIndex)
         }
@@ -4016,14 +4121,18 @@ Window {
     Popup {
         id: contextPopup
         parent: Overlay.overlay
-        width: 250
-        height: Math.min(contextList.contentHeight + 16, 380)
+        width: root.contextMode === "list" ? 250 : 320
+        height: root.contextMode === "rename" ? renameBox.implicitHeight + 16
+                                              : Math.min(contextList.contentHeight + 16, 380)
         padding: 8
         modal: true
         dim: false
         Overlay.modal: Item {}
         focus: true
-        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+        // Esc'yi kendimiz ele alıyoruz: alt menüde geri döner, ana listede kapatır
+        closePolicy: Popup.CloseOnPressOutside
+        onOpened: { contextList.currentIndex = 0; contextList.forceActiveFocus() }
+        onClosed: { root.contextMode = "list"; root.renameError = ""; searchInput.forceActiveFocus() }
 
         background: Rectangle {
             color: root.bgColor
@@ -4039,19 +4148,84 @@ Window {
             }
         }
 
-        contentItem: ListView {
+        contentItem: Item {
+          // Yeniden adlandırma kutusu (contextMode === "rename")
+          Column {
+            id: renameBox
+            visible: root.contextMode === "rename"
+            width: parent.width
+            spacing: 6
+            Text { text: "Rename"; color: root.fgDim; font.family: root.textFont; font.pixelSize: 11 }
+            Rectangle {
+                width: parent.width
+                height: 30
+                radius: 6
+                color: Qt.rgba(1, 1, 1, 0.08)
+                border.color: root.renameError ? "#ff5252" : root.selBg
+                border.width: 1
+                TextInput {
+                    id: renameInput
+                    anchors.fill: parent
+                    anchors.leftMargin: 8
+                    anchors.rightMargin: 8
+                    verticalAlignment: TextInput.AlignVCenter
+                    clip: true
+                    selectByMouse: true
+                    color: root.fgColor
+                    font.family: root.textFont
+                    font.pixelSize: 13
+                    Keys.onReturnPressed: root.submitRename(text)
+                    Keys.onEnterPressed: root.submitRename(text)
+                    Keys.onEscapePressed: root.contextBack()
+                    onTextEdited: root.renameError = ""
+                }
+            }
+            Text {
+                width: parent.width
+                visible: !!root.renameError
+                text: root.renameError
+                color: "#ff5252"
+                wrapMode: Text.WordWrap
+                font.family: root.textFont
+                font.pixelSize: 11
+            }
+            Text { text: "Enter: rename  \u00b7  Esc: back"; color: root.fgDim; font.family: root.textFont; font.pixelSize: 10 }
+          }
+
+          ListView {
             id: contextList
+            visible: root.contextMode !== "rename"
+            anchors.fill: parent
             model: contextMenuModel
             clip: true
             spacing: 3
             boundsBehavior: Flickable.StopAtBounds
+            keyNavigationEnabled: false
+            Keys.onPressed: function(event) {
+                if (event.key === Qt.Key_Down) {
+                    contextList.currentIndex = Math.min(contextMenuModel.count - 1, contextList.currentIndex + 1)
+                    Shell.playThock(); event.accepted = true
+                } else if (event.key === Qt.Key_Up) {
+                    contextList.currentIndex = Math.max(0, contextList.currentIndex - 1)
+                    Shell.playThock(); event.accepted = true
+                } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter || event.key === Qt.Key_Right) {
+                    var e = contextMenuModel.get(contextList.currentIndex)
+                    if (e) { Shell.playCreamy(); executeContextAction(e.actionType, e.actionPayload) }
+                    event.accepted = true
+                } else if (event.key === Qt.Key_Escape || event.key === Qt.Key_Left || event.key === Qt.Key_Backspace) {
+                    if (root.contextMode !== "list") root.contextBack()
+                    else if (event.key === Qt.Key_Escape) contextPopup.close()
+                    event.accepted = true
+                }
+            }
 
             delegate: Rectangle {
                 id: cItem
                 width: contextList.width
                 height: 32
                 radius: 6
-                color: mouseItem.containsMouse ? (model.isDanger ? "#8b0000" : root.selBg) : "transparent"
+                readonly property bool hot: mouseItem.containsMouse || ListView.isCurrentItem
+                color: hot ? (model.isDanger ? "#8b0000" : root.selBg) : "transparent"
 
                 Row {
                     anchors.fill: parent
@@ -4066,7 +4240,7 @@ Window {
                         text: model.icon
                         font.family: root.iconFont
                         font.pixelSize: 14
-                        color: mouseItem.containsMouse ? root.selFg : (model.isDanger ? "#ff5252" : root.fgColor)
+                        color: cItem.hot ? root.selFg : (model.isDanger ? "#ff5252" : root.fgColor)
                     }
 
                     Text {
@@ -4075,7 +4249,7 @@ Window {
                         font.family: root.textFont
                         font.pixelSize: 12
                         font.weight: Font.Medium
-                        color: mouseItem.containsMouse ? root.selFg : (model.isDanger ? "#ff5252" : root.fgColor)
+                        color: cItem.hot ? root.selFg : (model.isDanger ? "#ff5252" : root.fgColor)
                         elide: Text.ElideRight
                     }
                 }
@@ -4086,6 +4260,7 @@ Window {
                     hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
                     onEntered: {
+                        contextList.currentIndex = index
                         Shell.playThock()
                     }
                     onClicked: {
@@ -4094,6 +4269,7 @@ Window {
                     }
                 }
             }
+          }
         }
     }
 

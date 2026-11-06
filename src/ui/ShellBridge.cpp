@@ -412,7 +412,10 @@ QString ShellBridge::listFolderFiles(const QString &folderName) const {
     return QString::fromUtf8(QJsonDocument(arr).toJson(QJsonDocument::Compact));
 }
 
-void ShellBridge::openPath(const QString &path) {
+void ShellBridge::openPath(const QString &rawPath) {
+    // "~/x" -> ev dizini (arama satırları yolu böyle taşır); kabuk kullanılmaz
+    const QString path = rawPath.startsWith(QLatin1String("~/")) || rawPath == QLatin1String("~")
+        ? QDir::homePath() + rawPath.mid(1) : rawPath;
     if (path.isEmpty()) return;
     if (path.startsWith(QStringLiteral("http://")) || path.startsWith(QStringLiteral("https://"))) {
         QDesktopServices::openUrl(QUrl(path));
