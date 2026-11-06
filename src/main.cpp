@@ -233,6 +233,8 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
+    // Veri dosyaları (emoji.json) Menu.qml'in yanındaki assets/ dizininde
+    shellBridge->setAssetsDir(QFileInfo(qmlPath).absolutePath() + QStringLiteral("/assets"));
     engine.load(QUrl::fromLocalFile(qmlPath));
     if (engine.rootObjects().isEmpty()) {
         std::cerr << "ravenspot: failed to load QML root object from " << qmlPath.toStdString() << "\n";

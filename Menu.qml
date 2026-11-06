@@ -1007,38 +1007,19 @@ Window {
                 })
             }
 
-            // 4. Süreç Sonlandırıcı (kill komutu)
+            // 4. Süreç sonlandırıcı ("kill <ad>"), pano ("clip <metin>"), son dosyalar
+            //    ("recent <ad>") ve emoji (":<ad>") — kullanıcının kendi süreçleri, bellekteki pano geçmişi
             if (qLower.startsWith("kill ")) {
                 var pFilter = query.substring(5).trim()
                 if (pFilter) {
-                    try {
-                        var procs = JSON.parse(Shell.listProcesses(pFilter))
-                        for (var pi = 0; pi < procs.length; pi++) {
-                            var pr = procs[pi]
-                            rows.unshift({
-                                itemId: "__kill_" + pr.pid + "__",
-                                kind: "action",
-                                icon: "󰅙",
-                                iconName: "process-stop",
-                                iconFont: "",
-                                appIcon: "",
-                                appId: "",
-                                label: "Sonlandır: " + pr.name + " (PID " + pr.pid + ")",
-                                target: "",
-                                detail: "Süreci durdur (SIGTERM)",
-                                path: "Süreç Yönetimi",
-                                childCount: 0,
-                                action: "",
-                                provider: "kill-process",
-                                value: pr.pid,
-                                desktop: "",
-                                disabled: false,
-                                score: -99997,
-                                section: ""
-                            })
-                        }
-                    } catch (e) {}
+                    try { rows = MenuModel.pcRows("kill", JSON.parse(Shell.listProcesses(pFilter) || "[]")).concat(rows) } catch (e) {}
                 }
+            } else if (qLower.startsWith("clip ")) {
+                try { rows = MenuModel.pcRows("clip", JSON.parse(Shell.clipboardMatching(query.substring(5)) || "[]")).concat(rows) } catch (e) {}
+            } else if (qLower.startsWith("recent ") || qLower === "recent") {
+                try { rows = MenuModel.pcRows("recent", JSON.parse(Shell.recentFiles(query.substring(6)) || "[]")).concat(rows) } catch (e) {}
+            } else if (query.startsWith(":") && query.length >= 2 && query.indexOf(" ") < 0) {
+                try { rows = MenuModel.pcRows("emoji", JSON.parse(Shell.searchEmoji(query.substring(1)) || "[]")).concat(rows) } catch (e) {}
             }
 
             // 5. Dizin ve Dosya Yolu Açıcı (~/ veya /)
@@ -1289,6 +1270,8 @@ Window {
     // Tehlikeli komut için ilk Enter'da "kurulan" komut METNİ; başka bir tuş
     // ya da arama metninin değişmesi sıfırlar.
     property string armedRunId: ""
+    property var lastKill: null // { rowId, at }: ikinci Enter ile SIGKILL
+    Timer { id: killRefresh; interval: 700; onTriggered: rebuildPreservingSelection() } // biten süreç listeden düşsün
     property bool outputPanelOpen: false
 
     function runCommandRow(index, row, inline) {
@@ -1374,8 +1357,23 @@ Window {
             root.sysMuted = !root.sysMuted
             Qt.callLater(closeMenu)
         } else if (row.provider === "kill-process") {
+            var now = Date.now()
+            if (MenuModel.killDecision(root.lastKill, row.itemId, now) === "kill") {
+                Shell.forceKillProcess(row.value)
+                root.lastKill = null
+                Shell.playCreamy()
+                Qt.callLater(rebuildPreservingSelection)
+            } else {
+                Shell.killProcess(row.value) // SIGTERM; menü açık kalır, 5 s içinde Enter = zorla
+                root.lastKill = { rowId: row.itemId, at: now }
+                displayModel.setProperty(index, "detail", "Sent SIGTERM \u00b7 Enter again within 5 s to force kill (SIGKILL)")
+                Shell.playThock()
+                killRefresh.restart()
+            }
+        } else if (row.provider === "emoji") {
             Shell.playCreamy()
-            Shell.killProcess(row.value)
+            root.opened = false
+            Shell.setClipboard(row.value)
             Qt.callLater(closeMenu)
         } else if (row.provider === "open-folder-path") {
             Shell.playCreamy()

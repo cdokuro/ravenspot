@@ -9,6 +9,7 @@
 #include <QHash>
 
 #include "files/FileActions.hpp"
+#include "pc/EmojiIndex.hpp"
 
 class QProcess;
 
@@ -22,6 +23,7 @@ class AudioEngine;
 class AppIndexer;
 class CommandRunner;
 class CommandHistory;
+class ClipboardHistory;
 
 class ShellBridge : public QObject {
     Q_OBJECT
@@ -184,6 +186,11 @@ public slots:
 
     // ── 7. Clipboard & Process Management ──────────────────────
     Q_INVOKABLE QString listClipboard() const;
+    Q_INVOKABLE QString clipboardMatching(const QString &query) const;   // JSON [{label, value}]
+    Q_INVOKABLE bool forceKillProcess(const QString &pid);                // SIGKILL (ikinci Enter)
+    Q_INVOKABLE QString recentFiles(const QString &query) const;          // JSON [{path,name,isDir,modified}]
+    Q_INVOKABLE QString searchEmoji(const QString &query) const;          // JSON [{glyph,name}]
+    void setAssetsDir(const QString &dir) { m_assetsDir = dir; }
     Q_INVOKABLE void setClipboard(const QString &text);
     Q_INVOKABLE void copyToClipboard(const QString &text);
     Q_INVOKABLE QString listProcesses(const QString &query = QString()) const;
@@ -205,6 +212,9 @@ private:
     mutable QHash<QString, bool> m_execCache;
     mutable QList<ravenspot::files::DesktopApp> m_desktopApps; // Open With için tembel tarama (menü kapanınca temizlenir)
     mutable bool m_desktopAppsLoaded{false};
+    ClipboardHistory *m_clipHistory{nullptr};
+    mutable ravenspot::EmojiIndex m_emoji; // ilk ":" aramasında yüklenir
+    QString m_assetsDir;
 
     bool m_startHidden{false};
     QPointer<LayerShellWindow> m_layerShellWindow;

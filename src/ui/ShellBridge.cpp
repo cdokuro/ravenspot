@@ -6,6 +6,9 @@
 #include "../run/CommandAnalyzer.hpp"
 #include "../run/CommandRunner.hpp"
 #include "../run/CommandHistory.hpp"
+#include "pc/ClipboardHistory.hpp"
+#include "pc/ProcessList.hpp"
+#include "pc/RecentFiles.hpp"
 
 #include <QGuiApplication>
 #include <QMimeData>
@@ -43,6 +46,9 @@ ShellBridge::ShellBridge(bool startHidden, QObject *parent)
 
     m_commandRunner = new CommandRunner(this);
     m_commandHistory = new CommandHistory(CommandHistory::defaultPath(), this);
+    // Pano geçmişi: orkun-clipboard-daemon olaylarına abone (yalnızca bellek; daemon yoksa sessizce bekler)
+    m_clipHistory = new ClipboardHistory(this);
+    m_clipHistory->connectTo(ClipboardHistory::defaultSocketPath());
     connect(m_commandRunner, &CommandRunner::finished, this, [this](int code, bool crashed) {
         // Menü kapalıyken biten satır içi komutu bildir (argv; kabuk yok).
         if (m_layerShellWindow && m_layerShellWindow->isVisible()) return;
@@ -1313,8 +1319,33 @@ bool ShellBridge::setSleepInhibited(bool inhibit) {
 
 // ── 7. Clipboard & Process Management ──────────────────────
 
+static QString clipEntriesJson(const QList<ClipEntry> &entries) {
+    QJsonArray arr;
+    for (const ClipEntry &e : entries) {
+        QString label = e.text.trimmed().section(QLatin1Char('\n'), 0, 0).simplified();
+        if (label.size() > 90) label = label.left(89) + QChar(0x2026);
+        arr.append(QJsonObject{{QStringLiteral("label"), label}, {QStringLiteral("value"), e.text}});
+    }
+    return QString::fromUtf8(QJsonDocument(arr).toJson(QJsonDocument::Compact));
+}
+
 QString ShellBridge::listClipboard() const {
-    return QStringLiteral("[]");
+    return clipEntriesJson(m_clipHistory->entries());
+}
+
+QString ShellBridge::clipboardMatching(const QString &query) const {
+    return clipEntriesJson(m_clipHistory->matching(query, 15));
+}
+
+QString ShellBridge::recentFiles(const QString &query) const {
+    return QString::fromUtf8(QJsonDocument(QJsonArray::fromVariantList(
+        pc::recentFiles(pc::defaultXbelPath(), query))).toJson(QJsonDocument::Compact));
+}
+
+QString ShellBridge::searchEmoji(const QString &query) const {
+    if (!m_emoji.isLoaded()) m_emoji.load(m_assetsDir + QStringLiteral("/emoji.json"));
+    return QString::fromUtf8(QJsonDocument(QJsonArray::fromVariantList(m_emoji.search(query, 20)))
+                                 .toJson(QJsonDocument::Compact));
 }
 
 void ShellBridge::setClipboard(const QString &text) {
@@ -1330,8 +1361,16 @@ void ShellBridge::copyToClipboard(const QString &text) {
 }
 
 QString ShellBridge::listProcesses(const QString &query) const {
-    Q_UNUSED(query)
-    return QStringLiteral("[]");
+    return QString::fromUtf8(QJsonDocument(QJsonArray::fromVariantList(
+        pc::listProcesses(query, QStringLiteral("/proc"), ::getuid()))).toJson(QJsonDocument::Compact));
+}
+
+bool ShellBridge::forceKillProcess(const QString &pid) {
+    bool ok = false;
+    const int p = pid.trimmed().toInt(&ok);
+    if (!ok || p <= 1) return false;
+    QProcess::startDetached(QStringLiteral("kill"), {QStringLiteral("-9"), QString::number(p)});
+    return true;
 }
 
 bool ShellBridge::killProcess(const QString &pid) {

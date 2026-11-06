@@ -882,3 +882,43 @@ function contextKeyActivates(key, actionType) {
   if (key === "right") return actionType === "openWithMenu"
   return false
 }
+
+// ── 4. aşama satırları: clip / kill / recent / emoji ────────────────────────
+function pcRow(base) {
+  var r = { kind: "action", icon: "", iconName: "", iconFont: "", appIcon: "", appId: "", target: "",
+            childCount: 0, action: "", desktop: "", disabled: false, score: 0, section: "" }
+  for (var k in base) r[k] = base[k]
+  return r
+}
+
+function pcRows(kind, items) {
+  var out = []
+  for (var i = 0; i < (items || []).length; i++) {
+    var it = items[i]
+    if (kind === "clip") {
+      out.push(pcRow({ itemId: "__clip_" + i + "__", provider: "clipboard-item", value: it.value,
+                       label: it.label, detail: "Clipboard history · Enter: copy", path: "Clipboard",
+                       iconName: "org.kde.plasma.clipboard", score: -70000 + i }))
+    } else if (kind === "kill") {
+      out.push(pcRow({ itemId: "__kill_" + it.pid + "__", provider: "kill-process", value: String(it.pid),
+                       label: "Kill: " + it.name + "  (PID " + it.pid + ")",
+                       detail: it.rssText + " · Enter: terminate · Enter again within 5 s: force kill",
+                       path: "Processes", iconName: "process-stop", score: -90000 + i }))
+    } else if (kind === "recent") {
+      out.push(pcRow({ itemId: "__recent_" + i + "__", provider: "file-item", value: it.path, filePath: it.path,
+                       isDir: !!it.isDir, label: it.name, detail: it.modified + "  •  " + it.path,
+                       path: "Recent", iconName: it.isDir ? "folder" : "document-open-recent", score: -60000 + i }))
+    } else if (kind === "emoji") {
+      out.push(pcRow({ itemId: "__emoji_" + i + "__", provider: "emoji", value: it.glyph,
+                       label: it.glyph + "   " + it.name, detail: "Enter: copy emoji", path: "Emoji",
+                       score: -80000 + i }))
+    }
+  }
+  return out
+}
+
+// Sonlandırma: ilk Enter SIGTERM; aynı satırda 5 s içinde ikinci Enter SIGKILL.
+function killDecision(lastKill, rowId, nowMs) {
+  if (lastKill && lastKill.rowId === rowId && nowMs - lastKill.at <= 5000) return "kill"
+  return "term"
+}
