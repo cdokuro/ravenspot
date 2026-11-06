@@ -7,6 +7,8 @@
 #include <QPointer>
 #include <QTimer>
 
+class QProcess;
+
 class QQuickWindow;
 
 namespace ravenspot {
@@ -51,6 +53,10 @@ signals:
     void powerProfileChanged(const QString &profile);
     void sleepInhibitedChanged(bool inhibited);
     void telemetryUpdated(const QVariantMap &metrics);
+
+    // Async search results (requestId ile eski yanıtlar QML'de elenir)
+    void fileSearchFinished(int requestId, const QString &pattern, const QString &json);
+    void windowSearchFinished(int requestId, const QString &query, const QString &json);
 
 public slots:
     // IPC Request Forwarders
@@ -104,6 +110,7 @@ public slots:
     Q_INVOKABLE void openContainingFolder(const QString &path);
     Q_INVOKABLE bool moveToTrash(const QString &path);
     Q_INVOKABLE QString searchFiles(const QString &pattern) const;
+    Q_INVOKABLE void requestFileSearch(const QString &pattern, int requestId);
 
     // ── 5. Application Launching & Execution ───────────────────
     Q_INVOKABLE QString listAppsCategory(const QString &cat) const;
@@ -111,6 +118,7 @@ public slots:
     Q_INVOKABLE void launchApp(const QString &desktop);
     Q_INVOKABLE QString getAppActions(const QString &desktop) const;
     Q_INVOKABLE QString searchWindows(const QString &query) const;
+    Q_INVOKABLE void requestWindowSearch(const QString &query, int requestId);
     Q_INVOKABLE bool activateWindow(const QString &matchId);
     Q_INVOKABLE void editDesktopFile(const QString &desktop);
     Q_INVOKABLE void openInDiscover(const QString &desktop);
@@ -155,6 +163,8 @@ public slots:
 private:
     void updateTelemetry();
     void activateDolphinWindow(const QString &folderHint);
+
+    QProcess *m_fileSearchProc{nullptr}; // devam eden async fd araması (yeni sorgu gelince iptal)
 
     bool m_startHidden{false};
     QPointer<LayerShellWindow> m_layerShellWindow;

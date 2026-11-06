@@ -22,6 +22,53 @@ Window {
     }
 
     property bool canCloseOnInactive: false
+
+    // ── Async arama durumu ────────────────────────────────
+    // fd ve KWin WindowsRunner aramaları UI thread'ini bloklamaz; sonuçlar
+    // sinyalle gelir. searchSeq ile eski (geç gelen) yanıtlar elenir.
+    property int searchSeq: 0
+    property string fileResultsQuery: ""
+    property var fileResults: []
+    property bool fileSearchBusy: false
+    property string winResultsQuery: ""
+    property var winResults: []
+    Timer {
+        id: searchDebounce
+        interval: 90 // hızlı yazarken her tuşta süreç/D-Bus çağrısı başlatma
+        repeat: false
+        onTriggered: root.dispatchAsyncSearch()
+    }
+
+    function dispatchAsyncSearch() {
+        var q = root.filterText.trim()
+        if (!q) return
+        root.searchSeq++
+        if (q.startsWith("*")) {
+            var fq = q.substring(1).trim()
+            if (!fq) return
+            root.fileSearchBusy = true
+            Shell.requestFileSearch(fq, root.searchSeq)
+        } else if (Shell.requestWindowSearch) {
+            Shell.requestWindowSearch(q, root.searchSeq)
+        }
+    }
+
+    // Async sonuç geldiğinde seçili satırı itemId ile koru (liste üstüne satır eklenince kaymasın)
+    function rebuildPreservingSelection() {
+        var keepId = ""
+        if (root.selectedIndex > 0 && root.selectedIndex < displayModel.count)
+            keepId = displayModel.get(root.selectedIndex).itemId
+        rebuildDisplay()
+        if (keepId) {
+            for (var i = 0; i < displayModel.count; i++) {
+                if (displayModel.get(i).itemId === keepId) {
+                    root.selectedIndex = i
+                    resultList.currentIndex = i
+                    return
+                }
+            }
+        }
+    }
     Timer {
         id: enableCloseOnInactiveTimer
         interval: 350
@@ -556,7 +603,12 @@ Window {
                     })
                 } else {
                     try {
-                        var fileResults = JSON.parse(Shell.searchFiles(fileQuery) || "[]")
+                        var haveFresh = root.fileResultsQuery === fileQuery
+                        // Yazmaya devam ederken (sorgu öncekinin devamıysa) önceki sonuçları
+                        // göster ki liste titremesin; alakasız eski sonuçları gösterme.
+                        var isRefinement = root.fileResultsQuery.length > 0
+                            && fileQuery.toLowerCase().indexOf(root.fileResultsQuery.toLowerCase()) === 0
+                        var fileResults = (haveFresh || isRefinement) ? root.fileResults : []
                         for (var fi = 0; fi < fileResults.length; fi++) {
                             var f = fileResults[fi]
                             var desc = (f.dir || "")
@@ -586,7 +638,29 @@ Window {
                                 isDir: !!f.isDir
                             })
                         }
-                        if (fileResults.length === 0) {
+                        if (fileResults.length === 0 && (!haveFresh || root.fileSearchBusy)) {
+                            rows.push({
+                                itemId: "__file_searching__",
+                                kind: "action",
+                                icon: "󰍉",
+                                iconName: "edit-find",
+                                iconFont: "",
+                                appIcon: "",
+                                appId: "",
+                                label: "Aranıyor…",
+                                target: "",
+                                detail: "'" + fileQuery + "' için dosyalar taranıyor",
+                                path: "Dosya Arama",
+                                childCount: 0,
+                                action: "",
+                                provider: "none",
+                                value: "",
+                                desktop: "",
+                                disabled: true,
+                                score: 0,
+                                section: ""
+                            })
+                        } else if (fileResults.length === 0) {
                             rows.push({
                                 itemId: "__no_files__",
                                 kind: "action",
@@ -694,9 +768,16 @@ Window {
             rows = currentRows.concat(drilldownRows)
 
             // 0. Açık Pencereler (KWin WindowsRunner)
-            if (Shell.searchWindows && query.trim().length > 0) {
+            if (query.trim().length > 0 && root.winResults.length > 0) {
                 try {
-                    var winResults = JSON.parse(Shell.searchWindows(query) || "[]")
+                    var winResults = root.winResults
+                    if (root.winResultsQuery !== query) {
+                        // Taze yanıt gelene kadar eski sonuçları yerelde süz
+                        var ql = query.toLowerCase()
+                        winResults = winResults.filter(function(w) {
+                            return (w.title || "").toLowerCase().indexOf(ql) >= 0
+                        })
+                    }
                     for (var wi = winResults.length - 1; wi >= 0; wi--) {
                         var w = winResults[wi]
                         rows.unshift({
@@ -1184,7 +1265,16 @@ Window {
     function setFilter(next) {
         root.filterText = next
         root.selectedIndex = 0
-        rebuildDisplay()
+        if (!next.trim()) {
+            searchDebounce.stop()
+            root.searchSeq++ // uçuştaki yanıtları geçersiz kıl
+            root.fileSearchBusy = false
+            root.winResults = []
+            root.winResultsQuery = ""
+        } else {
+            searchDebounce.restart()
+        }
+        rebuildDisplay() // yerel sonuçlar (uygulamalar, hesap makinesi) anında
     }
 
     function setActiveMenu(id, pushHistory) {
@@ -1645,6 +1735,19 @@ Window {
         function onReloadRequested() {
             loadItems()
             rebuildDisplay()
+        }
+        function onFileSearchFinished(requestId, pattern, json) {
+            if (requestId !== root.searchSeq) return // eski sorgu
+            try { root.fileResults = JSON.parse(json || "[]") } catch (e) { root.fileResults = [] }
+            root.fileResultsQuery = pattern
+            root.fileSearchBusy = false
+            rebuildPreservingSelection()
+        }
+        function onWindowSearchFinished(requestId, query, json) {
+            if (requestId !== root.searchSeq) return
+            try { root.winResults = JSON.parse(json || "[]") } catch (e) { root.winResults = [] }
+            root.winResultsQuery = query
+            rebuildPreservingSelection()
         }
         function onStatsUpdated(cpu, gpu, vol, muted) {
             root.cpuPercent = cpu

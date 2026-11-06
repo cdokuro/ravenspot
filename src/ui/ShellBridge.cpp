@@ -16,6 +16,8 @@
 #include <QDBusMessage>
 #include <QDBusConnection>
 #include <QDBusReply>
+#include <QDBusPendingCallWatcher>
+#include <QDBusPendingReply>
 #include <QRegularExpression>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -492,13 +494,8 @@ bool ShellBridge::moveToTrash(const QString &path) {
     return QFile::moveToTrash(path);
 }
 
-QString ShellBridge::searchFiles(const QString &pattern) const {
-    const QString pat = pattern.trimmed();
-    if (pat.isEmpty()) return QStringLiteral("[]");
-
-    const QString homeDir = QDir::homePath();
-    QProcess proc;
-    QStringList args = {
+static QStringList fileSearchArgs(const QString &pat, const QString &homeDir) {
+    return {
         QStringLiteral("-i"), QStringLiteral("-a"),
         QStringLiteral("--max-results"), QStringLiteral("35"),
         QStringLiteral("--exclude"), QStringLiteral(".git"),
@@ -508,14 +505,12 @@ QString ShellBridge::searchFiles(const QString &pattern) const {
         pat,
         homeDir
     };
+}
 
-    proc.start(QStringLiteral("fd"), args);
-    if (!proc.waitForFinished(1500)) {
-        proc.kill();
-        return QStringLiteral("[]");
-    }
-
-    const QString output = QString::fromUtf8(proc.readAllStandardOutput());
+// fd çıktısını (satır başına bir yol) QML JSON satırlarına dönüştürür.
+static QString fileSearchOutputToJson(const QByteArray &raw) {
+    const QString homeDir = QDir::homePath();
+    const QString output = QString::fromUtf8(raw);
     const QStringList lines = output.split(QLatin1Char('\n'), Qt::SkipEmptyParts);
 
     QJsonArray items;
@@ -617,6 +612,60 @@ QString ShellBridge::searchFiles(const QString &pattern) const {
     return QString::fromUtf8(QJsonDocument(items).toJson(QJsonDocument::Compact));
 }
 
+QString ShellBridge::searchFiles(const QString &pattern) const {
+    const QString pat = pattern.trimmed();
+    if (pat.isEmpty()) return QStringLiteral("[]");
+
+    QProcess proc;
+    proc.start(QStringLiteral("fd"), fileSearchArgs(pat, QDir::homePath()));
+    if (!proc.waitForFinished(1500)) {
+        proc.kill();
+        return QStringLiteral("[]");
+    }
+    return fileSearchOutputToJson(proc.readAllStandardOutput());
+}
+
+void ShellBridge::requestFileSearch(const QString &pattern, int requestId) {
+    // Önceki aramayı iptal et: yalnızca en güncel sorgu önemlidir.
+    if (m_fileSearchProc) {
+        m_fileSearchProc->disconnect(this);
+        m_fileSearchProc->kill();
+        m_fileSearchProc->deleteLater();
+        m_fileSearchProc = nullptr;
+    }
+
+    const QString pat = pattern.trimmed();
+    if (pat.isEmpty()) {
+        emit fileSearchFinished(requestId, pattern, QStringLiteral("[]"));
+        return;
+    }
+
+    auto *proc = new QProcess(this);
+    m_fileSearchProc = proc;
+
+    auto *timeout = new QTimer(proc);
+    timeout->setSingleShot(true);
+    connect(timeout, &QTimer::timeout, proc, [proc]() { proc->kill(); });
+
+    connect(proc, &QProcess::finished, this, [this, proc, pattern, requestId](int, QProcess::ExitStatus status) {
+        if (m_fileSearchProc == proc) m_fileSearchProc = nullptr;
+        const QString json = (status == QProcess::NormalExit)
+            ? fileSearchOutputToJson(proc->readAllStandardOutput())
+            : QStringLiteral("[]");
+        proc->deleteLater();
+        emit fileSearchFinished(requestId, pattern, json);
+    });
+    connect(proc, &QProcess::errorOccurred, this, [this, proc, pattern, requestId](QProcess::ProcessError err) {
+        if (err != QProcess::FailedToStart) return; // diğerlerinde finished da gelir
+        if (m_fileSearchProc == proc) m_fileSearchProc = nullptr;
+        proc->deleteLater();
+        emit fileSearchFinished(requestId, pattern, QStringLiteral("[]"));
+    });
+
+    proc->start(QStringLiteral("fd"), fileSearchArgs(pat, QDir::homePath()));
+    timeout->start(1500);
+}
+
 // ── 5. Application Launching & Execution ───────────────────
 
 QString ShellBridge::listAppsCategory(const QString &cat) const {
@@ -647,19 +696,8 @@ QString ShellBridge::getAppActions(const QString &desktop) const {
     return m_appIndexer ? m_appIndexer->getAppActionsJson(desktop) : QStringLiteral("[]");
 }
 
-QString ShellBridge::searchWindows(const QString &query) const {
-    const QString q = query.trimmed();
-    if (q.isEmpty()) return QStringLiteral("[]");
-
-    auto msg = QDBusMessage::createMethodCall(
-        QStringLiteral("org.kde.KWin"),
-        QStringLiteral("/WindowsRunner"),
-        QStringLiteral("org.kde.krunner1"),
-        QStringLiteral("Match")
-    );
-    msg << q;
-
-    auto reply = QDBusConnection::sessionBus().call(msg);
+// KWin WindowsRunner Match yanıtını QML JSON satırlarına dönüştürür.
+static QString windowMatchReplyToJson(const QDBusMessage &reply) {
     if (reply.arguments().isEmpty()) return QStringLiteral("[]");
 
     const QDBusArgument arg = reply.arguments().at(0).value<QDBusArgument>();
@@ -687,6 +725,40 @@ QString ShellBridge::searchWindows(const QString &query) const {
     arg.endArray();
 
     return QString::fromUtf8(QJsonDocument(items).toJson(QJsonDocument::Compact));
+}
+
+static QDBusMessage windowMatchMessage(const QString &q) {
+    auto msg = QDBusMessage::createMethodCall(
+        QStringLiteral("org.kde.KWin"),
+        QStringLiteral("/WindowsRunner"),
+        QStringLiteral("org.kde.krunner1"),
+        QStringLiteral("Match")
+    );
+    msg << q;
+    return msg;
+}
+
+QString ShellBridge::searchWindows(const QString &query) const {
+    const QString q = query.trimmed();
+    if (q.isEmpty()) return QStringLiteral("[]");
+    return windowMatchReplyToJson(QDBusConnection::sessionBus().call(windowMatchMessage(q)));
+}
+
+void ShellBridge::requestWindowSearch(const QString &query, int requestId) {
+    const QString q = query.trimmed();
+    if (q.isEmpty()) {
+        emit windowSearchFinished(requestId, query, QStringLiteral("[]"));
+        return;
+    }
+    // UI thread'ini bloklamadan KWin'e sor; eski yanıtlar QML'de requestId ile elenir.
+    auto *watcher = new QDBusPendingCallWatcher(
+        QDBusConnection::sessionBus().asyncCall(windowMatchMessage(q), 500), this);
+    connect(watcher, &QDBusPendingCallWatcher::finished, this, [this, query, requestId](QDBusPendingCallWatcher *w) {
+        const QDBusMessage reply = w->reply();
+        w->deleteLater();
+        emit windowSearchFinished(requestId, query,
+            reply.type() == QDBusMessage::ReplyMessage ? windowMatchReplyToJson(reply) : QStringLiteral("[]"));
+    });
 }
 
 bool ShellBridge::activateWindow(const QString &matchId) {
