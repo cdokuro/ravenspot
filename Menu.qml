@@ -1455,138 +1455,27 @@ Window {
         var isDir = (rowItem.isDir !== undefined && rowItem.isDir !== null) ? !!rowItem.isDir : (resolvedPath ? Shell.isDirectory(resolvedPath) : false)
 
         if (rowItem.kind === "app" || (rowItem.desktop && rowItem.desktop.length > 0)) {
-            // 1. Launch
-            contextMenuModel.append({
-                label: "Launch (Başlat)",
-                icon: "",
-                actionType: "launchApp",
-                actionPayload: rowItem.desktop,
-                isDanger: false
+            var acts = []
+            try { acts = JSON.parse(Shell.getAppActions(rowItem.desktop) || "[]") } catch (e) {}
+            var appEntries = MenuModel.appContextEntries({
+                desktop: rowItem.desktop, actions: acts,
+                autostart: Shell.isAutostart(rowItem.desktop),
+                canUninstall: Shell.canUninstall(rowItem.desktop)
             })
-            // 2. .desktop Actions
-            try {
-                var acts = JSON.parse(Shell.getAppActions(rowItem.desktop) || "[]")
-                for (var i = 0; i < acts.length; i++) {
-                    contextMenuModel.append({
-                        label: acts[i].name,
-                        icon: "󰅂",
-                        actionType: "runAction",
-                        actionPayload: acts[i].exec,
-                        isDanger: false
-                    })
-                }
-            } catch(e) {}
-
-            // 3. Open Location (Dolphin)
-            contextMenuModel.append({
-                label: "Open Location (Dolphin)",
-                icon: "󰉋",
-                actionType: "openLocation",
-                actionPayload: rowItem.desktop,
-                isDanger: false
-            })
-            // 4. Run in Terminal
-            contextMenuModel.append({
-                label: "Run in Terminal",
-                icon: "",
-                actionType: "runInTerminal",
-                actionPayload: rowItem.desktop,
-                isDanger: false
-            })
-            // 5. Discover
-            contextMenuModel.append({
-                label: "Open in Software Center",
-                icon: "󰀻",
-                actionType: "openInDiscover",
-                actionPayload: rowItem.desktop,
-                isDanger: false
-            })
-            // 6. Edit
-            contextMenuModel.append({
-                label: "Edit Application",
-                icon: "",
-                actionType: "editDesktop",
-                actionPayload: rowItem.desktop,
-                isDanger: false
-            })
-            // 7. Copy Path
-            contextMenuModel.append({
-                label: "Copy File Path",
-                icon: "󰅇",
-                actionType: "copyPath",
-                actionPayload: rowItem.desktop,
-                isDanger: false
-            })
+            for (var ai = 0; ai < appEntries.length; ai++) contextMenuModel.append(appEntries[ai])
         } else if (resolvedPath && resolvedPath.length > 0) {
             var isRootDownloads = (rowItem.itemId === "downloads" || rowItem.provider === "files-downloads")
             var actuallyDir = (rowItem.isDir === true) || (isRootDownloads) || (Shell.isDirectory(resolvedPath))
-
-            // All file or folder items
-            if (rowItem.kind === "menu" || rowItem.kind === "link" || (rowItem.provider && rowItem.provider.startsWith("files-"))) {
-                contextMenuModel.append({
-                    label: "Menüde Aç (Open in Menu)",
-                    icon: "",
-                    actionType: "activateCurrent",
-                    actionPayload: "",
-                    isDanger: false
-                })
-            }
-
-            if (isRootDownloads || actuallyDir) {
-                // Sadece klasör aç seçeneği
-                contextMenuModel.append({
-                    label: "Open Folder (Klasörü Aç)",
-                    icon: "󰉋",
-                    actionType: "openPath",
-                    actionPayload: resolvedPath,
-                    isDanger: false
-                })
-            } else {
-                // Normal dosyalar için hem dosyayı aç hem klasörde göster
-                contextMenuModel.append({
-                    label: "Open File (Dosyayı Aç)",
-                    icon: "",
-                    actionType: "openPath",
-                    actionPayload: resolvedPath,
-                    isDanger: false
-                })
-                contextMenuModel.append({
-                    label: "Open Containing Folder (Klasörde Göster)",
-                    icon: "󰉋",
-                    actionType: "openLocation",
-                    actionPayload: resolvedPath,
-                    isDanger: false
-                })
-            }
-
-            // Open in Terminal
-            contextMenuModel.append({
-                label: "Open in Terminal (Terminalde Aç)",
-                icon: "",
-                actionType: "openInTerminal",
-                actionPayload: resolvedPath,
-                isDanger: false
+            var fileEntries = MenuModel.fileContextEntries({
+                path: resolvedPath,
+                isDir: actuallyDir,
+                isArchive: !actuallyDir && Shell.isArchive(resolvedPath),
+                isRootDownloads: isRootDownloads,
+                inMenu: rowItem.kind === "menu" || rowItem.kind === "link" || (rowItem.provider && rowItem.provider.startsWith("files-")),
+                // Çöpe taşı: yalnızca dosya öğeleri (kök menü kategorileri hariç)
+                canTrash: rowItem.provider === "file-item" || (!!rowItem.filePath && rowItem.kind !== "menu")
             })
-
-            // Copy File Path
-            contextMenuModel.append({
-                label: "Copy File Path (Yolu Kopyala)",
-                icon: "󰅇",
-                actionType: "copyPath",
-                actionPayload: resolvedPath,
-                isDanger: false
-            })
-
-            // Move to Trash (sadece dosya-öğesi ise, kök menü kategorileri hariç)
-            if (!isRootDownloads && (rowItem.provider === "file-item" || (rowItem.filePath && rowItem.kind !== "menu"))) {
-                contextMenuModel.append({
-                    label: "Move to Trash (Çöpe Taşı)",
-                    icon: "",
-                    actionType: "moveToTrash",
-                    actionPayload: resolvedPath,
-                    isDanger: true
-                })
-            }
+            for (var fi = 0; fi < fileEntries.length; fi++) contextMenuModel.append(fileEntries[fi])
         } else {
             // General menu items
             contextMenuModel.append({

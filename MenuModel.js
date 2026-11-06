@@ -827,3 +827,50 @@ function armDecision(armedCommand, command, dangerous) {
   if (!dangerous) return "run"
   return armedCommand === command ? "run" : "arm"
 }
+
+// ── Sağ tık menü girdileri (saf; Menu.qml contextMenuModel'e ekler) ─────────
+function ctxEntry(label, icon, actionType, payload, danger) {
+  return { label: label, icon: icon, actionType: actionType, actionPayload: payload || "", isDanger: !!danger }
+}
+
+// info: { path, isDir, isArchive, isRootDownloads, inMenu, canTrash }
+function fileContextEntries(info) {
+  var p = info.path
+  var dir = !!(info.isDir || info.isRootDownloads)
+  var out = []
+  if (info.inMenu) out.push(ctxEntry("Menüde Aç (Open in Menu)", "", "activateCurrent", ""))
+  if (dir) {
+    out.push(ctxEntry("Open Folder (Klasörü Aç)", "󰉋", "openPath", p))
+  } else {
+    out.push(ctxEntry("Open File (Dosyayı Aç)", "", "openPath", p))
+    out.push(ctxEntry("Open With…  ›", "󰀻", "openWithMenu", p))
+    out.push(ctxEntry("Open Containing Folder (Klasörde Göster)", "󰉋", "openLocation", p))
+  }
+  out.push(ctxEntry("Open in Terminal (Terminalde Aç)", "", "openInTerminal", p))
+  out.push(ctxEntry("Copy", "󰅇", "copyFile", p))
+  out.push(ctxEntry("Copy File Path (Yolu Kopyala)", "󰅇", "copyPath", p))
+  if (!info.isRootDownloads) {
+    out.push(ctxEntry("Rename…", "", "startRename", p))
+    if (info.isArchive) out.push(ctxEntry("Extract Here", "󰏗", "extract", p))
+    out.push(ctxEntry("Compress to ZIP", "󰏗", "compress", p))
+  }
+  out.push(ctxEntry("Properties", "", "showProperties", p))
+  if (info.canTrash && !info.isRootDownloads) out.push(ctxEntry("Move to Trash (Çöpe Taşı)", "", "moveToTrash", p, true))
+  return out
+}
+
+// info: { desktop, actions: [{name, exec}], autostart, canUninstall }
+function appContextEntries(info) {
+  var d = info.desktop
+  var out = [ctxEntry("Launch (Başlat)", "", "launchApp", d)]
+  var acts = info.actions || []
+  for (var i = 0; i < acts.length; i++) out.push(ctxEntry(acts[i].name, "", "runAction", acts[i].exec))
+  out.push(ctxEntry((info.autostart ? "✓ " : "") + "Launch at Login", "", "toggleAutostart", d))
+  out.push(ctxEntry("Open Location (Dolphin)", "󰉋", "openLocation", d))
+  out.push(ctxEntry("Run in Terminal", "", "runInTerminal", d))
+  out.push(ctxEntry("Open in Software Center", "󰀻", "openInDiscover", d))
+  out.push(ctxEntry("Edit Application", "", "editDesktop", d))
+  out.push(ctxEntry("Copy File Path", "󰅇", "copyPath", d))
+  if (info.canUninstall) out.push(ctxEntry("Uninstall…", "", "uninstall", d, true))
+  return out
+}
