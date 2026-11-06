@@ -35,9 +35,23 @@ TestCase {
         var first = MenuModel.killDecision(null, "__kill_42__", 1000)
         compare(first, "term")
         compare(MenuModel.killDecision({ rowId: "__kill_42__", at: 1000 }, "__kill_42__", 4000), "kill")
+        // çift tıklama / basılı Enter: 500 ms içinde ikinci etkinleştirme yok sayılır
+        compare(MenuModel.killDecision({ rowId: "__kill_42__", at: 1000 }, "__kill_42__", 1100), "ignore")
         compare(MenuModel.killDecision({ rowId: "__kill_42__", at: 1000 }, "__kill_42__", 7000), "term") // 5 s geçti
     }
     function test_killOtherRowDoesNot() {
         compare(MenuModel.killDecision({ rowId: "__kill_42__", at: 1000 }, "__kill_43__", 2000), "term")
+    }
+
+    function test_rightArrowSkipsDangerousRows() {
+        verify(!MenuModel.rightArrowActivates("kill-process"))
+        verify(!MenuModel.rightArrowActivates("run-command"))
+        verify(MenuModel.rightArrowActivates(""))
+        verify(MenuModel.rightArrowActivates("file-item"))
+    }
+    function test_enterGuardAfterKilledRowVanishes() {
+        verify(MenuModel.enterGuarded(5000, 4500))
+        verify(!MenuModel.enterGuarded(5000, 5001))
+        verify(!MenuModel.enterGuarded(0, 4500))
     }
 }

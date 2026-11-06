@@ -921,6 +921,20 @@ function pcRows(kind, items) {
 
 // Sonlandırma: ilk Enter SIGTERM; aynı satırda 5 s içinde ikinci Enter SIGKILL.
 function killDecision(lastKill, rowId, nowMs) {
-  if (lastKill && lastKill.rowId === rowId && nowMs - lastKill.at <= 5000) return "kill"
+  if (lastKill && lastKill.rowId === rowId) {
+    var gap = nowMs - lastKill.at
+    if (gap < 500) return "ignore"   // çift tıklama / basılı Enter: SIGKILL değil
+    if (gap <= 5000) return "kill"
+  }
   return "term"
+}
+
+// Sağ ok (fish'te öneri kabulü alışkanlığı) yıkıcı satırları tetiklemesin
+function rightArrowActivates(provider) {
+  return provider !== "kill-process" && provider !== "run-command"
+}
+
+// Öldürülen satır listeden düşünce kısa süre Enter yutulur (alttan kayan satır tetiklenmesin)
+function enterGuarded(guardUntilMs, nowMs) {
+  return guardUntilMs > 0 && nowMs < guardUntilMs
 }

@@ -1228,7 +1228,7 @@ Window {
 
     function setFilter(next) {
         if (root.outputPanelOpen && next !== root.filterText) root.outputPanelOpen = false // yeni arama
-        if (next !== root.filterText) root.armedRunId = "" // metin değişti (yapıştırma dahil): yeniden onay
+        if (next !== root.filterText) { root.armedRunId = ""; root.lastKill = null } // metin değişti: yeniden onay
         root.filterText = next
         root.selectedIndex = 0
         if (!next.trim()) {
@@ -1271,7 +1271,27 @@ Window {
     // ya da arama metninin değişmesi sıfırlar.
     property string armedRunId: ""
     property var lastKill: null // { rowId, at }: ikinci Enter ile SIGKILL
-    Timer { id: killRefresh; interval: 700; onTriggered: rebuildPreservingSelection() } // biten süreç listeden düşsün
+    property real enterGuardUntil: 0
+    Timer {
+        id: killRefresh
+        interval: 700
+        onTriggered: {
+            rebuildPreservingSelection() // biten süreç listeden düşsün
+            if (!root.lastKill) return
+            for (var i = 0; i < displayModel.count; i++) {
+                if (displayModel.get(i).itemId === root.lastKill.rowId) {
+                    // hâlâ çalışıyor: seçili kalsın, "zorla" ipucu korunsun
+                    root.selectedIndex = i
+                    resultList.currentIndex = i
+                    displayModel.setProperty(i, "detail", "Sent SIGTERM \u00b7 Enter again within 5 s to force kill (SIGKILL)")
+                    return
+                }
+            }
+            // süreç bitti: alttan kayan satır ikinci Enter'ı almasın
+            root.lastKill = null
+            root.enterGuardUntil = Date.now() + 1000
+        }
+    }
     property bool outputPanelOpen: false
 
     function runCommandRow(index, row, inline) {
@@ -1299,6 +1319,7 @@ Window {
         if (index < 0 || index >= displayModel.count) return
         var row = displayModel.get(index)
         if (row.disabled) return
+        if (MenuModel.enterGuarded(root.enterGuardUntil, Date.now())) return
         if (row.provider === "run-command") {
             runCommandRow(index, row, !!(opts && opts.inline))
             return
@@ -1358,7 +1379,9 @@ Window {
             Qt.callLater(closeMenu)
         } else if (row.provider === "kill-process") {
             var now = Date.now()
-            if (MenuModel.killDecision(root.lastKill, row.itemId, now) === "kill") {
+            var decision = MenuModel.killDecision(root.lastKill, row.itemId, now)
+            if (decision === "ignore") return
+            if (decision === "kill") {
                 Shell.forceKillProcess(row.value)
                 root.lastKill = null
                 Shell.playCreamy()
@@ -1712,6 +1735,7 @@ Window {
     function closeMenu() {
         root.outputPanelOpen = false // komut arka planda sürer; bitince bildirim gelir
         root.armedRunId = ""
+        root.lastKill = null
         if (root.depModalOpen) root.depModalOpen = false
         if (root.powerFlyoutOpen) root.powerFlyoutOpen = false
         if (root.audioFlyoutOpen) root.audioFlyoutOpen = false
@@ -2018,6 +2042,12 @@ Window {
                     activateIndex(root.selectedIndex, { inline: true })
                     event.accepted = true
                 } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter || event.key === Qt.Key_Right) {
+                    var selRow = displayModel.count > root.selectedIndex ? displayModel.get(root.selectedIndex) : null
+                    if (event.key === Qt.Key_Right && selRow && !MenuModel.rightArrowActivates(selRow.provider)) {
+                        event.accepted = false // metin kutusunda imleç hareket etsin
+                        return
+                    }
+                    if (event.isAutoRepeat) { event.accepted = true; return } // basılı Enter tekrar etkinleştirmesin
                     activateIndex(root.selectedIndex)
                     event.accepted = true
                 }
