@@ -9,7 +9,7 @@ void addProc(const QString &root, int pid, const QString &comm, const QByteArray
     QDir(root).mkpath(QString::number(pid));
     const QString d = root + "/" + QString::number(pid) + "/";
     QFile c(d + "comm"); (void)c.open(QIODevice::WriteOnly); c.write(comm.toUtf8() + "\n"); c.close();
-    QFile l(d + "cmdline"); l.open(QIODevice::WriteOnly); l.write(cmdline); l.close();
+    QFile l(d + "cmdline"); (void)l.open(QIODevice::WriteOnly); l.write(cmdline); l.close();
     QFile s(d + "status"); (void)s.open(QIODevice::WriteOnly);
     s.write(QStringLiteral("Name:\t%1\nUid:\t%2\t%2\t%2\t%2\nVmRSS:\t   %3 kB\n").arg(comm).arg(uid).arg(rssKb).toUtf8());
     s.close();
