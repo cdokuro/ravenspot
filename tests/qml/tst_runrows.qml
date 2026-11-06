@@ -55,4 +55,19 @@ TestCase {
         compare(r.rows.length, 3)
         compare(r.rows[1].value, "git status")
     }
+
+    // armDecision(armedCommand, command, dangerous) -> "arm" | "run"
+    function test_armFirstEnterOnDanger() {
+        compare(MenuModel.armDecision("", "rm -rf ~", true), "arm")
+    }
+    function test_runSecondEnterSameCommand() {
+        compare(MenuModel.armDecision("rm -rf ~", "rm -rf ~", true), "run")
+    }
+    function test_armAgainWhenCommandChanged() {
+        // orta tuşla yapıştırma: tuşa basılmadan metin değişti -> yeniden kurulmalı
+        compare(MenuModel.armDecision("rm -rf ~/tmp", "rm -rf ~", true), "arm")
+    }
+    function test_safeRunsImmediately() {
+        compare(MenuModel.armDecision("", "ls -la", false), "run")
+    }
 }

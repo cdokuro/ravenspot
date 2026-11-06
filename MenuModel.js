@@ -819,3 +819,11 @@ function commandRows(query, analysis, history) {
   var position = (forced || signal === 2) ? "first" : "last"
   return { position: rows.length ? position : "none", rows: rows }
 }
+
+// Tehlikeli komut kurulması: ilk Enter "arm", aynı komut metniyle ikinci Enter "run".
+// Kurulma satır kimliğine değil komut METNİNE bağlıdır: metin tuşa basılmadan
+// (orta tuş / sağ tık yapıştırma) değişirse komut yeniden onay ister.
+function armDecision(armedCommand, command, dangerous) {
+  if (!dangerous) return "run"
+  return armedCommand === command ? "run" : "arm"
+}

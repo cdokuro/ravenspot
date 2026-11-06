@@ -1247,6 +1247,7 @@ Window {
 
     function setFilter(next) {
         if (root.outputPanelOpen && next !== root.filterText) root.outputPanelOpen = false // yeni arama
+        if (next !== root.filterText) root.armedRunId = "" // metin değişti (yapıştırma dahil): yeniden onay
         root.filterText = next
         root.selectedIndex = 0
         if (!next.trim()) {
@@ -1285,14 +1286,15 @@ Window {
         return true
     }
 
-    // Tehlikeli komut için ilk Enter'da "kurulan" satır; başka bir tuş sıfırlar.
+    // Tehlikeli komut için ilk Enter'da "kurulan" komut METNİ; başka bir tuş
+    // ya da arama metninin değişmesi sıfırlar.
     property string armedRunId: ""
     property bool outputPanelOpen: false
 
     function runCommandRow(index, row, inline) {
         // Tehlike kontrolü çalıştırma anında (geçmiş satırları dahil)
-        if (Shell.analyzeCommand(row.value).dangerous && root.armedRunId !== row.itemId) {
-            root.armedRunId = row.itemId
+        if (MenuModel.armDecision(root.armedRunId, row.value, Shell.analyzeCommand(row.value).dangerous) === "arm") {
+            root.armedRunId = row.value // kurulma komut metnine bağlı
             displayModel.setProperty(index, "detail", "\u26a0 Press Enter again to run this dangerous command")
             Shell.playThock()
             return
