@@ -64,7 +64,8 @@ HEADERS += \
     src/files/FileActions.hpp \
     src/pc/ClipboardHistory.hpp \
     src/pc/ProcessList.hpp \
-    src/pc/RecentFiles.hpp
+    src/pc/RecentFiles.hpp \
+    src/pc/EmojiIndex.hpp
 
 SOURCES += \
     src/main.cpp \
@@ -86,4 +87,5 @@ SOURCES += \
     src/files/FileActions.cpp \
     src/pc/ClipboardHistory.cpp \
     src/pc/ProcessList.cpp \
-    src/pc/RecentFiles.cpp
+    src/pc/RecentFiles.cpp \
+    src/pc/EmojiIndex.cpp
