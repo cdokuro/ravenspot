@@ -1752,6 +1752,11 @@ Window {
         repeat: false
         onTriggered: {
             root.visible = false
+            // Gizliyken JS çöpü toplanmadan kalırsa (artımlı GC henüz koşmadıysa) kirli
+            // sayfalar daemon'un ömrü boyunca kalıyordu: kapanışta bir kez topla, ardından
+            // C++ tarafı malloc_trim yapar. Deney: açılışta ~3 MB JS çöpü -> gc'siz 65.5 MB,
+            // gc ile 49.6 MB (tests/perf/post_show_memory.sh).
+            gc()
             Shell.onMenuVisibilityChanged(false)
         }
     }
