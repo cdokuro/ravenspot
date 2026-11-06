@@ -58,6 +58,8 @@ void CommandHistory::save() const {
     QSaveFile f(m_path);
     if (!f.open(QIODevice::WriteOnly)) return;
     f.write(QJsonDocument(QJsonArray::fromStringList(m_entries)).toJson(QJsonDocument::Indented));
+    // Geçmişte token/parola olabilir: yalnızca sahibi okuyabilsin (0600)
+    f.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner);
     f.commit();
 }
 

@@ -42,6 +42,16 @@ private slots:
         CommandHistory h(d.filePath("h.json"));
         QVERIFY(h.entries().isEmpty());
     }
+    void persist_ownerOnlyPermissions() {
+        // Geçmişte token/parola olabilir: yalnızca sahibi okuyabilmeli (0600)
+        QTemporaryDir d;
+        CommandHistory h(d.filePath("h.json"));
+        h.add("curl -H 'Authorization: Bearer x'");
+        const auto perms = QFileInfo(d.filePath("h.json")).permissions();
+        QVERIFY(perms.testFlag(QFileDevice::ReadOwner));
+        QVERIFY(!perms.testFlag(QFileDevice::ReadGroup));
+        QVERIFY(!perms.testFlag(QFileDevice::ReadOther));
+    }
     void add_ignoresBlank() {
         QTemporaryDir d;
         CommandHistory h(d.filePath("h.json"));
