@@ -91,10 +91,9 @@ jobs:
         run: |
           $exe = Get-ChildItem build -Recurse -Filter ravenspot.exe | Select-Object -First 1
           if (-not $exe) { throw "ravenspot.exe not built" }
-          New-Item -ItemType Directory dist | Out-Null
-          Copy-Item $exe.FullName dist/
-          Copy-Item Menu.qml, MenuModel.js, CommandOutputPanel.qml, OpenCloseAnimation.qml, menu.jsonc, themes.json, README.md, LICENSE, VERSION dist/
-          Copy-Item -Recurse sounds, icons, assets, compat dist/
+          # icons/ has ~2700 symlinks: the script copies them as real files
+          python tools/stage_windows.py $exe.FullName dist
+          if ($LASTEXITCODE -ne 0) { throw "staging failed" }
           windeployqt --release --no-translations --qmldir dist dist/ravenspot.exe
           if ($LASTEXITCODE -ne 0) { throw "windeployqt failed" }
 
