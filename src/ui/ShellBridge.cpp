@@ -387,7 +387,52 @@ QString ShellBridge::resolveItemPath(const QString &itemId, const QString &provi
     return QString();
 }
 
+// Steam kütüphaneleri: libraryfolders.vdf'teki her "path" + /steamapps/common (var olanlar)
+static QStringList steamCommonDirs() {
+    QStringList libs = {QDir::homePath() + QStringLiteral("/.local/share/Steam")};
+    QFile vdf(QDir::homePath() + QStringLiteral("/.local/share/Steam/steamapps/libraryfolders.vdf"));
+    if (vdf.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        static const QRegularExpression pathRe(QStringLiteral("\"path\"\\s+\"([^\"]+)\""));
+        auto it = pathRe.globalMatch(QString::fromUtf8(vdf.readAll()));
+        while (it.hasNext()) libs << it.next().captured(1);
+    }
+    QStringList dirs;
+    for (const QString &lib : libs) {
+        const QString common = QFileInfo(lib + QStringLiteral("/steamapps/common")).canonicalFilePath();
+        if (!common.isEmpty() && !dirs.contains(common)) dirs << common;
+    }
+    return dirs;
+}
+
+// "Steam Library": tüm kütüphanelerin oyun klasörleri, alfabetik (Proton/çalışma
+// zamanı/Steamworks gibi araç klasörleri ve dosyalar hariç)
+static QString steamLibraryJson() {
+    static const QRegularExpression toolDir(QStringLiteral(
+        "^(Proton|Steamworks Shared|SteamLinuxRuntime|Steam Linux Runtime|log$)"));
+    QFileInfoList games;
+    for (const QString &d : steamCommonDirs()) {
+        for (const QFileInfo &fi : QDir(d).entryInfoList(QDir::Dirs | QDir::NoDotAndDotDot)) {
+            if (!toolDir.match(fi.fileName()).hasMatch()) games << fi;
+        }
+    }
+    std::sort(games.begin(), games.end(), [](const QFileInfo &a, const QFileInfo &b) {
+        return a.fileName().compare(b.fileName(), Qt::CaseInsensitive) < 0;
+    });
+    QJsonArray arr;
+    for (const QFileInfo &fi : games) {
+        QJsonObject obj;
+        obj[QStringLiteral("name")] = fi.fileName();
+        obj[QStringLiteral("path")] = fi.absoluteFilePath();
+        obj[QStringLiteral("is_dir")] = true;
+        obj[QStringLiteral("desc")] = fi.absolutePath(); // hangi kütüphanede
+        obj[QStringLiteral("iconName")] = QStringLiteral("folder-games");
+        arr.append(obj);
+    }
+    return QString::fromUtf8(QJsonDocument(arr).toJson(QJsonDocument::Compact));
+}
+
 QString ShellBridge::listFolderFiles(const QString &folderName) const {
+    if (folderName == QStringLiteral("steam")) return steamLibraryJson();
     QString targetDir;
     if (folderName == QStringLiteral("downloads")) {
         targetDir = QStandardPaths::writableLocation(QStandardPaths::DownloadLocation);

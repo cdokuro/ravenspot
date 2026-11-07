@@ -378,6 +378,17 @@ Window {
                 order: 0
             })
         }
+        if (cat === "games") {
+            // Games'in en üstünde: Steam kütüphanelerinin steamapps/common oyun klasörleri
+            rows.unshift({
+                id: id + ".steam-library", parent: id, kind: "menu",
+                icon: "", iconFont: "", iconName: "steam", appIcon: "", appId: "",
+                label: "Steam Library", title: "", target: "",
+                description: "Installed game folders (steamapps/common)",
+                action: "", provider: "files-steam", aliases: ["steam", "steam library", "steamapps", "common"],
+                searchTerms: [], when: "", checked: "", disabled: "", order: -1
+            })
+        }
         var merged = MenuModel.swapProviderRows(root.items, root.itemOrder, id, rows)
         root.items = merged.items
         root.itemOrder = merged.itemOrder
@@ -1184,7 +1195,12 @@ Window {
                 rows.push(displayRow(child, child.description, child.order))
             }
             if (active.startsWith("apps.")) {
-                rows.sort(function(a,b){ return String(a.label).toLowerCase().localeCompare(String(b.label).toLowerCase()) })
+                // Alt menüler (ör. Steam Library) uygulamaların üstünde kalır, sonra ada göre
+                rows.sort(function(a,b){
+                    var am = a.kind === "menu", bm = b.kind === "menu"
+                    if (am !== bm) return am ? -1 : 1
+                    return String(a.label).toLowerCase().localeCompare(String(b.label).toLowerCase())
+                })
             }
         }
 
