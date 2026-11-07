@@ -71,6 +71,20 @@ void LayerShellWindow::initWindow() {
 
     connect(m_window.data(), &QQuickWindow::activeChanged, this, &LayerShellWindow::onWindowActiveChanged);
     connect(m_window.data(), &QQuickWindow::afterAnimating, this, &LayerShellWindow::flushPendingMove);
+    connect(&m_stallProbe, &QTimer::timeout, this, [this]() {
+        const qint64 now = m_dragClock.elapsed();
+        const qint64 stall = now - m_lastProbeMs;
+        if (m_lastProbeMs > 0 && stall > 20) {
+            ++m_stallsOver20;
+            if (m_stallLog.size() < 300) m_stallLog += QStringLiteral(" %1ms@%2").arg(stall).arg(m_lastProbeMs);
+        }
+        if (m_lastProbeMs > 0 && stall > m_maxStallMs) { m_maxStallMs = stall; m_maxStallAtMs = m_lastProbeMs; }
+        m_lastProbeMs = now;
+    });
+    // Render thread'den: yalnızca sayaç (RAVENSPOT_PERF sürükleme istatistiği)
+    connect(m_window.data(), &QQuickWindow::frameSwapped, this, [this]() {
+        if (m_perfDrag) ++m_dragSwaps;
+    }, Qt::DirectConnection);
 
     if (m_isWayland && !m_relativePointer) {
         m_relativePointer = new RelativePointer(this);
@@ -236,6 +250,17 @@ void LayerShellWindow::beginDrag(double initialDx, double initialDy) {
     m_dragSwitched = false;
     m_loggedFirstMotionAfterSwitch = false;
     m_dragVirtual = globalWindowPos();
+    m_perfDrag = qEnvironmentVariableIsSet("RAVENSPOT_PERF");
+    if (m_perfDrag) {
+        m_dragClock.start();
+        m_lastFlushMs = 0; m_maxFlushGapMs = 0;
+        m_dragMotions = 0; m_dragFlushes = 0; m_dragSwaps = 0;
+        m_lastProbeMs = 0; m_maxStallMs = 0; m_maxStallAtMs = 0; m_stallsOver20 = 0;
+        m_stallLog.clear();
+        m_stallProbe.setTimerType(Qt::PreciseTimer);
+        m_stallProbe.setInterval(2);
+        m_stallProbe.start();
+    }
     // Deadzone boyunca kat edilen mesafe: pencere henüz hareket etmediği için
     // QML local koordinatları burada hâlâ geçerli.
     queueMove(initialDx, initialDy);
@@ -258,6 +283,7 @@ void LayerShellWindow::onRelativeMotion(double dx, double dy) {
             }
             m_postSwitchIdle.start();
         }
+        if (m_perfDrag) ++m_dragMotions;
         queueMove(dx, dy);
     }
 }
@@ -299,6 +325,17 @@ void LayerShellWindow::applyMargins() {
 
 void LayerShellWindow::flushPendingMove() {
     if (m_pendingDx == 0.0 && m_pendingDy == 0.0) return;
+    if (m_perfDrag && m_isDragging) {
+        const qint64 now = m_dragClock.elapsed();
+        if (m_dragFlushes > 0) {
+            m_maxFlushGapMs = std::max(m_maxFlushGapMs, now - m_lastFlushMs);
+            if (now - m_lastFlushMs > 20 && m_stallLog.size() < 300)
+                m_stallLog += QStringLiteral(" frameGap%1ms@%2(m%3)").arg(now - m_lastFlushMs).arg(m_lastFlushMs).arg(m_dragMotions - m_motionsAtFlush);
+        }
+        m_lastFlushMs = now;
+        m_motionsAtFlush = m_dragMotions;
+        ++m_dragFlushes;
+    }
 
     m_accumulatedDeltaX += m_pendingDx;
     m_accumulatedDeltaY += m_pendingDy;
@@ -411,6 +448,17 @@ void LayerShellWindow::endDrag() {
     if (m_inRemap) return;
     if (!m_isDragging) return;
     flushPendingMove();
+    if (m_perfDrag) {
+        const qint64 ms = std::max<qint64>(1, m_dragClock.elapsed());
+        qInfo().nospace() << "RavenSpot drag perf: " << ms << " ms, motions=" << m_dragMotions
+                          << " moves=" << m_dragFlushes << " (" << (m_dragFlushes * 1000 / ms) << "/s)"
+                          << " swaps=" << m_dragSwaps.load() << " (" << (m_dragSwaps.load() * 1000 / ms) << "/s)"
+                          << " maxGap=" << m_maxFlushGapMs << " ms relative=" << m_dragUsesRelativePointer
+                          << " guiStallMax=" << m_maxStallMs << "ms@" << m_maxStallAtMs
+                          << " stalls>20ms=" << m_stallsOver20 << " [" << m_stallLog << " ]";
+        m_stallProbe.stop();
+        m_perfDrag = false;
+    }
     // Bırakınca kartı bulunduğu ekranın tamamen içine al (komşu ekrana taşmış kalmasın).
     if (QScreen *screen = m_window ? m_window->screen() : nullptr) {
         const int maxX = std::max(0, screen->geometry().width() - m_window->width());

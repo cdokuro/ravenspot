@@ -1990,11 +1990,14 @@ Window {
             property real pressY: 0
             property bool isDragging: false
 
+            // İmleç yalnızca tutunca kapalı ele döner; diğer zamanlarda alttaki
+            // öğelerin imleci (el, I-beam) geçerli kalsın diye sıfırlanır.
             onPressed: function(mouse) {
                 if (!(mouse.modifiers & (Qt.AltModifier | Qt.MetaModifier))) {
                     mouse.accepted = false
                     return
                 }
+                cursorShape = Qt.ClosedHandCursor
                 pressX = mouse.x; pressY = mouse.y
                 lastX = mouse.x; lastY = mouse.y
                 isDragging = false
@@ -2013,8 +2016,8 @@ Window {
                 lastX = mouse.x; lastY = mouse.y
                 Shell.dragBy(dx, dy)
             }
-            onReleased: { if (isDragging) Shell.endDrag(); isDragging = false }
-            onCanceled: { if (isDragging) Shell.endDrag(); isDragging = false }
+            onReleased: { if (isDragging) Shell.endDrag(); isDragging = false; cursorShape = undefined }
+            onCanceled: { if (isDragging) Shell.endDrag(); isDragging = false; cursorShape = undefined }
         }
 
         // Blur ve input bölgesini kartın gerçek yüksekliğine eşitle (her kare;
@@ -2197,62 +2200,6 @@ Window {
                         }
                     }
 
-                    MouseArea {
-                        id: titleDragMouse
-                        anchors.fill: parent
-                        cursorShape: pressed ? Qt.ClosedHandCursor : Qt.OpenHandCursor
-                        acceptedButtons: Qt.LeftButton
-
-                        property real lastX: 0
-                        property real lastY: 0
-                        property real pressX: 0
-                        property real pressY: 0
-                        property bool isDragging: false
-
-                        onPressed: function(mouse) {
-                            pressX = mouse.x
-                            pressY = mouse.y
-                            lastX = mouse.x
-                            lastY = mouse.y
-                            isDragging = false
-                        }
-
-                        onPositionChanged: function(mouse) {
-                            if (!pressed) return
-
-                            if (!isDragging) {
-                                var dist = Math.hypot(mouse.x - pressX, mouse.y - pressY)
-                                if (dist < 4) return // 4px deadzone: clicking never jumps
-                                isDragging = true
-                                // Deadzone mesafesini de uygula: imleç tutma noktasında kalsın.
-                                // Wayland'de sonraki hareket zwp_relative_pointer'dan gelir;
-                                // aşağıdaki dragBy yalnızca protokol yoksa (X11) kullanılır.
-                                Shell.beginDrag(mouse.x - pressX, mouse.y - pressY)
-                                lastX = mouse.x
-                                lastY = mouse.y
-                                return
-                            }
-
-                            var dx = mouse.x - lastX
-                            var dy = mouse.y - lastY
-                            if (dx === 0 && dy === 0) return
-
-                            lastX = mouse.x
-                            lastY = mouse.y
-
-                            Shell.dragBy(dx, dy)
-                        }
-
-                        onReleased: {
-                            if (isDragging) Shell.endDrag()
-                            isDragging = false
-                        }
-
-                        onCanceled: {
-                            if (isDragging) Shell.endDrag()
-                            isDragging = false
-                        }
-                    }
                 }
 
                 // Orta: Güç Profili Butonu (Tıklanınca Pop-up Slider / Engelleme Paneli Açar)
@@ -2977,10 +2924,14 @@ Window {
 
                 MouseArea {
                     anchors.fill: parent
-                    hoverEnabled: true
+                    // Alt+sürüklerken satırlar hover/imleç olayı üretmesin
+                    hoverEnabled: !modifierDragArea.pressed
                     cursorShape: Qt.PointingHandCursor
                     acceptedButtons: Qt.LeftButton | Qt.RightButton | Qt.MiddleButton | Qt.BackButton | Qt.ForwardButton
                     onEntered: {
+                        // Alt+sürüklerken kart imlecin bir kare gerisinden gelir; imleç
+                        // satır sınırlarını geçer. Seçim/ses/vurgu animasyonu tetiklenmesin.
+                        if (modifierDragArea.isDragging) return
                         if (!model.disabled && root.selectedIndex !== index) {
                             root.selectedIndex = index
                             resultList.currentIndex = index

@@ -81,6 +81,21 @@ private:
     int m_posY{0};
     bool m_hasCustomPosition{false};
     bool m_isDragging{false};
+    // RAVENSPOT_PERF: sürükleme kare istatistikleri (endDrag'de loglanır)
+    std::atomic<bool> m_perfDrag{false};
+    QElapsedTimer m_dragClock;
+    qint64 m_lastFlushMs{0};
+    qint64 m_maxFlushGapMs{0};
+    int m_dragMotions{0};
+    int m_dragFlushes{0};
+    int m_motionsAtFlush{0};
+    std::atomic<int> m_dragSwaps{0};
+    QTimer m_stallProbe;              // 2 ms nabız: GUI thread tıkanmasını ölçer
+    qint64 m_lastProbeMs{0};
+    qint64 m_maxStallMs{0};
+    qint64 m_maxStallAtMs{0};
+    int m_stallsOver20{0};
+    QString m_stallLog;
     double m_accumulatedDeltaX{0.0};
     double m_accumulatedDeltaY{0.0};
     bool m_dragUsesRelativePointer{false};
