@@ -2,14 +2,9 @@
 #include "run/CommandAnalyzer.hpp"
 
 #include <QDir>
-#include <QFileInfo>
 
-#ifdef Q_OS_WIN
-#include <windows.h>
-#else
 #include <csignal>
 #include <sys/types.h>
-#endif
 
 namespace ravenspot {
 
@@ -22,44 +17,20 @@ CommandRunner::CommandRunner(QObject *parent)
 }
 
 namespace {
-#ifdef Q_OS_WIN
-// Windows has no process groups/SIGTERM for console programs: the command's
-// process tree lives in a Job object and stop() terminates the job.
-#ifndef SIGTERM
-#define SIGTERM 15
-#endif
-#ifndef SIGKILL
-#define SIGKILL 9
-#endif
-void signalGroup(qint64, int) {}
-void closeJob(void *&job, bool terminate) {
-    if (!job) return;
-    if (terminate) ::TerminateJobObject(static_cast<HANDLE>(job), 1);
-    ::CloseHandle(static_cast<HANDLE>(job));
-    job = nullptr;
-}
-#else
 // Komut kendi oturumunda/grubunda başladığı için sinyal tüm gruba gider:
 // arka plana atılan işler ve pipeline'lar da durur (yalnızca bash değil).
 void signalGroup(qint64 pgid, int sig) {
     if (pgid > 1) ::kill(static_cast<pid_t>(-pgid), sig);
 }
-#endif
 } // namespace
 
 CommandRunner::~CommandRunner() {
     if (m_proc) {
         m_proc->disconnect(this);
         signalGroup(m_pgid, SIGKILL);
-#ifdef Q_OS_WIN
-        closeJob(m_job, true);
-#endif
         m_proc->kill();
         m_proc->waitForFinished(500);
     }
-#ifdef Q_OS_WIN
-    closeJob(m_job, false);
-#endif
 }
 
 QString CommandRunner::output() const {
@@ -73,26 +44,8 @@ QString CommandRunner::output() const {
 
 bool CommandRunner::start(const QString &command) {
     if (m_proc || command.trimmed().isEmpty()) return false;
-#ifdef Q_OS_WIN
-    // Pasted commands on Windows are PowerShell; -Command takes the text as one argv item.
-    return launch(QStringLiteral("powershell.exe"),
-                  {QStringLiteral("-NoLogo"), QStringLiteral("-NoProfile"), QStringLiteral("-NonInteractive"),
-                   QStringLiteral("-Command"),
-                   // pipe output as UTF-8 (the decoder below expects it; default is the OEM code page)
-                   QStringLiteral("[Console]::OutputEncoding=[Text.Encoding]::UTF8; ") + command},
-                  command);
-#else
-    return launch(QStringLiteral("bash"), cmd::inlineArgs(command), command);
-#endif
-}
 
-bool CommandRunner::startProgram(const QString &program, const QStringList &args, const QString &displayCommand) {
-    if (m_proc || program.isEmpty()) return false;
-    return launch(program, args, displayCommand);
-}
-
-bool CommandRunner::launch(const QString &program, const QStringList &args, const QString &displayCommand) {
-    m_command = displayCommand;
+    m_command = command;
     m_lines.clear();
     m_partial.clear();
     m_partialTruncated = false;
@@ -106,22 +59,7 @@ bool CommandRunner::launch(const QString &program, const QStringList &args, cons
     proc->setWorkingDirectory(QDir::homePath());
     // Girdi beklemesin: "[Y/n]" soran bir komut sonsuza dek "Running…" kalmasın.
     proc->setStandardInputFile(QProcess::nullDevice());
-#ifdef Q_OS_WIN
-    closeJob(m_job, false);
-    m_job = ::CreateJobObjectW(nullptr, nullptr);
-    if (m_job) {
-        JOBOBJECT_EXTENDED_LIMIT_INFORMATION info{};
-        // RavenSpot quitting also ends the command (same as the Linux destructor)
-        info.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
-        ::SetInformationJobObject(static_cast<HANDLE>(m_job), JobObjectExtendedLimitInformation, &info, sizeof(info));
-    }
-    // No console window for the inline runner
-    proc->setCreateProcessArgumentsModifier([](QProcess::CreateProcessArguments *a) {
-        a->flags |= CREATE_NO_WINDOW;
-    });
-#else
     proc->setUnixProcessParameters(QProcess::UnixProcessFlag::CreateNewSession);
-#endif
 
     connect(proc, &QProcess::readyRead, this, [this, proc]() { appendChunk(proc->readAll()); });
     connect(proc, &QProcess::finished, this, [this, proc](int code, QProcess::ExitStatus status) {
@@ -137,9 +75,9 @@ bool CommandRunner::launch(const QString &program, const QStringList &args, cons
         emit runningChanged();
         emit finished(m_exitCode, crashed);
     });
-    connect(proc, &QProcess::errorOccurred, this, [this, proc, program](QProcess::ProcessError err) {
+    connect(proc, &QProcess::errorOccurred, this, [this, proc](QProcess::ProcessError err) {
         if (err != QProcess::FailedToStart) return; // diğerlerinde finished da gelir
-        m_lines << QStringLiteral("[failed to start %1]").arg(QFileInfo(program).fileName());
+        m_lines << QStringLiteral("[failed to start bash]");
         m_exitCode = 127;
         m_proc = nullptr;
         proc->deleteLater();
@@ -148,20 +86,8 @@ bool CommandRunner::launch(const QString &program, const QStringList &args, cons
         emit finished(m_exitCode, true);
     });
 
-    connect(proc, &QProcess::started, this, [this, proc]() {
-        m_pgid = proc->processId();
-#ifdef Q_OS_WIN
-        // Children spawned after this point inherit the job. (A child created in
-        // the first instant before assignment could escape; acceptable here.)
-        if (m_job && m_pgid > 0) {
-            if (HANDLE h = ::OpenProcess(PROCESS_SET_QUOTA | PROCESS_TERMINATE, FALSE, static_cast<DWORD>(m_pgid))) {
-                ::AssignProcessToJobObject(static_cast<HANDLE>(m_job), h);
-                ::CloseHandle(h);
-            }
-        }
-#endif
-    });
-    proc->start(program, args);
+    connect(proc, &QProcess::started, this, [this, proc]() { m_pgid = proc->processId(); });
+    proc->start(QStringLiteral("bash"), cmd::inlineArgs(command));
     emit runningChanged();
     emit outputChanged();
     return true;
@@ -172,12 +98,6 @@ void CommandRunner::stop() {
     const qint64 pgid = m_pgid;
     QPointer<QProcess> proc = m_proc;
     signalGroup(pgid, SIGTERM);
-#ifdef Q_OS_WIN
-    // terminate() only posts WM_CLOSE, which console programs ignore: end the tree now.
-    closeJob(m_job, true);
-    if (proc) proc->kill();
-    return;
-#endif
     proc->terminate();
     // SIGTERM'i yok sayanlar için (bash bitmiş olsa bile gruptaki çocuklar) zorla sonlandır.
     QTimer::singleShot(kKillGraceMs, this, [proc, pgid]() {

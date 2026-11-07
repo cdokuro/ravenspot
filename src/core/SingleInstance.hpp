@@ -2,11 +2,7 @@
 
 #include <string>
 #include <string_view>
-#ifdef _WIN32
-namespace ravenspot { using pid_t = long; } // MSVC has no pid_t
-#else
 #include <sys/types.h>
-#endif
 
 namespace ravenspot {
 
@@ -45,11 +41,7 @@ public:
     /**
      * @brief Checks if lock is currently held by this instance.
      */
-#ifdef _WIN32
-    [[nodiscard]] bool isLocked() const noexcept { return m_mutex != nullptr; }
-#else
     [[nodiscard]] bool isLocked() const noexcept { return m_lockFd >= 0; }
-#endif
 
     /**
      * @brief Returns PID of currently running daemon if lock acquisition failed.
@@ -75,11 +67,7 @@ public:
     static std::string lockPath();
 
 private:
-#ifdef _WIN32
-    void *m_mutex = nullptr; // named mutex held by the daemon (Local\\RavenSpot.<user>)
-#else
     int m_lockFd = -1;
-#endif
     pid_t m_existingPid = 0;
     std::string m_customSocketPath;
 };

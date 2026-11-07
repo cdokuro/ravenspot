@@ -100,12 +100,6 @@ public:
     static QString categorizeApp(const QString &categoriesStr);
     static QStringList standardApplicationDirectories();
     static bool parseDesktopFile(const QString &filePath, AppEntry &outEntry, const QString &preferredLang = QStringLiteral("tr"));
-#ifdef _WIN32
-    // Start Menu .lnk -> AppEntry (desktopPath = the .lnk path; launched via the shell)
-    static bool parseShortcutFile(const QString &filePath, AppEntry &outEntry);
-    // Category from the Start Menu folder / target name ("Games", "Visual Studio", ...)
-    static QString categorizeShortcut(const QString &relativeFolder, const QString &name, const QString &target);
-#endif
 
 signals:
     void indexUpdated();
@@ -120,13 +114,6 @@ private:
                                        std::unordered_map<QString, QString> &seenBasenames,
                                        std::unordered_set<uint64_t> &visitedInodes);
 
-#ifdef _WIN32
-    // Packaged (Store/UWP) apps from "Get-StartApps", loaded asynchronously
-    // because PowerShell takes ~1 s to start; merged on the next rebuild.
-    void loadPackagedAppsAsync();
-    std::vector<AppEntry> m_packagedApps;
-    bool m_packagedLoading{false};
-#endif
     QFileSystemWatcher m_watcher;
     QTimer m_debounceTimer;
     std::atomic<std::shared_ptr<const AppIndexSnapshot>> m_snapshot;

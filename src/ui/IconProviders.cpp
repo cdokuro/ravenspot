@@ -12,12 +12,6 @@
 #include <QCoreApplication>
 #include <QStandardPaths>
 #include <algorithm>
-#ifdef Q_OS_WIN
-#include <QUrl>
-#include <windows.h>
-#include <shobjidl.h>
-#include <shlobj.h>
-#endif
 
 namespace ravenspot {
 
@@ -134,41 +128,6 @@ QString sanitizeId(const QString &rawId) {
     return clean;
 }
 
-#ifdef Q_OS_WIN
-// Shell icon for a .lnk/.exe path or a packaged app ("uwp:<AppUserModelID>").
-// Runs on QML's image loader thread, so COM is initialised per call.
-QImage windowsShellIcon(const QString &id, const QSize &size) {
-    QString parsing;
-    if (id.startsWith(QLatin1String("uwp:"))) {
-        parsing = QStringLiteral("shell:AppsFolder\\") + id.mid(4);
-    } else if (QFileInfo::exists(id)) {
-        const QString ext = QFileInfo(id).suffix().toLower();
-        if (ext != QLatin1String("lnk") && ext != QLatin1String("exe") && ext != QLatin1String("ico")
-            && ext != QLatin1String("url") && ext != QLatin1String("appref-ms")) return QImage();
-        parsing = QDir::toNativeSeparators(QFileInfo(id).absoluteFilePath());
-    } else {
-        return QImage();
-    }
-    const HRESULT init = ::CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
-    QImage img;
-    IShellItemImageFactory *factory = nullptr;
-    const std::wstring w = parsing.toStdWString();
-    if (SUCCEEDED(::SHCreateItemFromParsingName(w.c_str(), nullptr, IID_PPV_ARGS(&factory)))) {
-        HBITMAP bmp = nullptr;
-        const SIZE sz{size.width(), size.height()};
-        if (SUCCEEDED(factory->GetImage(sz, SIIGBF_ICONONLY | SIIGBF_BIGGERSIZEOK, &bmp)) && bmp) {
-            img = QImage::fromHBITMAP(bmp).convertToFormat(QImage::Format_ARGB32_Premultiplied);
-            ::DeleteObject(bmp);
-            if (!img.isNull() && img.size() != size)
-                img = img.scaled(size, Qt::KeepAspectRatio, Qt::SmoothTransformation);
-        }
-        factory->Release();
-    }
-    if (SUCCEEDED(init)) ::CoUninitialize();
-    return img;
-}
-#endif
-
 } // anonymous namespace
 
 // =============================================================================
@@ -207,17 +166,6 @@ QImage AppIconProvider::requestImage(const QString &id, QSize *size, const QSize
     }
 
     QIcon icon;
-#ifdef Q_OS_WIN
-    {
-        const QString decoded = QUrl::fromPercentEncoding(cleanId.toUtf8());
-        QImage shellImg = windowsShellIcon(decoded, targetSize);
-        if (!shellImg.isNull()) {
-            m_cache.put(cacheKey, shellImg);
-            if (size) *size = shellImg.size();
-            return shellImg;
-        }
-    }
-#endif
     // Direct file path probe (with 0-byte corrupt file rejection)
     if (QFileInfo::exists(cleanId)) {
         const QFileInfo fi(cleanId);

@@ -1086,31 +1086,3 @@ function groupSearchRows(rows, opts) {
   }
   return out
 }
-
-// Yapıştırılan bağlantı: tek parça http(s):// ya da www. adresi ise açılacak
-// URL'yi döndürür (www. -> https://), değilse "". Enter'da "tarayıcıda aç /
-// videoyu indir" sorusunu yalnızca gerçek bir bağlantı tetikler.
-function linkTarget(query) {
-  var q = String(query || "").trim()
-  if (!q || /\s/.test(q)) return ""
-  if (/^https?:\/\/[^\s\/?#]+\.[^\s\/?#]+(?:[\/?#]\S*)?$/i.test(q) ||
-      /^https?:\/\/localhost(?::\d+)?(?:[\/?#]\S*)?$/i.test(q)) return q
-  if (/^www\.[^\s\/?#]+\.[a-z]{2,}(?:[\/?#]\S*)?$/i.test(q)) return "https://" + q
-  return ""
-}
-
-// Bağlantı penceresindeki tuşlar -> { choice: 0|1, action: "move"|"confirm"|"close"|"ignore" }
-// 0 = tarayıcıda aç, 1 = videoyu indir
-function linkPromptKey(key, choice) {
-  // Qt.Key_* değerleri (QML dışında da test edilebilsin diye sayısal)
-  var LEFT = 0x01000012, RIGHT = 0x01000014, UP = 0x01000013, DOWN = 0x01000015,
-      TAB = 0x01000001, BACKTAB = 0x01000002, RETURN = 0x01000004, ENTER = 0x01000005,
-      ESC = 0x01000000, K1 = 0x31, K2 = 0x32
-  if (key === LEFT || key === RIGHT || key === UP || key === DOWN || key === TAB || key === BACKTAB)
-    return { choice: choice === 0 ? 1 : 0, action: "move" }
-  if (key === K1) return { choice: 0, action: "confirm" }
-  if (key === K2) return { choice: 1, action: "confirm" }
-  if (key === RETURN || key === ENTER) return { choice: choice, action: "confirm" }
-  if (key === ESC) return { choice: choice, action: "close" }
-  return { choice: choice, action: "ignore" }
-}

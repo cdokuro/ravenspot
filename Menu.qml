@@ -141,42 +141,6 @@ Window {
     property string depModalPkg: ""
     property string depModalCmd: ""
 
-    // ── Yapıştırılan bağlantı: tarayıcıda aç / videoyu indir ──
-    property bool linkModalOpen: false
-    property string linkModalUrl: ""
-    property int linkModalChoice: 0 // 0 = tarayıcı, 1 = indir
-
-    function openLinkPrompt(url) {
-        root.linkModalUrl = url
-        root.linkModalChoice = 0
-        root.linkModalOpen = true
-        Shell.playThock()
-    }
-
-    function confirmLinkChoice(choice) {
-        var url = root.linkModalUrl
-        root.linkModalOpen = false
-        if (!url) return
-        Shell.playCreamy()
-        if (choice === 0) {
-            root.opened = false
-            Shell.openUrl(url)
-            Qt.callLater(closeMenu)
-            return
-        }
-        if (!Shell.isVideoDownloaderAvailable()) {
-            showDependencyPrompt(
-                "yt-dlp",
-                "yt-dlp Video Downloader",
-                "Downloading the video needs <b>yt-dlp</b>. Install it now? After it is installed, paste the link again.",
-                Shell.videoDownloaderInstallCommand()
-            )
-            return
-        }
-        if (Shell.runner.running) { root.outputPanelOpen = true; return } // önce mevcut çalışmayı göster
-        if (Shell.downloadVideo(url)) root.outputPanelOpen = true // ilerleme çıktı panelinde; menü kapansa da sürer
-    }
-
     function showDependencyPrompt(pkg, title, desc, cmd) {
         depModalPkg = pkg
         depModalTitle = title
@@ -1836,7 +1800,6 @@ Window {
         root.armedRunId = ""
         root.lastKill = null
         if (root.depModalOpen) root.depModalOpen = false
-        if (root.linkModalOpen) root.linkModalOpen = false
         if (root.powerFlyoutOpen) root.powerFlyoutOpen = false
         if (root.audioFlyoutOpen) root.audioFlyoutOpen = false
         if (contextPopup.opened) contextPopup.close()
@@ -2049,15 +2012,6 @@ Window {
         Item {
             id: keyHandler
             Keys.onPressed: function(event) {
-                if (root.linkModalOpen) {
-                    // Bağlantı penceresi açıkken tüm tuşlar ona gider (metin kutusuna yazılmaz)
-                    var lk = MenuModel.linkPromptKey(event.key, root.linkModalChoice)
-                    if (lk.action === "move") { root.linkModalChoice = lk.choice; Shell.playThock() }
-                    else if (lk.action === "confirm" && !event.isAutoRepeat) confirmLinkChoice(lk.choice)
-                    else if (lk.action === "close") root.linkModalOpen = false
-                    event.accepted = true
-                    return
-                }
                 if (root.armedRunId && event.key !== Qt.Key_Return && event.key !== Qt.Key_Enter
                         && event.key !== Qt.Key_Shift) {
                     root.armedRunId = ""
@@ -2158,13 +2112,6 @@ Window {
                     activateIndex(root.selectedIndex, { inline: true })
                     event.accepted = true
                 } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter || event.key === Qt.Key_Right) {
-                    // Yapıştırılan bağlantı + Enter: tarayıcıda mı açılsın, video mu indirilsin?
-                    var pastedLink = (event.key !== Qt.Key_Right && !event.isAutoRepeat) ? MenuModel.linkTarget(root.filterText) : ""
-                    if (pastedLink) {
-                        openLinkPrompt(pastedLink)
-                        event.accepted = true
-                        return
-                    }
                     var selRow = displayModel.count > root.selectedIndex ? displayModel.get(root.selectedIndex) : null
                     if (event.key === Qt.Key_Right && selRow && !MenuModel.rightArrowActivates(selRow.provider)) {
                         event.accepted = false // metin kutusunda imleç hareket etsin
@@ -4354,153 +4301,6 @@ Window {
                                 }
                             }
                         }
-                    }
-                }
-            }
-        }
-
-        // ── Bağlantı Seçim Modalı (Open in browser / Download the video) ──
-        Rectangle {
-            id: linkModalBackdrop
-            visible: root.linkModalOpen
-            z: 201
-            anchors.fill: card
-            radius: card.radius
-            color: Qt.rgba(0, 0, 0, 0.65)
-
-            MouseArea {
-                anchors.fill: parent
-                onClicked: root.linkModalOpen = false
-            }
-
-            Rectangle {
-                id: linkModalCard
-                anchors.centerIn: parent
-                width: Math.min(420, card.width - 32)
-                height: linkCol.height + 36
-                radius: 12
-                color: Qt.rgba(24/255, 27/255, 34/255, 0.98)
-                border.color: root.selFg
-                border.width: 1
-
-                layer.enabled: true
-                layer.effect: MultiEffect {
-                    shadowEnabled: true
-                    shadowColor: "#a0000000"
-                    shadowBlur: 0.85
-                    shadowOpacity: 0.8
-                    shadowVerticalOffset: 8
-                }
-
-                MouseArea {
-                    anchors.fill: parent
-                    acceptedButtons: Qt.AllButtons
-                }
-
-                Column {
-                    id: linkCol
-                    anchors.top: parent.top
-                    anchors.topMargin: 18
-                    anchors.left: parent.left
-                    anchors.leftMargin: 20
-                    anchors.right: parent.right
-                    anchors.rightMargin: 20
-                    spacing: 12
-
-                    Row {
-                        spacing: 8
-                        width: parent.width
-                        Text {
-                            text: "󰌹"
-                            font.family: root.iconFont
-                            font.pixelSize: 18
-                            color: root.selFg
-                            anchors.verticalCenter: parent.verticalCenter
-                        }
-                        Text {
-                            text: "What should I do with this link?"
-                            font.family: root.textFont
-                            font.pixelSize: 14
-                            font.weight: Font.Bold
-                            color: root.fgColor
-                            anchors.verticalCenter: parent.verticalCenter
-                            elide: Text.ElideRight
-                            width: parent.width - 28
-                        }
-                    }
-
-                    Text {
-                        text: root.linkModalUrl
-                        font.family: root.textFont
-                        font.pixelSize: 11
-                        color: root.fgDim
-                        elide: Text.ElideMiddle
-                        width: parent.width
-                    }
-
-                    Repeater {
-                        model: [
-                            { icon: "󰖟", label: "Open in default browser", hint: "1" },
-                            { icon: "󰇚", label: "Download the video", hint: "2" }
-                        ]
-                        delegate: Rectangle {
-                            required property var modelData
-                            required property int index
-                            width: linkCol.width
-                            height: 36
-                            radius: 8
-                            color: root.linkModalChoice === index ? Qt.rgba(1, 1, 1, 0.12)
-                                 : (linkOptMouse.containsMouse ? Qt.rgba(1, 1, 1, 0.08) : Qt.rgba(1, 1, 1, 0.04))
-                            border.color: root.linkModalChoice === index ? root.selFg : Qt.rgba(1, 1, 1, 0.10)
-                            border.width: 1
-
-                            Row {
-                                anchors.left: parent.left
-                                anchors.leftMargin: 12
-                                anchors.verticalCenter: parent.verticalCenter
-                                spacing: 10
-                                Text {
-                                    text: modelData.icon
-                                    font.family: root.iconFont
-                                    font.pixelSize: 15
-                                    color: root.linkModalChoice === index ? root.selFg : root.fgDim
-                                    anchors.verticalCenter: parent.verticalCenter
-                                }
-                                Text {
-                                    text: modelData.label
-                                    font.family: root.textFont
-                                    font.pixelSize: 12
-                                    font.weight: root.linkModalChoice === index ? Font.DemiBold : Font.Normal
-                                    color: root.fgColor
-                                    anchors.verticalCenter: parent.verticalCenter
-                                }
-                            }
-                            Text {
-                                text: modelData.hint
-                                anchors.right: parent.right
-                                anchors.rightMargin: 12
-                                anchors.verticalCenter: parent.verticalCenter
-                                font.family: root.textFont
-                                font.pixelSize: 11
-                                color: root.fgDim
-                            }
-                            MouseArea {
-                                id: linkOptMouse
-                                anchors.fill: parent
-                                hoverEnabled: true
-                                cursorShape: Qt.PointingHandCursor
-                                onEntered: root.linkModalChoice = index
-                                onClicked: confirmLinkChoice(index)
-                            }
-                        }
-                    }
-
-                    Text {
-                        text: "↑↓ choose · Enter confirm · Esc cancel"
-                        font.family: root.textFont
-                        font.pixelSize: 10
-                        color: root.fgDim
-                        anchors.horizontalCenter: parent.horizontalCenter
                     }
                 }
             }

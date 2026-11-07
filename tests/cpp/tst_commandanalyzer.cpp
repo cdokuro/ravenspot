@@ -47,9 +47,6 @@ private slots:
         QCOMPARE(detect("./run.sh --fast", fakeExec), Signal::Strong);
     }
     void terminal_survivesSyntaxError() {
-#ifdef Q_OS_WIN
-        QSKIP("bash terminal script is Linux-only; Windows opens PowerShell");
-#endif
         // Kapanmamış tırnak: bash -c ayrıştırma hatasında bile çıkış satırına ulaşılmalı
         QStringList args = terminalArgs(QStringLiteral("echo \"foo"));
         QCOMPARE(args.takeFirst(), QStringLiteral("-e"));

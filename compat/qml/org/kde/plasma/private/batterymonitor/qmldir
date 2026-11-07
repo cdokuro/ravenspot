@@ -1,2 +1,0 @@
-module org.kde.plasma.private.batterymonitor
-InhibitionControl 1.0 InhibitionControl.qml
