@@ -1,8 +1,10 @@
-name: Build & Release Windows 11 Executable
+name: Build Windows (C++ / Qt 6 + MSVC)
 
+# Native C++ RavenSpot for Windows 10/11 x64: build, run the tests that work
+# on Windows, smoke-test the daemon, package a portable zip.
 on:
   push:
-    branches: [ main ]
+    branches: [ main, 'feat/**' ]
     tags: [ 'v*' ]
   pull_request:
     branches: [ main ]
@@ -11,66 +13,140 @@ on:
 permissions:
   contents: write
 
+env:
+  QT_VERSION: '6.8.3'
+
 jobs:
   build-windows:
-    name: Build RavenSpot.exe (Windows 11 x64)
+    name: Build RavenSpot (Windows x64, MSVC)
     runs-on: windows-latest
+    timeout-minutes: 45
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up Python 3.11
-        uses: actions/setup-python@v5
+      - name: Install Qt ${{ env.QT_VERSION }}
+        uses: jurplel/install-qt-action@v4
         with:
-          python-version: '3.11'
+          version: ${{ env.QT_VERSION }}
+          host: windows
+          target: desktop
+          arch: win64_msvc2022_64
+          modules: qtmultimedia
+          cache: true
 
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt pyinstaller
+      - name: Set up MSVC environment
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
 
-      - name: Build standalone executable with PyInstaller
+      - name: Build ravenspot.exe
         shell: cmd
         run: |
-          pyinstaller --noconsole --onefile --name "RavenSpot" ^
-            --add-data "Menu.qml;." ^
-            --add-data "MenuModel.js;." ^
-            --add-data "menu.jsonc;." ^
-            --add-data "themes.json;." ^
-            --add-data "sounds;sounds" ^
-            --add-data "icons;icons" ^
-            --clean ^
-            bridge.py
+          mkdir build
+          cd build
+          qmake ..\ravenspot.pro "CONFIG+=release" "CONFIG-=debug_and_release"
+          if errorlevel 1 exit /b 1
+          nmake
+          if errorlevel 1 exit /b 1
 
-      - name: Verify build artifact
+      - name: Build C++ unit tests
         shell: cmd
         run: |
-          if not exist dist\RavenSpot.exe (
-            echo "Error: dist\RavenSpot.exe was not created!"
-            exit /b 1
-          )
+          mkdir build-tests
+          cd build-tests
+          qmake ..\tests\cpp\cmdtests.pro "CONFIG+=release" "CONFIG-=debug_and_release"
+          if errorlevel 1 exit /b 1
+          nmake
+          if errorlevel 1 exit /b 1
+
+      - name: Run C++ unit tests
+        shell: pwsh
+        run: |
+          $exe = Get-ChildItem build-tests -Recurse -Filter cmdtests.exe | Select-Object -First 1
+          if (-not $exe) { throw "cmdtests.exe not built" }
+          & $exe.FullName
+          if ($LASTEXITCODE -ne 0) { throw "C++ unit tests failed ($LASTEXITCODE)" }
+
+      - name: Run QML unit tests
+        shell: pwsh
+        env:
+          QT_QPA_PLATFORM: offscreen
+          QML_XHR_ALLOW_FILE_READ: '1'
+        run: |
+          $failed = 0
+          foreach ($f in Get-ChildItem tests/qml -Filter 'tst_*.qml') {
+            Write-Host "== $($f.Name)"
+            qmltestrunner -input $f.FullName
+            if ($LASTEXITCODE -ne 0) { $failed++ }
+          }
+          if ($failed -ne 0) { throw "$failed QML test file(s) failed" }
+
+      - name: Stage and deploy (windeployqt)
+        shell: pwsh
+        run: |
+          $exe = Get-ChildItem build -Recurse -Filter ravenspot.exe | Select-Object -First 1
+          if (-not $exe) { throw "ravenspot.exe not built" }
+          New-Item -ItemType Directory dist | Out-Null
+          Copy-Item $exe.FullName dist/
+          Copy-Item Menu.qml, MenuModel.js, CommandOutputPanel.qml, OpenCloseAnimation.qml, menu.jsonc, themes.json, README.md, LICENSE, VERSION dist/
+          Copy-Item -Recurse sounds, icons, assets, compat dist/
+          windeployqt --release --no-translations --qmldir dist dist/ravenspot.exe
+          if ($LASTEXITCODE -ne 0) { throw "windeployqt failed" }
+
+      - name: Smoke test daemon (start, status, show, hide, quit)
+        shell: pwsh
+        run: |
+          $exe = (Resolve-Path dist/ravenspot.exe).Path
+          function Invoke-Rs([string]$arg) {
+            $out = Join-Path $env:RUNNER_TEMP "rs-$arg.txt"
+            Start-Process $exe -ArgumentList $arg -Wait -NoNewWindow -RedirectStandardOutput $out | Out-Null
+            $text = (Get-Content $out -Raw)
+            Write-Host "ravenspot $arg -> $text"
+            return $text
+          }
+          $env:QT_LOGGING_RULES = "qt.qpa.*=false"
+          $env:QT_FORCE_STDERR_LOGGING = "1"  # GUI exe: Qt would log to OutputDebugString
+          $daemon = Start-Process $exe -ArgumentList '--daemon' -PassThru `
+            -RedirectStandardOutput "$env:RUNNER_TEMP/daemon-out.txt" -RedirectStandardError "$env:RUNNER_TEMP/daemon-err.txt"
+          $ok = $false
+          for ($i = 0; $i -lt 30 -and -not $ok; $i++) {
+            Start-Sleep -Milliseconds 500
+            $ok = (Invoke-Rs status) -match '"status":"ok"'
+          }
+          Write-Host "---- daemon stderr ----"; Get-Content "$env:RUNNER_TEMP/daemon-err.txt" -ErrorAction SilentlyContinue
+          if (-not $ok) { throw "daemon did not answer 'status'" }
+          Invoke-Rs show | Out-Null
+          Start-Sleep -Seconds 2
+          if ((Invoke-Rs status) -notmatch '"visible":true') { throw "window did not become visible" }
+          Invoke-Rs hide | Out-Null
+          Start-Sleep -Seconds 1
+          if ((Invoke-Rs status) -notmatch '"visible":false') { throw "window did not hide" }
+          Invoke-Rs quit | Out-Null
+          if (-not $daemon.WaitForExit(10000)) { $daemon.Kill(); throw "daemon did not quit" }
+          if ((Invoke-Rs status) -notmatch 'not_running') { throw "daemon still answering after quit" }
+          $err = Get-Content "$env:RUNNER_TEMP/daemon-err.txt" -Raw -ErrorAction SilentlyContinue
+          if ($err -match '(?m)(qrc|file):.*\.qml:\d+.*(Error|is not a type|is not installed|ReferenceError|TypeError)') {
+            throw "QML errors while loading Menu.qml"
+          }
+
+      - name: Package zip
+        shell: pwsh
+        run: Compress-Archive -Path dist/* -DestinationPath RavenSpot-Windows-x64.zip
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
           name: RavenSpot-Windows-x64
-          path: dist/RavenSpot.exe
+          path: RavenSpot-Windows-x64.zip
           if-no-files-found: error
-
-      - name: Package Release Zip
-        if: startsWith(github.ref, 'refs/tags/v')
-        shell: pwsh
-        run: |
-          Compress-Archive -Path dist/RavenSpot.exe, README.md, LICENSE, menu.jsonc, themes.json -DestinationPath RavenSpot-Windows-x64.zip
 
       - name: Publish GitHub Release
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
-          files: |
-            RavenSpot-Windows-x64.zip
-            dist/RavenSpot.exe
+          files: RavenSpot-Windows-x64.zip
           draft: false
           prerelease: false
           generate_release_notes: true
