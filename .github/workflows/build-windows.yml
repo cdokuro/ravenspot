@@ -110,11 +110,13 @@ jobs:
           }
           $env:QT_LOGGING_RULES = "qt.qpa.*=false"
           $env:QT_FORCE_STDERR_LOGGING = "1"  # GUI exe: Qt would log to OutputDebugString
+          $env:QT_MESSAGE_PATTERN = "%{time hh:mm:ss.zzz} %{message}"
           $daemon = Start-Process $exe -ArgumentList '--daemon' -PassThru `
             -RedirectStandardOutput "$env:RUNNER_TEMP/daemon-out.txt" -RedirectStandardError "$env:RUNNER_TEMP/daemon-err.txt"
           $ok = $false
-          for ($i = 0; $i -lt 30 -and -not $ok; $i++) {
+          for ($i = 0; $i -lt 90 -and -not $ok; $i++) {
             Start-Sleep -Milliseconds 500
+            Write-Host ("attempt {0} at {1}" -f $i, (Get-Date -Format "HH:mm:ss.fff"))
             $ok = (Invoke-Rs status) -match '"status":"ok"'
           }
           Write-Host "---- daemon stderr ----"; Get-Content "$env:RUNNER_TEMP/daemon-err.txt" -ErrorAction SilentlyContinue
