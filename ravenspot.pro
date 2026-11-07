@@ -112,6 +112,9 @@ win32 {
     # GUI subsystem (no console window); CLI replies go to the parent console if any
     CONFIG -= console
     CONFIG += windows
+    # The repo root has a VERSION file: on a case-insensitive file system it
+    # would shadow the C++20 <version> header if the source dir were on -I.
+    CONFIG += no_include_pwd
 
     msvc {
         QMAKE_CXXFLAGS += /utf-8 /permissive- /Zc:__cplusplus /W3
