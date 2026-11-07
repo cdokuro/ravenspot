@@ -1522,9 +1522,11 @@ Window {
     }
     // Yeniden adlandırma/çöpe taşıma sonrası görünür listeleri tazele
     function refreshAfterFileChange() {
-        if (root.activeMenu === "downloads") {
-            root.providersLoaded["downloads"] = false
-            loadFolderFiles("downloads", "downloads")
+        // Files › Downloads/Documents/… veya Steam Library: açık klasör listesini tazele
+        var cur = root.item(root.activeMenu)
+        if (cur && cur.provider && cur.provider.indexOf("files-") === 0) {
+            root.providersLoaded[root.activeMenu] = false
+            loadFolderFiles(root.activeMenu, cur.provider.substring(6))
         }
         if (root.filterText.trim().startsWith("*")) { root.fileResultsQuery = ""; dispatchAsyncSearch() }
     }
@@ -1713,6 +1715,16 @@ Window {
         Shell.centerWindowOnActiveScreen(root)
         root.activeMenu = root.item(initialMenu) ? initialMenu : "root"
         root.navStack = []
+        // Daemon açık kalır: canlı içerikli listeler (Recent Files, pano, klasörler)
+        // her açılışta yeniden yüklensin, ilk açılıştaki hâlde kalmasın.
+        var keepLoaded = ({})
+        for (var pid in root.providersLoaded) {
+            var pe = root.item(pid)
+            var pv = pe ? String(pe.provider || "") : ""
+            if (pv === "recent" || pv === "clipboard" || pv.indexOf("files-") === 0) continue
+            keepLoaded[pid] = root.providersLoaded[pid]
+        }
+        root.providersLoaded = keepLoaded
         root.filterText = ""
         searchInput.text = ""
         root.selectedIndex = 0

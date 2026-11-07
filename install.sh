@@ -141,7 +141,24 @@ mkdir -p "$HOME/.config/systemd/user"
 mkdir -p "$HOME/.config/ravenspot"
 
 cp -rf "$SCRIPT_DIR"/* "$TARGET_DIR/"
-test -f "$TARGET_DIR/menu.jsonc" && cp -n "$TARGET_DIR/menu.jsonc" "$HOME/.config/ravenspot/menu.jsonc" || true
+# Kullanıcı menüsü yalnızca değişiklikleri tutar (paketteki menünün üstüne id ile
+# birleşir). Eski kurulumlar paketteki menünün tam kopyasını bırakıyordu; o kopya
+# yeni menü düzenini ezdiği için yedeklenip boş şablonla değiştirilir.
+USER_MENU="$HOME/.config/ravenspot/menu.jsonc"
+if [[ -f "$USER_MENU" ]] && grep -q '"trigger\.capture"' "$USER_MENU"; then
+    cp -f "$USER_MENU" "$USER_MENU.bak-$(date +%Y%m%d%H%M%S)"
+    rm -f "$USER_MENU"
+    echo "Eski tam menü kopyası yedeklendi; boş kullanıcı menüsü oluşturuluyor."
+fi
+if [[ ! -f "$USER_MENU" ]]; then
+    cat > "$USER_MENU" << 'USERMENU'
+{
+  // Your RavenSpot menu overrides. Entries here are merged over the shipped
+  // menu by id, so only add the entries or fields you want to change, e.g.:
+  //   "tools.terminal": { "action": "kitty" }
+}
+USERMENU
+fi
 
 # Wrapper binary / script
 if [[ -f "$SCRIPT_DIR/ravenspot" ]]; then

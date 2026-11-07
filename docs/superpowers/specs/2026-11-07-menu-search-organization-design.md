@@ -63,8 +63,8 @@ call.
   Keyboard, Shortcuts, Mouse, Touchpad, Power Management, Power Profile,
   Notifications, Default Apps, Autostart, Users, Screen Lock, Firewall,
   Activities, About. Duplicates of Appearance removed.
-- **Power:** Lock, Screensaver, Suspend, Hibernate, Log Out, Save Session,
-  Reboot, Shutdown.
+- **Power:** Lock, Suspend, Hibernate, Log Out, Save Session, Reboot,
+  Shutdown. Screensaver was removed: it ran the same command as Lock.
 - Help stays hidden from root but searchable. Browser entry removed.
 - Ids: `trigger.*` → `tools.*`, `shell` → `tools.terminal`, `discover` →
   `tools.discover`, `downloads` → `files.downloads`,
@@ -92,7 +92,9 @@ call.
 - Top Hit only when ≥2 groups are present and no instant row exists.
 - Caps when searching from root: Applications 8, others 5 (instant, pc,
   commands, web uncapped). No caps inside a submenu.
-- Within a group: score, then label.
+- Within a group: score, then the order the rows arrived in.
+- Exact alias hits ("ses" → Audio & Sound) count as strong matches; system
+  actions such as Restart Plasma are never the Top Hit.
 - Hard-coded system actions that duplicate Power menu entries are dropped;
   Restart Plasma stays as a search-only row.
 

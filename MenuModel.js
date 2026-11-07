@@ -332,6 +332,12 @@ function matchesAtWordStart(text, needle) {
   }
 }
 
+function exactAliasMatch(entry, needle) {
+  var a = Array.isArray(entry.aliases) ? entry.aliases : []
+  for (var i = 0; i < a.length; i++) if (foldText(a[i]).trim() === needle) return true
+  return false
+}
+
 function searchableToken(value) {
   return String(value || "").replace(/[._-]+/g, " ")
 }
@@ -346,7 +352,11 @@ function nameSearchText(entry) {
   var aliases = []
   var values = (Array.isArray(entry.aliases) ? entry.aliases : []).concat(Array.isArray(entry.searchTerms) ? entry.searchTerms : [])
   for (var i = 0; i < values.length; i++) aliases.push(searchableToken(values[i]))
-  return foldText([entry.label, searchableToken(leafIdFor(entry.id)), aliases.join(" ")].join(" "))
+  // Sağlayıcı satırlarının üretilmiş kimlikleri ("file-3", "recent-2") aranabilir
+  // kelime değildir; yoksa "file"/"recent" her yüklü satırı eşler.
+  var leaf = leafIdFor(entry.id)
+  if (/^(file|recent|clip)-\d+$/.test(leaf)) leaf = ""
+  return foldText([entry.label, searchableToken(leaf), aliases.join(" ")].join(" "))
 }
 
 function termInSearchWords(term, text) {
@@ -397,6 +407,8 @@ function searchScore(items, entry, query) {
   // for Zen Browser) beats exact-labeled menu entries like Install > Zen.
   else if (entry.kind === "app" && label.split(/\s+/).indexOf(needle) >= 0) score = 0
   else if (label.indexOf(needle) === 0) score = 10
+  // Tam takma ad ("ses" → Audio & Sound, "kapat" → Shutdown) güçlü eşleşmedir
+  else if (exactAliasMatch(entry, needle)) score = 15
   else if (matchesAtWordStart(label, needle)) score = 20
   else if (label.indexOf(needle) >= 0) score = 30
   else if (nameText.indexOf(needle) >= 0) score = 40
@@ -1031,11 +1043,13 @@ function groupSearchRows(rows, opts) {
     for (var e = 0; e < eligible.length; e++) {
       var list = buckets[eligible[e]]
       if (!list || !list.length) continue
-      var cand = list[0]
-      if (cand.score < STRONG_MATCH_SCORE && (!best || byScore(cand, best) < 0)) { best = cand; bestKey = eligible[e] }
+      // Restart Plasma gibi anlık sistem eylemleri Top Hit olmaz (Enter ile kazara tetiklenmesin)
+      var cand = null
+      for (var ci = 0; ci < list.length && !cand; ci++) if (list[ci].provider !== "sys-action") cand = list[ci]
+      if (cand && cand.score < STRONG_MATCH_SCORE && (!best || byScore(cand, best) < 0)) { best = cand; bestKey = eligible[e] }
     }
     if (best) {
-      buckets[bestKey].shift()
+      buckets[bestKey].splice(buckets[bestKey].indexOf(best), 1)
       if (!buckets[bestKey].length) delete buckets[bestKey]
       buckets.top = [best]
     }
