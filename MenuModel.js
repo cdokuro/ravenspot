@@ -314,6 +314,24 @@ function labelFor(entry, checkedResults, disabledResults) {
   return marked ? entry.label + " ✓" : entry.label
 }
 
+// Türkçe klavyede İngilizce kelime yazarken "ı" çıkar ("fırewall"); arama
+// iki tarafı da katlar: ı/İ→i, ş→s, ğ→g, ü→u, ö→o, ç→c, büyük/küçük yok.
+var FOLD_MAP = { "ı": "i", "ş": "s", "ğ": "g", "ü": "u", "ö": "o", "ç": "c", "\u0307": "" }
+function foldText(value) {
+  return String(value || "").toLowerCase().replace(/[ışğüöç\u0307]/g, function(c) { return FOLD_MAP[c] })
+}
+
+// Sorgunun bir kelime başında geçip geçmediği (boşluk/noktalama sonrası)
+function matchesAtWordStart(text, needle) {
+  var from = 0
+  while (true) {
+    var at = text.indexOf(needle, from)
+    if (at < 0) return false
+    if (at === 0 || /[\s\-_.,:;()\/&+]/.test(text.charAt(at - 1))) return true
+    from = at + 1
+  }
+}
+
 function searchableToken(value) {
   return String(value || "").replace(/[._-]+/g, " ")
 }
@@ -328,11 +346,11 @@ function nameSearchText(entry) {
   var aliases = []
   var values = (Array.isArray(entry.aliases) ? entry.aliases : []).concat(Array.isArray(entry.searchTerms) ? entry.searchTerms : [])
   for (var i = 0; i < values.length; i++) aliases.push(searchableToken(values[i]))
-  return [entry.label, searchableToken(leafIdFor(entry.id)), aliases.join(" ")].join(" ").toLowerCase()
+  return foldText([entry.label, searchableToken(leafIdFor(entry.id)), aliases.join(" ")].join(" "))
 }
 
 function termInSearchWords(term, text) {
-  var words = String(text || "").toLowerCase().split(/\s+/)
+  var words = foldText(text).split(/\s+/)
   for (var i = 0; i < words.length; i++) {
     if (words[i] === term) return true
   }
@@ -340,7 +358,7 @@ function termInSearchWords(term, text) {
 }
 
 function descriptionTextMatches(query, text) {
-  var terms = String(query || "").toLowerCase().trim().split(/\s+/)
+  var terms = foldText(query).trim().split(/\s+/)
   for (var i = 0; i < terms.length; i++) {
     if (terms[i] && !termInSearchWords(terms[i], text)) return false
   }
@@ -352,12 +370,14 @@ function matchesQuery(entry, query, visible) {
   if (!visible) return false
 
   var nameText = nameSearchText(entry)
-  var descriptionText = String(entry.description || "").toLowerCase()
-  var terms = String(query || "").toLowerCase().trim().split(/\s+/)
+  var descriptionText = foldText(entry.description)
+  var terms = foldText(query).trim().split(/\s+/)
 
   for (var i = 0; i < terms.length; i++) {
     if (!terms[i]) continue
-    if (nameText.indexOf(terms[i]) >= 0) continue
+    // Kelime ortası eşleşme yalnızca 4+ harfte ("net" → "Yönetimi" gürültüsü olmasın)
+    if (matchesAtWordStart(nameText, terms[i])) continue
+    if (terms[i].length >= 4 && nameText.indexOf(terms[i]) >= 0) continue
     if (termInSearchWords(terms[i], descriptionText)) continue
     return false
   }
@@ -366,10 +386,10 @@ function matchesQuery(entry, query, visible) {
 }
 
 function searchScore(items, entry, query) {
-  var needle = String(query || "").toLowerCase().trim()
-  var label = entry.label.toLowerCase()
+  var needle = foldText(query).trim()
+  var label = foldText(entry.label)
   var nameText = nameSearchText(entry)
-  var descriptionText = String(entry.description || "").toLowerCase()
+  var descriptionText = foldText(entry.description)
   var score = 80
 
   if (label === needle) score = entry.parent === "root" ? 2 : 0
@@ -377,6 +397,7 @@ function searchScore(items, entry, query) {
   // for Zen Browser) beats exact-labeled menu entries like Install > Zen.
   else if (entry.kind === "app" && label.split(/\s+/).indexOf(needle) >= 0) score = 0
   else if (label.indexOf(needle) === 0) score = 10
+  else if (matchesAtWordStart(label, needle)) score = 20
   else if (label.indexOf(needle) >= 0) score = 30
   else if (nameText.indexOf(needle) >= 0) score = 40
   else if (descriptionTextMatches(needle, descriptionText)) score = 60
@@ -937,4 +958,115 @@ function rightArrowActivates(provider) {
 // Öldürülen satır listeden düşünce kısa süre Enter yutulur (alttan kayan satır tetiklenmesin)
 function enterGuarded(guardUntilMs, nowMs) {
   return guardUntilMs > 0 && nowMs < guardUntilMs
+}
+
+// ── Arama sonuçlarının gruplanması ─────────────────────────────────────
+// Her sonuç sabit sıralı bir gruba düşer; grup adı ListView bölüm başlığı
+// olur. Tek grup varsa başlık gösterilmez (kendini tekrar eden başlık yok).
+var SEARCH_GROUP_ORDER = ["instant", "pc", "commandsFirst", "top", "apps", "windows", "system",
+                          "settings", "tools", "files", "help", "other", "commands", "web"]
+var SEARCH_GROUP_TITLES = {
+  instant: "Quick Answer", top: "Top Hit", apps: "Applications", windows: "Open Windows",
+  system: "Power & Session", settings: "Settings", tools: "Tools", files: "Files & Folders",
+  help: "Help", other: "More", commands: "Run Command", commandsFirst: "Run Command",
+  web: "Search the Web"
+}
+// Bu puanın altı tam/önek/kelime başı eşleşmedir (searchScore katmanları 0/10/20)
+var STRONG_MATCH_SCORE = 25000
+// Sabit sırayla dizilen gruplardan, yalnızca zayıf eşleşme içerenler güçlü
+// eşleşmesi olanların altına iner ("net" → Settings > Network, Apps > "Yönetim" değil)
+var RANKED_GROUPS = ["apps", "system", "settings", "tools", "files", "help", "other"]
+var SEARCH_GROUP_CAPS = { apps: 8, windows: 5, system: 5, settings: 5, tools: 5, files: 5, help: 3, other: 5 }
+var PC_GROUP_TITLES = { "__clip_": "Clipboard", "__kill_": "Processes", "__recent_": "Recent Files", "__emoji_": "Emoji" }
+var INSTANT_PROVIDERS = ["set-volume", "toggle-mute", "open-folder-path", "open-folder-terminal"]
+var TOP_GROUP_BY_ROOT = { apps: "apps", files: "files", tools: "tools", settings: "settings",
+                          appearance: "settings", system: "system", help: "help" }
+
+function pcPrefixOf(id) {
+  for (var p in PC_GROUP_TITLES) if (id.indexOf(p) === 0) return p
+  return ""
+}
+
+function searchGroupKey(row) {
+  var id = String(row.itemId || "")
+  var provider = String(row.provider || "")
+  if (id === "__calc__" || id === "__unit__" || id.indexOf("__bang_") === 0
+      || INSTANT_PROVIDERS.indexOf(provider) >= 0) return "instant"
+  if (pcPrefixOf(id)) return "pc"
+  if (provider === "run-command") return "commands"
+  if (id.indexOf("__web_") === 0) return "web"
+  if (provider === "window-item") return "windows"
+  if (provider === "sys-action") return "system"
+  if (row.kind === "app") return "apps"
+  if (row.filePath || provider === "file-item") return "files"
+  var top = id.split(".")[0]
+  return TOP_GROUP_BY_ROOT[top] || "other"
+}
+
+// rows: puanlı arama satırları. opts.capped: kökten aranıyorsa grup başı sınır;
+// opts.commandsFirst: metin açıkça komutsa "Run Command" en üstte.
+// Girdiyi değiştirmez; section alanı dolu yeni satırlar döner.
+function groupSearchRows(rows, opts) {
+  opts = opts || {}
+  var buckets = ({})
+  var keyOf = []
+  for (var i = 0; i < rows.length; i++) {
+    var copy = {}
+    for (var k in rows[i]) copy[k] = rows[i][k]
+    copy.__idx = i
+    var key = searchGroupKey(copy)
+    if (key === "commands" && opts.commandsFirst) key = "commandsFirst"
+    if (key === "pc") copy.__title = PC_GROUP_TITLES[pcPrefixOf(String(copy.itemId))]
+    if (!buckets[key]) { buckets[key] = []; keyOf.push(key) }
+    buckets[key].push(copy)
+  }
+  function byScore(a, b) { return a.score !== b.score ? a.score - b.score : a.__idx - b.__idx }
+  for (var b in buckets) buckets[b].sort(byScore)
+
+  // Top Hit: anlık yanıt yoksa ve birden çok grup yarışıyorsa, tam/önek eşleşen en iyi satır
+  var contenders = keyOf.filter(function(g) { return g !== "web" })
+  if (!buckets.instant && contenders.length >= 2) {
+    var eligible = ["apps", "system", "settings", "tools", "files", "help", "other"]
+    var best = null, bestKey = ""
+    for (var e = 0; e < eligible.length; e++) {
+      var list = buckets[eligible[e]]
+      if (!list || !list.length) continue
+      var cand = list[0]
+      if (cand.score < STRONG_MATCH_SCORE && (!best || byScore(cand, best) < 0)) { best = cand; bestKey = eligible[e] }
+    }
+    if (best) {
+      buckets[bestKey].shift()
+      if (!buckets[bestKey].length) delete buckets[bestKey]
+      buckets.top = [best]
+    }
+  }
+
+  var present = SEARCH_GROUP_ORDER.filter(function(g) { return buckets[g] && buckets[g].length })
+  var anyStrong = RANKED_GROUPS.some(function(g) { return buckets[g] && buckets[g][0].score < STRONG_MATCH_SCORE })
+  if (anyStrong) {
+    var strong = [], weak = []
+    for (var s = 0; s < present.length; s++) {
+      var gk = present[s]
+      if (RANKED_GROUPS.indexOf(gk) >= 0 && buckets[gk][0].score >= STRONG_MATCH_SCORE) weak.push(gk)
+      else strong.push(gk)
+    }
+    // zayıf grupları güçlülerin ardına, Run Command/Web'den önce yerleştir
+    var tail = strong.filter(function(g) { return g === "commands" || g === "web" })
+    present = strong.filter(function(g) { return g !== "commands" && g !== "web" }).concat(weak, tail)
+  }
+  var showHeaders = present.length > 1
+  var out = []
+  for (var p = 0; p < present.length; p++) {
+    var g = present[p]
+    var listG = buckets[g]
+    if (opts.capped && SEARCH_GROUP_CAPS[g]) listG = listG.slice(0, SEARCH_GROUP_CAPS[g])
+    for (var j = 0; j < listG.length; j++) {
+      var row = listG[j]
+      row.section = showHeaders ? (row.__title || SEARCH_GROUP_TITLES[g] || "") : ""
+      delete row.__idx
+      delete row.__title
+      out.push(row)
+    }
+  }
+  return out
 }

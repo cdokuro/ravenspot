@@ -108,6 +108,9 @@ Window {
     property int cardWidth: 495
     readonly property int maxCardHeight: 720
     property int rowHeight: 48
+    // Arama sonuç grubu başlığı (Top Hit, Applications, …) yüksekliği ve sayısı
+    property int sectionHeaderHeight: 26
+    property int sectionHeaderCount: 0
     property int headerHeight: 114
     property int cpuPercent: 0
     property int gpuPercent: 0
@@ -168,6 +171,8 @@ Window {
     property var checkedResults: ({})
     property var disabledResults: ({})
     property bool loaded: false
+    // Uygulaması olmayan kategoriler (ör. Office (0)) gezinmede gizlenir
+    property var emptyCategories: ({})
 
     // ── Veri yükleme ──────────────────────────────────────
     function loadItems() {
@@ -191,7 +196,9 @@ Window {
                 "apps.utilities": "utilities",
                 "apps.all": "all"
             }
+            var empty = ({})
             for (var cId in catMap) {
+                if (cId !== "apps.all" && counts[catMap[cId]] === 0) empty[cId] = true
                 if (root.items[cId] && counts[catMap[cId]] !== undefined) {
                     var baseName = root.items[cId].label.replace(/\s*\(\d+\)$/, "")
                     root.items[cId].label = baseName + " (" + counts[catMap[cId]] + ")"
@@ -199,6 +206,7 @@ Window {
                 loadAppsCategory(cId, catMap[cId], true)
                 root.providersLoaded[cId] = true
             }
+            root.emptyCategories = empty
         } catch(e) {
             loadAppsCategory("apps.all", "all", true)
             root.providersLoaded["apps.all"] = true
@@ -278,6 +286,8 @@ Window {
             loadPowerProfiles(id)
         } else if (entry.provider === "clipboard") {
             loadClipboard(id)
+        } else if (entry.provider === "recent") {
+            loadRecentFiles(id)
         } else if (entry.provider && entry.provider.startsWith("files-")) {
             loadFolderFiles(id, entry.provider.substring(6))
         } else if (entry.provider === "ravenspot-themes") {
@@ -294,9 +304,29 @@ Window {
             rows.push({
                 id: rowId, parent: id, kind: "action",
                 icon: "󰅇", iconFont: "", iconName: "org.kde.plasma.clipboard",
-                label: c.label, title: "", target: "", description: c.truncated ? "Panoya kopyala · 4 KB'a kısaltıldı" : "Panoya kopyala",
+                label: c.label, title: "", target: "", description: c.truncated ? "Copy to clipboard · truncated to 4 KB" : "Copy to clipboard",
                 action: "", provider: "clipboard-item", aliases: [], searchTerms: [],
                 when: "", checked: "", disabled: "", value: c.value, order: j
+            })
+        }
+        var merged = MenuModel.swapProviderRows(root.items, root.itemOrder, id, rows)
+        root.items = merged.items
+        root.itemOrder = merged.itemOrder
+        rebuildDisplay()
+    }
+
+    function loadRecentFiles(id) {
+        var arr = []
+        try { arr = JSON.parse(Shell.recentFiles("") || "[]") } catch (e) {}
+        var rows = []
+        for (var j = 0; j < arr.length; j++) {
+            var f = arr[j]
+            rows.push({
+                id: id + ".recent-" + j, parent: id, kind: "action",
+                icon: f.isDir ? "󰉋" : "󰈔", iconFont: "", iconName: f.isDir ? "folder" : "document-open-recent",
+                label: f.name, title: "", target: "", description: (f.modified ? f.modified + "  •  " : "") + f.path,
+                action: "", provider: "file-item", aliases: [f.name], searchTerms: [f.name],
+                when: "", checked: "", disabled: "", filePath: f.path, isDir: !!f.isDir, order: j
             })
         }
         var merged = MenuModel.swapProviderRows(root.items, root.itemOrder, id, rows)
@@ -413,13 +443,13 @@ Window {
             taken[rowId] = true
 
             var iconStr = "󰸌"
-            var detailStr = "F tuşu: Favorile"
+            var detailStr = "F: add to favorites"
             if (c.current) {
                 iconStr = "✓"
-                detailStr = "Şu An Kullanılan Tema"
+                detailStr = "Current theme"
             } else if (c.isFavorite) {
                 iconStr = "★"
-                detailStr = "Favori Tema"
+                detailStr = "Favorite theme"
             }
 
             rows.push({
@@ -616,10 +646,10 @@ Window {
                         iconFont: "",
                         appIcon: "",
                         appId: "",
-                        label: "Dosya veya Klasör Ara (* <isim>)",
+                        label: "Search Files and Folders (* <name>)",
                         target: "",
-                        detail: "Everything tarzı anlık dosya ve dizin araması için arama kelimesini yazın",
-                        path: "Everything Dosya Araması",
+                        detail: "Type a name to search files and folders instantly",
+                        path: "File Search",
                         childCount: 0,
                         action: "",
                         provider: "none",
@@ -675,10 +705,10 @@ Window {
                                 iconFont: "",
                                 appIcon: "",
                                 appId: "",
-                                label: "Aranıyor…",
+                                label: "Searching…",
                                 target: "",
-                                detail: "'" + fileQuery + "' için dosyalar taranıyor",
-                                path: "Dosya Arama",
+                                detail: "Scanning files for '" + fileQuery + "'",
+                                path: "File Search",
                                 childCount: 0,
                                 action: "",
                                 provider: "none",
@@ -697,10 +727,10 @@ Window {
                                 iconFont: "",
                                 appIcon: "",
                                 appId: "",
-                                label: "Eşleşen dosya veya klasör bulunamadı",
+                                label: "No matching files or folders",
                                 target: "",
-                                detail: "'" + fileQuery + "' için dosya bulunamadı",
-                                path: "Dosya Arama",
+                                detail: "Nothing found for '" + fileQuery + "'",
+                                path: "File Search",
                                 childCount: 0,
                                 action: "",
                                 provider: "none",
@@ -715,6 +745,7 @@ Window {
                         console.log("Dosya arama hatası:", e)
                     }
                 }
+                root.sectionHeaderCount = 0
                 MenuModel.syncRows(displayModel, rows)
                 settleCursor()
                 return
@@ -726,6 +757,7 @@ Window {
                 var entry = root.item(root.itemOrder[i])
                 if (!entry || entry.id === "root") continue
                 if (!root.isDescendantOf(entry.id, active)) continue
+                if (root.emptyCategories[entry.id]) continue
                 if (!MenuModel.matchesQuery(entry, query, root.isVisible(entry) && !root.isDisabled(entry))) continue
                 var detail = root.parentPathFor(entry.id)
                 var row = displayRow(entry, detail, MenuModel.searchScore(root.items, entry, query))
@@ -790,9 +822,6 @@ Window {
                 drilldownRows = filteredDrilldown
             }
 
-            if (currentRows.length && drilldownRows.length) {
-                for (var d = 0; d < drilldownRows.length; d++) drilldownRows[d].section = "drilldown"
-            }
             rows = currentRows.concat(drilldownRows)
 
             // 0. Açık Pencereler (KWin WindowsRunner)
@@ -846,8 +875,8 @@ Window {
                     appId: "",
                     label: "= " + mathVal,
                     target: "",
-                    detail: "Hesap Makinesi Sonucu (Enter: Panoya Kopyala)",
-                    path: "Hesapla",
+                    detail: "Calculator · Enter: copy result",
+                    path: "Calculator",
                     childCount: 0,
                     action: "",
                     provider: "clipboard-item",
@@ -872,8 +901,8 @@ Window {
                     appId: "",
                     label: unitObj.original + " = " + unitObj.result,
                     target: "",
-                    detail: "Birim Dönüştürme Sonucu (Enter: Panoya Kopyala)",
-                    path: "Dönüştür",
+                    detail: "Unit conversion · Enter: copy result",
+                    path: "Convert",
                     childCount: 0,
                     action: "",
                     provider: "clipboard-item",
@@ -887,51 +916,11 @@ Window {
 
             // 2. KRunner Sistem Eylemleri (Kapat, Yeniden Başlat, Kilitle, vb.)
             var qLower = query.toLowerCase()
+            // Güç/oturum eylemleri Power menüsündeki girişlerden gelir (kopya satır yok);
+            // yalnızca menüde karşılığı olmayan Restart Plasma burada.
             var sysActions = [
                 {
-                    triggers: ["kapat", "shutdown", "poweroff", "power off", "sistemi kapat"],
-                    label: "Shutdown",
-                    detail: "Power off the computer immediately",
-                    icon: "󰐥",
-                    actionId: "poweroff"
-                },
-                {
-                    triggers: ["yeniden başlat", "reboot", "restart", "yeniden baslat"],
-                    label: "Reboot",
-                    detail: "Restart the computer",
-                    icon: "󰜉",
-                    actionId: "reboot"
-                },
-                {
-                    triggers: ["kilitle", "lock", "lock screen", "ekranı kilitle", "ekrani kilitle"],
-                    label: "Lock Screen",
-                    detail: "Lock current session immediately",
-                    icon: "󰌾",
-                    actionId: "lock"
-                },
-                {
-                    triggers: ["uyut", "sleep", "suspend", "uyku", "askıya al", "askiya al"],
-                    label: "Suspend (Sleep)",
-                    detail: "Suspend system to RAM",
-                    icon: "󰒲",
-                    actionId: "sleep"
-                },
-                {
-                    triggers: ["çıkış", "cikis", "logout", "log out", "oturum kapat", "oturumu kapat"],
-                    label: "Log Out",
-                    detail: "End the session cleanly",
-                    icon: "󰗽",
-                    actionId: "logout"
-                },
-                {
-                    triggers: ["save session", "oturumu kaydet", "oturum kaydet", "session save"],
-                    label: "Save Session",
-                    detail: "Save open apps to restore at next login",
-                    icon: "󰆓",
-                    actionId: "save_session"
-                },
-                {
-                    triggers: ["restart plasma", "plasma restart", "kwin restart"],
+                    triggers: ["restart plasma", "plasma restart", "kwin restart", "plasma"],
                     label: "Restart KDE Plasma",
                     detail: "Refresh and restart desktop shell",
                     icon: "󰑐",
@@ -942,7 +931,7 @@ Window {
             for (var sa = 0; sa < sysActions.length; sa++) {
                 var act = sysActions[sa]
                 for (var st = 0; st < act.triggers.length; st++) {
-                    if (act.triggers[st].indexOf(qLower) !== -1 || qLower.indexOf(act.triggers[st]) !== -1) {
+                    if ((qLower.length >= 3 && act.triggers[st].indexOf(qLower) === 0) || qLower.indexOf(act.triggers[st]) !== -1) {
                         rows.unshift({
                             itemId: "__sys_" + act.actionId + "__",
                             kind: "action",
@@ -954,7 +943,7 @@ Window {
                             label: act.label,
                             target: "",
                             detail: act.detail,
-                            path: "Sistem",
+                            path: "Power",
                             childCount: 0,
                             action: "",
                             provider: "sys-action",
@@ -981,10 +970,10 @@ Window {
                     iconFont: "",
                     appIcon: "",
                     appId: "",
-                    label: "Sesi %" + targetVol + " Yap",
+                    label: "Set Volume to " + targetVol + "%",
                     target: "",
-                    detail: "Sistem ses seviyesini ayarla",
-                    path: "Ses Kontrolü",
+                    detail: "Change the system volume",
+                    path: "Volume",
                     childCount: 0,
                     action: "",
                     provider: "set-volume",
@@ -1003,10 +992,10 @@ Window {
                     iconFont: "",
                     appIcon: "",
                     appId: "",
-                    label: "Sesi Kapat / Aç (Mute)",
+                    label: "Mute / Unmute",
                     target: "",
-                    detail: "Sistem sesini sustur veya aç",
-                    path: "Ses Kontrolü",
+                    detail: "Toggle system sound",
+                    path: "Volume",
                     childCount: 0,
                     action: "",
                     provider: "toggle-mute",
@@ -1044,10 +1033,10 @@ Window {
                     iconFont: "",
                     appIcon: "",
                     appId: "",
-                    label: "Klasörü Aç: " + cleanPath,
+                    label: "Open Folder: " + cleanPath,
                     target: "",
-                    detail: "Dolphin ile konumu aç",
-                    path: "Dosya Gezgini",
+                    detail: "Open this location in Dolphin",
+                    path: "Files",
                     childCount: 0,
                     action: "",
                     provider: "open-folder-path",
@@ -1065,9 +1054,9 @@ Window {
                     iconFont: "",
                     appIcon: "",
                     appId: "",
-                    label: "Bu Konumda Terminal Aç: " + cleanPath,
+                    label: "Open Terminal Here: " + cleanPath,
                     target: "",
-                    detail: "Konsole ile bu klasörde başlat",
+                    detail: "Start Konsole in this folder",
                     path: "Terminal",
                     childCount: 0,
                     action: "",
@@ -1086,8 +1075,8 @@ Window {
                 { prefix: "yt ", name: "YouTube", icon: "󰗃", url: "https://www.youtube.com/results?search_query=" },
                 { prefix: "gh ", name: "GitHub", icon: "󰊤", url: "https://github.com/search?q=" },
                 { prefix: "w ", name: "Wikipedia", icon: "󰖬", url: "https://tr.wikipedia.org/w/index.php?search=" },
-                { prefix: "tr ", name: "Google Çeviri", icon: "󰗊", url: "https://translate.google.com/?sl=auto&tl=tr&text=" },
-                { prefix: "map ", name: "Haritalar", icon: "󰍎", url: "https://www.google.com/maps/search/" },
+                { prefix: "tr ", name: "Google Translate", icon: "󰗊", url: "https://translate.google.com/?sl=auto&tl=tr&text=" },
+                { prefix: "map ", name: "Maps", icon: "󰍎", url: "https://www.google.com/maps/search/" },
                 { prefix: "ddg ", name: "DuckDuckGo", icon: "󰇧", url: "https://duckduckgo.com/?q=" }
             ]
 
@@ -1106,10 +1095,10 @@ Window {
                             iconFont: "",
                             appIcon: "",
                             appId: "",
-                            label: bg.name + "'da Ara: \"" + bangQ + "\"",
+                            label: "Search " + bg.name + ": \"" + bangQ + "\"",
                             target: "",
-                            detail: "Varsayılan tarayıcıda ara",
-                            path: "Web Arama",
+                            detail: "Opens in your default browser",
+                            path: "Web",
                             childCount: 0,
                             action: "xdg-open '" + bg.url + encodeURIComponent(bangQ) + "'",
                             provider: "",
@@ -1145,10 +1134,10 @@ Window {
                         iconFont: "",
                         appIcon: "",
                         appId: "",
-                        label: "Google'da Ara: \"" + rawSearch + "\"",
+                        label: "Search Google: \"" + rawSearch + "\"",
                         target: "",
-                        detail: "Varsayılan web tarayıcısında aç",
-                        path: "Web Arama",
+                        detail: "Opens in your default browser",
+                        path: "Web",
                         childCount: 0,
                         action: "xdg-open 'https://www.google.com/search?q=" + encodeURIComponent(rawSearch) + "'",
                         provider: "",
@@ -1166,10 +1155,10 @@ Window {
                         iconFont: "",
                         appIcon: "",
                         appId: "",
-                        label: "DuckDuckGo'da Ara: \"" + rawSearch + "\"",
+                        label: "Search DuckDuckGo: \"" + rawSearch + "\"",
                         target: "",
-                        detail: "Gizlilik odaklı arama",
-                        path: "Web Arama",
+                        detail: "Privacy-focused search",
+                        path: "Web",
                         childCount: 0,
                         action: "xdg-open 'https://duckduckgo.com/?q=" + encodeURIComponent(rawSearch) + "'",
                         provider: "",
@@ -1186,11 +1175,19 @@ Window {
                     rows = rows.concat(webRows)
                 }
             }
+
+            // Sonuçları sabit sıralı, başlıklı gruplara ayır (Top Hit, Applications,
+            // Settings, …). Kökten aramada grup başına sınır; alt menüde sınır yok.
+            rows = MenuModel.groupSearchRows(rows, {
+                capped: active === "root",
+                commandsFirst: cmdResult.position === "first"
+            })
         } else {
             for (var j = 0; j < root.itemOrder.length; j++) {
                 var child = root.item(root.itemOrder[j])
                 if (!child || child.parent !== active) continue
                 if (active === "root" && (child.id === "help" || child.id === "cachyupdate")) continue
+                if (root.emptyCategories[child.id]) continue
                 if (!root.isVisible(child)) continue
                 rows.push(displayRow(child, child.description, child.order))
             }
@@ -1204,6 +1201,10 @@ Window {
             }
         }
 
+        var headers = 0
+        for (var hs = 0; hs < rows.length; hs++)
+            if (rows[hs].section && (hs === 0 || rows[hs - 1].section !== rows[hs].section)) headers++
+        root.sectionHeaderCount = headers
         MenuModel.syncRows(displayModel, rows)
         settleCursor()
     }
@@ -1432,13 +1433,13 @@ Window {
             } else if (row.provider === "power-profile") {
                 Shell.applyPowerProfile(row.value)
             } else if (row.action) {
-                if ((row.itemId && row.itemId.indexOf("trigger.nashi") === 0) || (row.action && row.action.indexOf("nashi") !== -1)) {
+                if ((row.itemId && row.itemId.indexOf("tools.nashi") === 0) || (row.action && row.action.indexOf("nashi") !== -1)) {
                     var nashiExec = Shell.getNashiPath()
                     if (nashiExec === "") {
                         showDependencyPrompt(
                             "nashi-app",
                             "Nashi Radial Hub",
-                            "Nashi Hızlı Eylem ve Format Dönüştürücü Çarkını kullanabilmeniz için <b>Nashi</b> uygulamasının kurulu olması gerekiyor. GitHub'dan (<b>cdokuro/nashi-app</b>) indirilip kurulsun mu?",
+                            "The Nashi quick-action and format-converter wheels need the <b>Nashi</b> app. Download and install it from GitHub (<b>cdokuro/nashi-app</b>)?",
                             "install-nashi"
                         )
                         return
@@ -1884,7 +1885,7 @@ Window {
             var contentH = root.outputPanelOpen ? 420
                 : (root.activeMenu === "system" && !root.filterText.length)
                 ? Math.ceil(displayModel.count / 2) * 64 + 18
-                : displayModel.count * rowHeight + 12
+                : displayModel.count * rowHeight + root.sectionHeaderCount * root.sectionHeaderHeight + 12
             return Math.min(headerHeight + 1 + contentH + footerHeight, root.maxCardHeight)
         }
         anchors.top: parent.top
@@ -2686,6 +2687,28 @@ Window {
             highlightMoveDuration: 110
             highlightMoveVelocity: -1
 
+            // Grup başlıkları satır değildir: klavye gezinmesi ve seçim etkilenmez
+            section.property: "section"
+            section.criteria: ViewSection.FullString
+            section.delegate: Item {
+                required property string section
+                width: resultList.width
+                height: section.length ? root.sectionHeaderHeight : 0
+                visible: section.length > 0
+                Text {
+                    anchors.left: parent.left
+                    anchors.leftMargin: 14
+                    anchors.bottom: parent.bottom
+                    anchors.bottomMargin: 5
+                    text: parent.section.toUpperCase()
+                    color: root.fgDim
+                    font.family: root.textFont
+                    font.pixelSize: 10
+                    font.weight: Font.DemiBold
+                    font.letterSpacing: 1.2
+                }
+            }
+
             delegate: Rectangle {
                 id: row
                 width: resultList.width
@@ -3159,8 +3182,8 @@ Window {
                             if (!Shell.isCommandAvailable("cpu-x")) {
                                 showDependencyPrompt(
                                     "cpu-x",
-                                    "CPU-X Sistem İzleme",
-                                    "CPU ayrıntılarını ve donanım izleme panelini açmak için <b>cpu-x</b> paketinin kurulu olması gerekiyor. Şimdi kurmak istiyor musunuz?",
+                                    "CPU-X System Monitor",
+                                    "Viewing CPU details and the hardware monitor needs the <b>cpu-x</b> package. Install it now?",
                                     "sudo pacman -S --noconfirm cpu-x || yay -S --noconfirm cpu-x"
                                 )
                                 return
@@ -3223,7 +3246,7 @@ Window {
                                     showDependencyPrompt(
                                         "lact",
                                         "LACT (Linux AMD Controller)",
-                                        "AMD Radeon ekran kartınızı ve GPU telemetrisini yönetmek için <b>lact</b> paketinin kurulu olması gerekiyor. Şimdi kurmak istiyor musunuz?",
+                                        "Managing your AMD Radeon GPU and its telemetry needs the <b>lact</b> package. Install it now?",
                                         "sudo pacman -S --noconfirm lact || yay -S --noconfirm lact-bin && sudo systemctl enable --now lactd && lact"
                                     )
                                     return
@@ -3232,8 +3255,8 @@ Window {
                                 if (!Shell.isCommandAvailable("nvidia-settings") && !Shell.isCommandAvailable("nvtop")) {
                                     showDependencyPrompt(
                                         "nvidia-settings",
-                                        "NVIDIA Denetim Masası & NVTOP",
-                                        "NVIDIA ekran kartınızı yönetmek için <b>nvidia-settings</b> ve <b>nvtop</b> paketlerinin kurulu olması gerekiyor. Şimdi kurmak istiyor musunuz?",
+                                        "NVIDIA Settings & NVTOP",
+                                        "Managing your NVIDIA GPU needs the <b>nvidia-settings</b> and <b>nvtop</b> packages. Install them now?",
                                         "sudo pacman -S --noconfirm nvidia-settings nvtop"
                                     )
                                     return
@@ -4102,7 +4125,7 @@ Window {
                             border.width: 1
 
                             Text {
-                                text: "İptal"
+                                text: "Cancel"
                                 anchors.centerIn: parent
                                 font.family: root.textFont
                                 font.pixelSize: 12
@@ -4138,7 +4161,7 @@ Window {
                                     color: "#ffffff"
                                 }
                                 Text {
-                                    text: "Yükle"
+                                    text: "Install"
                                     font.family: root.textFont
                                     font.pixelSize: 12
                                     font.weight: Font.DemiBold
