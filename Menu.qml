@@ -1973,31 +1973,48 @@ Window {
         Behavior on scale { id: cardScaleB; enabled: !reopenAnim.running; OpenCloseAnimation { behavior: cardScaleB; threshold: 0.985 } }
         Behavior on height { NumberAnimation { duration: 130; easing.type: Easing.OutQuint } }
 
-        // Kartı sürükle: Alt veya Meta tuşuna basılı tutulduğunda KWin pencereyi doğrudan pürüzsüz taşır
+        // Kartı sürükle: KWin'deki pencere taşıma tuşu (Alt, ya da Meta) basılıyken
+        // kartın her yerinden tut-sürükle. Layer-shell yüzeyini KWin taşıyamadığı
+        // için (startSystemMove burada çalışmaz) başlıktaki sürüklemeyle aynı yol
+        // kullanılır: Shell.beginDrag/dragBy/endDrag (Wayland'de relative pointer).
+        // Tuş basılı değilse tıklama alttaki satıra/arama kutusuna geçer.
         MouseArea {
-            id: windowDragArea
+            id: modifierDragArea
             anchors.fill: parent
-            z: -1
+            z: 1000
             acceptedButtons: Qt.LeftButton
+            hoverEnabled: false
+            property real lastX: 0
+            property real lastY: 0
+            property real pressX: 0
+            property real pressY: 0
+            property bool isDragging: false
+
             onPressed: function(mouse) {
-                if (mouse.modifiers & (Qt.AltModifier | Qt.MetaModifier)) {
-                    root.startSystemMove()
+                if (!(mouse.modifiers & (Qt.AltModifier | Qt.MetaModifier))) {
+                    mouse.accepted = false
+                    return
                 }
+                pressX = mouse.x; pressY = mouse.y
+                lastX = mouse.x; lastY = mouse.y
+                isDragging = false
             }
-        }
-        DragHandler {
-            id: cardDragAlt
-            target: null
-            acceptedButtons: Qt.LeftButton
-            acceptedModifiers: Qt.AltModifier
-            onActiveChanged: if (active) root.startSystemMove()
-        }
-        DragHandler {
-            id: cardDragMeta
-            target: null
-            acceptedButtons: Qt.LeftButton
-            acceptedModifiers: Qt.MetaModifier
-            onActiveChanged: if (active) root.startSystemMove()
+            onPositionChanged: function(mouse) {
+                if (!pressed) return
+                if (!isDragging) {
+                    if (Math.hypot(mouse.x - pressX, mouse.y - pressY) < 4) return
+                    isDragging = true
+                    Shell.beginDrag(mouse.x - pressX, mouse.y - pressY)
+                    lastX = mouse.x; lastY = mouse.y
+                    return
+                }
+                var dx = mouse.x - lastX, dy = mouse.y - lastY
+                if (dx === 0 && dy === 0) return
+                lastX = mouse.x; lastY = mouse.y
+                Shell.dragBy(dx, dy)
+            }
+            onReleased: { if (isDragging) Shell.endDrag(); isDragging = false }
+            onCanceled: { if (isDragging) Shell.endDrag(); isDragging = false }
         }
 
         // Blur ve input bölgesini kartın gerçek yüksekliğine eşitle (her kare;
