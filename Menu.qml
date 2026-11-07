@@ -414,9 +414,10 @@ Window {
             var rowId = id + "." + t.key
             rows.push({
                 id: rowId, parent: id, kind: "action",
-                icon: "󰔉", iconFont: "", iconName: "cs-themes",
-                label: t.name + (t.isCurrent ? " (Aktif)" : ""),
-                title: "", target: "", description: t.desc + " • Font: " + t.font,
+                icon: "", iconFont: "", iconName: "",
+                label: t.name,
+                title: "", target: "", description: t.isCurrent ? "✓ Active" : (t.desc || ""),
+                swatch: t.accent || "", swatchBg: t.bgColor || "",
                 action: "", provider: "ravenspot-theme-item", aliases: [t.name, t.key], searchTerms: [t.name, t.key],
                 when: "", checked: "", disabled: "", themeKey: t.key, isCurrent: t.isCurrent, order: j
             })
@@ -467,7 +468,7 @@ Window {
                 id: id + ".steam-library", parent: id, kind: "menu",
                 icon: "", iconFont: "", iconName: "steam", appIcon: "", appId: "",
                 label: "Steam Library", title: "", target: "",
-                description: "Installed game folders (steamapps/common)",
+                description: "",
                 action: "", provider: "files-steam", aliases: ["steam", "steam library", "steamapps", "common"],
                 searchTerms: [], when: "", checked: "", disabled: "", order: -1
             })
@@ -496,13 +497,13 @@ Window {
             taken[rowId] = true
 
             var iconStr = "󰸌"
-            var detailStr = "F: add to favorites"
+            var detailStr = ""
             if (c.current) {
                 iconStr = "✓"
-                detailStr = "Current theme"
+                detailStr = "✓ Active"
             } else if (c.isFavorite) {
                 iconStr = "★"
-                detailStr = "Favorite theme"
+                detailStr = "★ Favorite"
             }
 
             rows.push({
@@ -575,7 +576,9 @@ Window {
             themeKey: entry.themeKey || entry.value || "",
             themeSection: entry.themeSection || "",
             filePath: entry.filePath || "",
-            isDir: !!entry.isDir
+            isDir: !!entry.isDir,
+            swatch: entry.swatch || "",
+            swatchBg: entry.swatchBg || ""
         }
     }
 
@@ -2873,6 +2876,27 @@ Window {
                     visible: !!model.iconName
                 }
 
+                // RavenSpot tema satırı: tema renklerinden küçük bir örnek (zemin + vurgu)
+                Rectangle {
+                    visible: !!model.swatch
+                    width: root.iconSize
+                    height: root.iconSize
+                    radius: root.iconSize / 2
+                    anchors.left: glyph.left
+                    anchors.leftMargin: root.edna ? 8 : 9
+                    anchors.verticalCenter: parent.verticalCenter
+                    color: model.swatchBg || "#000000"
+                    border.color: Qt.rgba(1, 1, 1, 0.18)
+                    border.width: 1
+                    Rectangle {
+                        anchors.centerIn: parent
+                        width: parent.width * 0.5
+                        height: width
+                        radius: width / 2
+                        color: model.swatch || "transparent"
+                    }
+                }
+
                 // Tema ikonu (menü girdileri için renkli candy-icons ikonu)
                 Image {
                     id: themeIconImg
@@ -2948,11 +2972,16 @@ Window {
                 }
 
                 // Sağ taraf: Durum rozeti / favori yıldızı
+                // Sağdaki kısa not (Active, Favorite, boyut…): satırın en fazla üçte biri,
+                // sığmazsa kısaltılır; satır adı her zaman önceliklidir.
                 Text {
                     id: rightDetail
                     anchors.right: (chevron.text.length > 0) ? chevron.left : parent.right
                     anchors.rightMargin: (chevron.text.length > 0) ? 6 : 14
                     anchors.verticalCenter: parent.verticalCenter
+                    width: Math.min(implicitWidth, row.width * 0.34)
+                    elide: Text.ElideRight
+                    horizontalAlignment: Text.AlignRight
                     text: (root.filterText.length === 0 && model.detail) ? model.detail : ""
                     color: model.isCurrent ? "#69f0ae" : (model.isFavorite ? "#ffe082" : root.fgDim)
                     font.pixelSize: 12

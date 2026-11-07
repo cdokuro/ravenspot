@@ -772,7 +772,7 @@ var ROW_DEFAULTS = {
   appIcon: "", appId: "", label: "", target: "", detail: "", path: "",
   childCount: 0, action: "", provider: "", value: "", desktop: "",
   disabled: false, score: 0, section: "", isFavorite: false, isCurrent: false,
-  themeKey: "", themeSection: "", filePath: "", isDir: false
+  themeKey: "", themeSection: "", filePath: "", isDir: false, swatch: "", swatchBg: ""
 }
 
 // ROW_DEFAULTS dışında bir satırda görülen role'ler (ör. copyVal); görüldükten

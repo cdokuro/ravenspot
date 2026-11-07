@@ -22,16 +22,16 @@
   "apps.office": { "icon": "󰏆", "iconName": "applications-office", "label": "Office", "aliases": ["ofis", "belge", "pdf"], "provider": "apps-office" },
   "apps.system": { "icon": "󰒓", "iconName": "applications-system", "label": "System", "aliases": ["sistem", "yönetim"], "provider": "apps-system" },
   "apps.utilities": { "icon": "󰘦", "iconName": "applications-utilities", "label": "Utilities", "aliases": ["araçlar", "faydalı"], "provider": "apps-utilities" },
-  "apps.other": { "icon": "󰒓", "iconName": "preferences-system", "label": "Other Apps", "description": "Settings modules, helpers and uninstallers", "aliases": ["other", "diğer", "kcm", "modules"], "provider": "apps-other" },
+  "apps.other": { "icon": "󰒓", "iconName": "preferences-system", "label": "Other Apps", "aliases": ["other", "diğer", "kcm", "modules"], "provider": "apps-other" },
 
   // ─── Files ─────────────────────────────────────────────────────
-  "files.home": { "icon": "󰋜", "iconName": "user-home", "label": "Home Folder", "description": "Open your home folder", "aliases": ["home", "ev", "~"], "action": "xdg-open \"$HOME\"" },
+  "files.home": { "icon": "󰋜", "iconName": "user-home", "label": "Home Folder", "aliases": ["home", "ev", "~"], "action": "xdg-open \"$HOME\"" },
   "files.downloads": { "icon": "󰇚", "iconName": "aptdaemon-download", "label": "Downloads", "aliases": ["downloads", "indirilenler", "download"], "provider": "files-downloads" },
   "files.documents": { "icon": "󰉋", "iconName": "folder-documents", "label": "Documents", "aliases": ["documents", "belgeler", "docs"], "provider": "files-documents" },
   "files.pictures": { "icon": "󰉋", "iconName": "folder-pictures", "label": "Pictures", "aliases": ["pictures", "resimler", "photos", "fotoğraflar"], "provider": "files-pictures" },
   "files.music": { "icon": "󰉋", "iconName": "folder-music", "label": "Music", "aliases": ["music", "müzik"], "provider": "files-music" },
   "files.videos": { "icon": "󰉋", "iconName": "folder-videos", "label": "Videos", "aliases": ["videos", "videolar"], "provider": "files-videos" },
-  "files.recent": { "icon": "󰋚", "iconName": "document-open-recent", "label": "Recent Files", "description": "Recently opened files", "aliases": ["recent", "son dosyalar", "son açılanlar"], "provider": "recent" },
+  "files.recent": { "icon": "󰋚", "iconName": "document-open-recent", "label": "Recent Files", "aliases": ["recent", "son dosyalar", "son açılanlar"], "provider": "recent" },
 
   // ─── Tools ─────────────────────────────────────────────────────
   "tools.capture": { "icon": "", "iconName": "gnome-screenshot", "label": "Screenshot", "aliases": ["screenshot", "screenrecord", "ekran görüntüsü"] },
@@ -82,9 +82,9 @@
   // ─── Power: least → most destructive ───────────────────────────
   "system.lock": { "icon": "", "iconName": "system-lock-screen", "label": "Lock", "description": "Lock current session", "aliases": ["lock", "kilitle", "lock screen", "ekranı kilitle", "ekrani kilitle"], "action": "loginctl lock-session" },
   "system.suspend": { "icon": "󰒲", "iconName": "system-suspend", "label": "Suspend", "description": "Suspend system to RAM", "aliases": ["suspend", "sleep", "uyku", "uyut", "askıya al", "askiya al"], "action": "systemctl suspend" },
-  "system.hibernate": { "icon": "󰤁", "iconName": "system-hibernate", "label": "Hibernate", "description": "Save state to disk and shut down", "when": "[[ -f /sys/power/state ]] && grep -qw disk /sys/power/state", "aliases": ["hibernate"], "action": "systemctl hibernate" },
+  "system.hibernate": { "icon": "󰤁", "iconName": "system-hibernate", "label": "Hibernate", "description": "Save to disk, power off", "when": "[[ -f /sys/power/state ]] && grep -qw disk /sys/power/state", "aliases": ["hibernate"], "action": "systemctl hibernate" },
   "system.logout": { "icon": "󰍃", "iconName": "system-log-out", "label": "Log Out", "description": "End the session cleanly", "aliases": ["logout", "log out", "çıkış", "oturumu kapat", "oturum kapat", "cikis"], "action": "qdbus6 org.kde.Shutdown /Shutdown org.kde.Shutdown.logout" },
-  "system.save_session": { "icon": "󰆓", "iconName": "document-save", "label": "Save Session", "description": "Save open apps to restore at next login", "aliases": ["save session", "oturumu kaydet", "oturum kaydet", "session"], "action": "qdbus6 org.kde.ksmserver /KSMServer org.kde.KSMServerInterface.saveCurrentSession && notify-send -a RavenSpot -i document-save 'Session saved' 'Open apps will be restored at next login.' || notify-send -a RavenSpot -i dialog-error 'Session could not be saved'" },
+  "system.save_session": { "icon": "󰆓", "iconName": "document-save", "label": "Save Session", "description": "Restore apps at next login", "aliases": ["save session", "oturumu kaydet", "oturum kaydet", "session"], "action": "qdbus6 org.kde.ksmserver /KSMServer org.kde.KSMServerInterface.saveCurrentSession && notify-send -a RavenSpot -i document-save 'Session saved' 'Open apps will be restored at next login.' || notify-send -a RavenSpot -i dialog-error 'Session could not be saved'" },
   "system.reboot": { "icon": "󰜉", "iconName": "system-reboot", "label": "Reboot", "description": "Restart the system", "aliases": ["reboot", "restart", "yeniden başlat", "yeniden baslat"], "action": "qdbus6 org.kde.Shutdown /Shutdown org.kde.Shutdown.logoutAndReboot" },
   "system.shutdown": { "icon": "󰐥", "iconName": "system-shutdown", "label": "Shutdown", "description": "Power off the computer", "aliases": ["shutdown", "poweroff", "kapat", "power off", "sistemi kapat"], "action": "qdbus6 org.kde.Shutdown /Shutdown org.kde.Shutdown.logoutAndShutdown" },
 

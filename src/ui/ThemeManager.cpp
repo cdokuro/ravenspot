@@ -45,7 +45,7 @@ ThemeTokens ThemeTokens::defaultRavenCyber() {
     ThemeTokens t;
     t.key = QStringLiteral("raven_cyber");
     t.name = QStringLiteral("Raven Cyber");
-    t.desc = QStringLiteral("Cyberpunk koyu obsidyen zemin ve altın sarısı neon parıltı");
+    t.desc = QStringLiteral("Gold neon on obsidian");
     t.font = QStringLiteral("Inter");
     t.iconTheme = QStringLiteral("candy-icons");
     t.bgColor = QStringLiteral("#0b0c10");
@@ -67,7 +67,7 @@ ThemeTokens ThemeTokens::ednaTheme() {
     ThemeTokens t;
     t.key = QStringLiteral("edna");
     t.name = QStringLiteral("Edna");
-    t.desc = QStringLiteral("Flat blue-grey Material surfaces, cyan focus and Kora icons");
+    t.desc = QStringLiteral("Blue-grey Material");
     t.font = QStringLiteral("Noto Sans");
     t.iconTheme = QStringLiteral("kora");
     t.style = QStringLiteral("edna");
@@ -94,7 +94,7 @@ QMap<QString, ThemeTokens> ThemeTokens::builtInThemes() {
     ThemeTokens cachy;
     cachy.key = QStringLiteral("cachy_emerald");
     cachy.name = QStringLiteral("Cachy Emerald");
-    cachy.desc = QStringLiteral("CachyOS zümrüt yeşili ve modern koyu arayüz");
+    cachy.desc = QStringLiteral("Emerald green");
     cachy.font = QStringLiteral("Inter");
     cachy.iconTheme = QStringLiteral("candy-icons");
     cachy.bgColor = QStringLiteral("#0a1312");
@@ -112,7 +112,7 @@ QMap<QString, ThemeTokens> ThemeTokens::builtInThemes() {
     ThemeTokens mars;
     mars.key = QStringLiteral("sweet_mars");
     mars.name = QStringLiteral("Sweet Mars");
-    mars.desc = QStringLiteral("KDE Sweet Mars neon mor/pembe synthwave estetiği");
+    mars.desc = QStringLiteral("Pink synthwave");
     mars.font = QStringLiteral("Inter");
     mars.iconTheme = QStringLiteral("candy-icons");
     mars.bgColor = QStringLiteral("#110b1a");
@@ -130,7 +130,7 @@ QMap<QString, ThemeTokens> ThemeTokens::builtInThemes() {
     ThemeTokens frost;
     frost.key = QStringLiteral("nordic_frost");
     frost.name = QStringLiteral("Nordic Frost");
-    frost.desc = QStringLiteral("Kuzey buzulu soğuk mavi ve sade İskandinav tonları");
+    frost.desc = QStringLiteral("Cool Nordic blue");
     frost.font = QStringLiteral("Inter");
     frost.iconTheme = QStringLiteral("candy-icons");
     frost.bgColor = QStringLiteral("#0d1117");
@@ -148,7 +148,7 @@ QMap<QString, ThemeTokens> ThemeTokens::builtInThemes() {
     ThemeTokens obsidian;
     obsidian.key = QStringLiteral("obsidian_stealth");
     obsidian.name = QStringLiteral("Obsidian Stealth");
-    obsidian.desc = QStringLiteral("Minimalist mat siyah monokrom ve saf beyaz ışıltı");
+    obsidian.desc = QStringLiteral("Monochrome");
     obsidian.font = QStringLiteral("Inter");
     obsidian.iconTheme = QStringLiteral("candy-icons");
     obsidian.bgColor = QStringLiteral("#080808");
@@ -351,6 +351,7 @@ QString ThemeManager::listRavenThemes() const {
         obj[QStringLiteral("desc")] = t.desc;
         obj[QStringLiteral("isCurrent")] = (t.key == m_activeKey);
         obj[QStringLiteral("accent")] = t.accent;
+        obj[QStringLiteral("bgColor")] = t.bgColor;
         obj[QStringLiteral("font")] = t.font;
         obj[QStringLiteral("iconTheme")] = t.iconTheme;
         array.append(obj);

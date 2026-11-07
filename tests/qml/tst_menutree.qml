@@ -89,4 +89,12 @@ TestCase {
             verify(["shell", "browser", "discover", "downloads"].indexOf(id) < 0, "legacy root id " + id)
         }
     }
+
+    // Açıklamalar satırın sağında/altında kısa bir not: ad'ı ezmesin
+    function test_descriptionsAreShort() {
+        for (var i = 0; i < order.length; i++) {
+            var e = items[order[i]]
+            verify(String(e.description || "").length <= 28, e.id + " description too long: " + e.description)
+        }
+    }
 }
