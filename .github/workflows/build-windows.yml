@@ -66,8 +66,11 @@ jobs:
         run: |
           $exe = Get-ChildItem build-tests -Recurse -Filter cmdtests.exe | Select-Object -First 1
           if (-not $exe) { throw "cmdtests.exe not built" }
-          & $exe.FullName
-          if ($LASTEXITCODE -ne 0) { throw "C++ unit tests failed ($LASTEXITCODE)" }
+          $env:QT_FORCE_STDERR_LOGGING = "1"
+          $log = Join-Path $env:RUNNER_TEMP "cmdtests.txt"
+          $p = Start-Process $exe.FullName -Wait -PassThru -NoNewWindow -RedirectStandardOutput $log -RedirectStandardError "$log.err"
+          Get-Content $log, "$log.err" -ErrorAction SilentlyContinue
+          if ($p.ExitCode -ne 0) { throw "C++ unit tests failed ($($p.ExitCode))" }
 
       - name: Run QML unit tests
         shell: pwsh
