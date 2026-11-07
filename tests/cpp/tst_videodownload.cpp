@@ -50,7 +50,8 @@ private slots:
         CommandRunner r;
         QSignalSpy done(&r, &CommandRunner::finished);
         QVERIFY(r.startProgram("ravenspot-no-such-program-xyz", {}, "missing"));
-        QVERIFY(done.wait(5000));
+        // Windows reports FailedToStart synchronously inside start(), Linux a moment later
+        QVERIFY(done.count() > 0 || done.wait(5000));
         QCOMPARE(r.exitCode(), 127);
         QVERIFY(r.output().contains("failed to start"));
     }

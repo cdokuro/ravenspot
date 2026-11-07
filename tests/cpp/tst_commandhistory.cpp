@@ -43,6 +43,9 @@ private slots:
         QVERIFY(h.entries().isEmpty());
     }
     void persist_ownerOnlyPermissions() {
+#ifdef Q_OS_WIN
+        QSKIP("POSIX permission bits; Windows uses the per-user profile ACL");
+#endif
         // Geçmişte token/parola olabilir: yalnızca sahibi okuyabilmeli (0600)
         QTemporaryDir d;
         CommandHistory h(d.filePath("h.json"));
