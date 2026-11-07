@@ -5,7 +5,10 @@
 #include <QJsonDocument>
 #include <QTimer>
 #include <QDebug>
+#include <QCoreApplication>
+#ifndef Q_OS_WIN
 #include <unistd.h>
+#endif
 
 namespace ravenspot {
 
@@ -57,7 +60,9 @@ void DaemonServer::stop() {
     if (m_server.isListening()) {
         m_server.close();
         QLocalServer::removeServer(m_socketPath);
+#ifndef Q_OS_WIN
         ::unlink(m_socketPath.toUtf8().constData());
+#endif
     }
 
     // Disconnect and cleanly abort all active client connections
@@ -252,7 +257,11 @@ void DaemonServer::dispatchCommand(QLocalSocket *client, const QString &cmd) {
         if (!root.contains(QStringLiteral("theme"))) {
             root[QStringLiteral("theme")] = QStringLiteral("raven_cyber");
         }
+#ifdef Q_OS_WIN
+        root[QStringLiteral("pid")] = QCoreApplication::applicationPid();
+#else
         root[QStringLiteral("pid")] = static_cast<qint64>(::getpid());
+#endif
 
         QJsonDocument doc(root);
         sendResponse(client, doc.toJson(QJsonDocument::Compact) + "\n");

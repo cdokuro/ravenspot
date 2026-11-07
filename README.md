@@ -23,14 +23,15 @@ RavenSpot brings the speed and elegance of macOS Spotlight and Raycast combined 
 - 🍬 **Candy Icon Theme**: Bundled gradient Candy icons for native vibrancy and crisp scaling across platforms.
 - 🖱️ **Rich Context Menu (Right-Click)**:
   - **Linux**: Launch, Desktop Actions, Open containing folder in Dolphin, Run in Konsole, Open in Discover, Edit `.desktop`, Move to Trash.
-  - **Windows**: Launch, Show in File Explorer (`/select,`), Open in Windows Terminal / PowerShell, Edit shortcut in Notepad, Move to Recycle Bin (with full Undo support via Win32 Shell API).
+  - **Windows**: Launch, Show in File Explorer (`/select,`), Open in Windows Terminal / PowerShell, Shortcut properties, Move to Recycle Bin.
 - 💻 **Terminal Command Mode**: Prefix queries with `>` to run any shell command directly in Konsole or Windows Terminal / PowerShell (`> btop`, `> ping 1.1.1.1`).
+- 🔗 **Paste a Link, Pick an Action**: Paste an `http(s)://` or `www.` link and press `Enter`: RavenSpot asks whether to **open it in your default browser** or **download the video** with [yt-dlp](https://github.com/yt-dlp/yt-dlp) into your Downloads folder (live progress in the output panel; offers to install yt-dlp if it is missing).
 - 📋 **Integrated Clipboard Manager**: Live list of your recent clipboard history right inside the palette with single-click restore.
 - 🎨 **Theme Manager & Favorites**: Browse themes with currently active theme highlighted and single-key (`F`) favoriting.
 - 📊 **Realtime Telemetry**: Live CPU, RAM, and Disk usage metrics.
 - 🪟 **Single-Instance IPC & Global Hotkey**:
   - **Linux**: Wayland `LayerShellQt` overlay toggled via `Meta + Space`.
-  - **Windows**: Win32 native global hotkey (`Alt + Space` or `Win + Space`) plus `QLocalServer` single-instance IPC.
+  - **Windows**: Win32 native global hotkey (`Alt + Space`, configurable with `RAVENSPOT_HOTKEY`) plus named-pipe single-instance IPC.
 
 ---
 
@@ -40,7 +41,7 @@ RavenSpot brings the speed and elegance of macOS Spotlight and Raycast combined 
 |---|---|---|
 | **`Meta`** (Alone) | Linux (KDE) | **Open / Toggle RavenSpot** |
 | **`Meta + Space`** | Linux (KDE) | **Open / Toggle RavenSpot** |
-| **`Alt + Space` / `Win + Space`** | Windows 11 | **Open / Toggle RavenSpot** |
+| **`Alt + Space`** | Windows 11 | **Open / Toggle RavenSpot** |
 | **`Right-Click`** | All | Context menu for applications and files |
 | **`Type text`** | All | Instant fuzzy search across all items and apps |
 | **`Enter` / `→`** | All | Launch selected item or enter submenu |
@@ -57,22 +58,23 @@ RavenSpot brings the speed and elegance of macOS Spotlight and Raycast combined 
 
 ### 🪟 Windows 11
 
-#### Option A: Prebuilt Executable (Recommended)
-1. Go to the **[Releases](https://github.com/cdokuro/ravenspot/releases)** page or **GitHub Actions Artifacts**.
-2. Download `RavenSpot-Windows-x64.zip` and extract it anywhere (e.g. `C:\Tools\RavenSpot`).
-3. Run `RavenSpot.exe` (or add a shortcut in your `shell:startup` folder to launch on boot).
-4. Press **`Alt + Space`** (or `Win + Space`) anytime to toggle RavenSpot!
+#### Option A: Prebuilt Build (Recommended)
+1. Go to the **[Releases](https://github.com/cdokuro/ravenspot/releases)** page or the **GitHub Actions artifacts** of the *Build Windows* workflow.
+2. Download `RavenSpot-Windows-x64.zip` and extract it anywhere (e.g. `C:\Tools\RavenSpot`). Keep the folder together: Qt DLLs, `Menu.qml`, `icons/`, `sounds/` and `compat/` sit next to the exe.
+3. Run `ravenspot.exe --daemon` (or put a shortcut to it in your `shell:startup` folder to launch on boot).
+4. Press **`Alt + Space`** anytime to toggle RavenSpot. If another program already owns it, `Ctrl + Alt + Space` is used instead; set `RAVENSPOT_HOTKEY` (e.g. `win+shift+space`) to choose your own.
 
-#### Option B: Build from Source with `build.bat`
+The Windows build is the same native C++ app as on Linux. Windows-specific parts: Start Menu and Store apps, Explorer, Windows Terminal / PowerShell, Win32 power and volume, and Job objects for inline commands. Optional: `RAVENSPOT_WIN_BACKDROP=acrylic` (or `mica`) adds a DWM backdrop on Windows 11.
+
+#### Option B: Build from Source (Qt 6 + MSVC)
 ```cmd
-# 1. Clone repository
+:: Qt 6.8+ (msvc2022_64, with the Qt Multimedia module) and Visual Studio 2022
 git clone https://github.com/cdokuro/ravenspot.git
 cd ravenspot
-
-# 2. Double click or run build.bat
-build.bat
-
-# The standalone RavenSpot.exe will be ready in dist\RavenSpot.exe
+mkdir build && cd build
+qmake ..\ravenspot.pro "CONFIG+=release" "CONFIG-=debug_and_release"
+nmake
+windeployqt --release --qmldir .. ravenspot.exe
 ```
 
 ---
@@ -98,7 +100,7 @@ The installer will set up RavenSpot, configure the resident systemd daemon, map 
 
 You can override or extend the menu without touching core files:
 - **Linux**: `~/.config/ravenspot/menu.jsonc`
-- **Windows**: `%APPDATA%\ravenspot\menu.jsonc`
+- **Windows**: `%LOCALAPPDATA%\ravenspot\menu.jsonc`
 
 ```jsonc
 {

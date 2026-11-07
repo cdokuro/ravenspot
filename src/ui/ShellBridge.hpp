@@ -202,7 +202,21 @@ public slots:
     Q_INVOKABLE void launchUpdate();
     Q_INVOKABLE void openSystemMonitor(const QString &section = QStringLiteral("overview"));
 
+    // ── 9. Pasted links: open in browser or download the video ──
+    // "linux" | "windows" (QML uses it for platform-specific install hints)
+    Q_INVOKABLE QString platformName() const;
+    Q_INVOKABLE void openUrl(const QString &url);
+    // yt-dlp on PATH (or a known per-user install location)
+    Q_INVOKABLE bool isVideoDownloaderAvailable() const;
+    // Package-manager command that installs yt-dlp on this platform
+    Q_INVOKABLE QString videoDownloaderInstallCommand() const;
+    // Starts yt-dlp in the inline runner (output panel) into the Downloads folder.
+    // false: not an http(s) URL, yt-dlp missing, or another command is running.
+    Q_INVOKABLE bool downloadVideo(const QString &url);
+
 private:
+    void initPlatform(); // ShellBridge_linux.cpp / ShellBridge_win.cpp
+    [[nodiscard]] QString videoDownloaderPath() const;
     void updateTelemetry();
     void activateDolphinWindow(const QString &folderHint);
 
@@ -234,6 +248,12 @@ private:
     unsigned long long m_lastTotalIdle{0};
     int m_lastCpuPercent{0};
     int m_lastGpuPercent{0};
+#ifdef Q_OS_WIN
+    // GetSystemTimes() samples for the CPU meter
+    unsigned long long m_lastWinIdle{0};
+    unsigned long long m_lastWinTotal{0};
+    void *m_powerRequest{nullptr}; // PowerCreateRequest handle while sleep is blocked
+#endif
 };
 
 } // namespace ravenspot

@@ -33,6 +33,9 @@ public:
     [[nodiscard]] int exitCode() const { return m_exitCode; }
 
     Q_INVOKABLE bool start(const QString &command);
+    // Runs a program with an argv list (no shell). displayCommand is what the
+    // output panel and the finish notification show.
+    bool startProgram(const QString &program, const QStringList &args, const QString &displayCommand);
     Q_INVOKABLE void stop();
     Q_INVOKABLE void clear();
 
@@ -42,6 +45,7 @@ signals:
     void finished(int exitCode, bool crashed);
 
 private:
+    bool launch(const QString &program, const QStringList &args, const QString &displayCommand);
     void appendChunk(const QByteArray &data);
     void scheduleOutputSignal();
 
@@ -52,6 +56,9 @@ private:
     bool m_partialTruncated{false}; // kMaxLineChars aşıldı: satır sonuna kadar at
     QStringDecoder m_decoder{QStringDecoder::Utf8}; // chunk sınırında bölünen UTF-8'i birleştirir
     qint64 m_pgid{0}; // komutun süreç grubu (kendi oturumunda başlar)
+#ifdef Q_OS_WIN
+    void *m_job{nullptr}; // Job object: stop() ends the whole process tree
+#endif
     int m_exitCode{0};
     QTimer m_emitTimer;
 };

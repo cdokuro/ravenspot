@@ -5,16 +5,21 @@
 #include <cstring>
 #include <cstdlib>
 
+#ifdef _WIN32
+#include <windows.h>
+#include <cstdio>
+#else
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <unistd.h>
 #include <csignal>
+#include <malloc.h>
+#endif
 
 #include <QGuiApplication>
 #include <QSocketNotifier>
 #include <QJsonObject>
 #include <QDateTime>
-#include <malloc.h>
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
 #include <QQuickWindow>
@@ -31,6 +36,9 @@
 #include "audio/AudioEngine.hpp"
 #include <QTimer>
 #include "search/AppIndexer.hpp"
+#ifdef _WIN32
+#include "core/GlobalHotkey_win.hpp"
+#endif
 
 namespace {
 
@@ -51,6 +59,27 @@ void printHelp() {
               << "  -h, --help     Show this help message\n"
               << "  -v, --version  Print version information\n";
 }
+
+#ifdef _WIN32
+// GUI-subsystem exe: print CLI replies ("status", "--help") into the console
+// that started us, if any. Double-clicking the exe has no console: no-op.
+void attachParentConsole() {
+    // stdout already redirected (pipe/file, e.g. CI or "ravenspot status > x"): keep it
+    const HANDLE out = ::GetStdHandle(STD_OUTPUT_HANDLE);
+    if (out && out != INVALID_HANDLE_VALUE && ::GetFileType(out) != FILE_TYPE_UNKNOWN) return;
+    if (::AttachConsole(ATTACH_PARENT_PROCESS)) {
+        FILE *f = nullptr;
+        freopen_s(&f, "CONOUT$", "w", stdout);
+        freopen_s(&f, "CONOUT$", "w", stderr);
+        std::cout.clear();
+        std::cerr.clear();
+    }
+}
+
+void trimHeap() {}
+void setupSignalHandlers(QGuiApplication &) {} // closing is "ravenspot quit" or logoff
+#else
+void trimHeap() { ::malloc_trim(0); }
 
 int sigFd[2];
 
@@ -80,10 +109,14 @@ void setupSignalHandlers(QGuiApplication &app) {
     sigaction(SIGTERM, &sa, nullptr);
     sigaction(SIGHUP, &sa, nullptr);
 }
+#endif
 
 } // anonymous namespace
 
 int main(int argc, char *argv[]) {
+#ifdef _WIN32
+    if (argc > 1) attachParentConsole();
+#endif
     std::string command;
     bool daemonMode = false;
 
@@ -157,7 +190,11 @@ int main(int argc, char *argv[]) {
         return 0;
     }
 
+#ifndef _WIN32
     QQuickWindow::setGraphicsApi(QSGRendererInterface::OpenGL);
+#endif
+    // Windows: Qt's default Direct3D 11 (translucent windows via DirectComposition,
+    // WARP fallback without a GPU). QSG_RHI_BACKEND=opengl switches if needed.
 
     QGuiApplication app(argc, argv);
 
@@ -188,7 +225,7 @@ int main(int argc, char *argv[]) {
     auto audioEngine = std::make_unique<ravenspot::AudioEngine>(&app);
     auto appIndexer = std::make_unique<ravenspot::AppIndexer>(&app);
     appIndexer->initialize();
-    ::malloc_trim(0);
+    trimHeap();
 
     auto shellBridge = std::make_unique<ravenspot::ShellBridge>(startHidden, &app);
 
@@ -207,7 +244,9 @@ int main(int argc, char *argv[]) {
     });
 
     QQmlApplicationEngine engine;
+#ifndef _WIN32
     engine.addImportPath(QStringLiteral("/usr/lib/qt6/qml"));
+#endif
     engine.rootContext()->setContextProperty(QStringLiteral("Shell"), shellBridge.get());
     engine.addImageProvider(QStringLiteral("appicon"), appIconProvider);
     engine.addImageProvider(QStringLiteral("themeicon"), themeIconProvider);
@@ -232,6 +271,17 @@ int main(int argc, char *argv[]) {
         singleInstance.releaseLock();
         return 1;
     }
+
+#ifdef _WIN32
+    // KDE-only QML modules imported by Menu.qml get small stand-ins on Windows
+    for (const QString &base : {QFileInfo(qmlPath).absolutePath(), QCoreApplication::applicationDirPath()}) {
+        const QString compat = base + QStringLiteral("/compat/qml");
+        if (QDir(compat).exists()) {
+            engine.addImportPath(compat);
+            break;
+        }
+    }
+#endif
 
     // Veri dosyaları (emoji.json) Menu.qml'in yanındaki assets/ dizininde
     shellBridge->setAssetsDir(QFileInfo(qmlPath).absolutePath() + QStringLiteral("/assets"));
@@ -263,13 +313,24 @@ int main(int argc, char *argv[]) {
     QObject::connect(&server, &ravenspot::DaemonServer::reloadRequested, shellBridge.get(), &ravenspot::ShellBridge::requestReload);
     QObject::connect(&server, &ravenspot::DaemonServer::quitRequested, &app, &QGuiApplication::quit);
 
-    ::malloc_trim(0);
+    trimHeap();
 
     if (!server.start()) {
         std::cerr << "ravenspot: failed to start IPC daemon server\n";
         singleInstance.releaseLock();
         return 1;
     }
+
+#ifdef _WIN32
+    // Windows has no desktop-level shortcut that runs "ravenspot --toggle" like
+    // KDE does, so the daemon owns a global hotkey. RAVENSPOT_HOTKEY overrides it.
+    ravenspot::GlobalHotkey hotkey;
+    QObject::connect(&hotkey, &ravenspot::GlobalHotkey::activated, shellBridge.get(), &ravenspot::ShellBridge::toggleMenu);
+    const QString hotkeySpec = qEnvironmentVariable("RAVENSPOT_HOTKEY", QStringLiteral("alt+space"));
+    if (!hotkey.registerHotkey(hotkeySpec)) {
+        hotkey.registerHotkey(QStringLiteral("ctrl+alt+space"));
+    }
+#endif
 
     if (!startHidden) {
         shellBridge->showMenu();

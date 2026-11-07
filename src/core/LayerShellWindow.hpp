@@ -6,6 +6,67 @@
 #include <QScreen>
 #include <QTimer>
 #include <QElapsedTimer>
+#ifdef _WIN32
+// ── Windows: frameless, always-on-top tool window ─────────────────────────────
+// Same public API as the Wayland layer-shell version below so ShellBridge and
+// main.cpp stay platform-neutral. Implementation: LayerShellWindow_win.cpp.
+namespace ravenspot {
+
+class LayerShellWindow : public QObject {
+    Q_OBJECT
+
+public:
+    explicit LayerShellWindow(QQuickWindow *window = nullptr, QObject *parent = nullptr);
+    ~LayerShellWindow() override;
+
+    void attachWindow(QQuickWindow *window);
+    void showOnActiveScreen();
+    void showWindow() { showOnActiveScreen(); }
+    void hideWindow();
+    void toggleWindow();
+    [[nodiscard]] bool isVisible() const;
+    [[nodiscard]] QQuickWindow* window() const { return m_window.data(); }
+    [[nodiscard]] QScreen* activeScreen() const;
+    void updateBlurRegion(int cardHeight = 600);
+    void setCardHeight(int height);
+    [[nodiscard]] int cardHeight() const noexcept { return m_cardHeight; }
+    [[nodiscard]] int visibleHeight() const;
+    void beginDrag(double initialDx = 0, double initialDy = 0);
+    QPoint dragBy(double deltaX, double deltaY);
+    void updateDrag(double localX = 0, double localY = 0);
+    void endDrag();
+    void setWindowPosition(int x, int y);
+    [[nodiscard]] QPoint windowPosition() const noexcept { return QPoint(m_posX, m_posY); }
+    [[nodiscard]] bool isSwitchingScreen() const noexcept { return false; }
+
+signals:
+    void visibilityChanged(bool visible);
+    void screenChanged(QScreen *screen);
+
+private slots:
+    void onGraceTimerTriggered();
+    void onWindowActiveChanged();
+    void onFocusWindowChanged(QWindow *focusWindow);
+
+private:
+    void initWindow();
+    void applyNativeStyle();
+    void syncPositionFromWindow();
+
+    QPointer<QQuickWindow> m_window;
+    bool m_ownsWindow{false};
+    QTimer m_graceTimer;
+    bool m_canCloseOnInactive{false};
+    int m_cardHeight{600};
+    int m_posX{0};
+    int m_posY{0};
+    bool m_hasCustomPosition{false};
+    bool m_isDragging{false};
+    QPointer<QScreen> m_lastScreen;
+};
+
+} // namespace ravenspot
+#else
 #include <LayerShellQt/Window>
 
 #include "core/RelativePointer.hpp"
@@ -105,3 +166,4 @@ private:
 };
 
 } // namespace ravenspot
+#endif // _WIN32

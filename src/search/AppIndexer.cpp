@@ -9,14 +9,16 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonArray>
+#include <QUrl>
+#ifndef Q_OS_WIN
 #include <QDBusMessage>
 #include <QDBusConnection>
 #include <QDBusArgument>
-#include <QUrl>
 #include <QDBusReply>
 #include <QDBusInterface>
-#include <algorithm>
 #include <sys/stat.h>
+#endif
+#include <algorithm>
 
 namespace ravenspot {
 
@@ -35,6 +37,9 @@ AppIndexer::~AppIndexer() = default;
 
 void AppIndexer::initialize() {
     rebuildIndex();
+#ifdef Q_OS_WIN
+    loadPackagedAppsAsync();
+#endif
 
     // Watch standard directories for live updates
     const auto dirs = standardApplicationDirectories();
@@ -61,6 +66,16 @@ void AppIndexer::onDebounceTimeout() {
 
 QStringList AppIndexer::standardApplicationDirectories() {
     QStringList dirs;
+#ifdef Q_OS_WIN
+    // Per-user Start Menu first (shadows the all-users entry with the same name)
+    const QString appData = QString::fromLocal8Bit(qgetenv("APPDATA"));
+    const QString programData = QString::fromLocal8Bit(qgetenv("ProgramData"));
+    if (!appData.isEmpty())
+        dirs.append(QDir::fromNativeSeparators(appData) + QStringLiteral("/Microsoft/Windows/Start Menu/Programs"));
+    dirs.append((programData.isEmpty() ? QStringLiteral("C:/ProgramData") : QDir::fromNativeSeparators(programData))
+                + QStringLiteral("/Microsoft/Windows/Start Menu/Programs"));
+    return dirs;
+#endif
     const QString home = QDir::homePath();
 
     // 1. User local applications (highest precedence)
@@ -94,6 +109,11 @@ void AppIndexer::scanDirectoryRecursive(const QString &dirPath,
     QDir dir(dirPath);
     if (!dir.exists()) return;
 
+#ifdef Q_OS_WIN
+    // No inodes: symlinked/junction folders are skipped below (fi.isSymLink)
+    Q_UNUSED(visitedInodes)
+    static const QString launcherSuffix = QStringLiteral(".lnk");
+#else
     // Inode composite protection against circular symlinks
     struct stat st;
     if (::stat(dirPath.toUtf8().constData(), &st) == 0) {
@@ -101,12 +121,14 @@ void AppIndexer::scanDirectoryRecursive(const QString &dirPath,
         if (visitedInodes.contains(inodeKey)) return;
         visitedInodes.insert(inodeKey);
     }
+    static const QString launcherSuffix = QStringLiteral(".desktop");
+#endif
 
     const QFileInfoList entries = dir.entryInfoList(QDir::Files | QDir::Dirs | QDir::NoDotAndDotDot);
     for (const auto &fi : entries) {
         if (fi.isDir() && !fi.isSymLink()) {
             scanDirectoryRecursive(fi.absoluteFilePath(), seenBasenames, visitedInodes);
-        } else if (fi.isFile() && fi.fileName().endsWith(QStringLiteral(".desktop"))) {
+        } else if (fi.isFile() && fi.fileName().endsWith(launcherSuffix, Qt::CaseInsensitive)) {
             const QString baseName = fi.fileName();
             // Higher precedence directory encountered first wins (shadowing)
             if (!seenBasenames.contains(baseName)) {
@@ -356,10 +378,24 @@ void AppIndexer::rebuildIndex() {
     for (const auto &[baseName, fullPath] : seenBasenames) {
         Q_UNUSED(baseName)
         AppEntry entry;
+#ifdef Q_OS_WIN
+        if (parseShortcutFile(fullPath, entry)) {
+#else
         if (parseDesktopFile(fullPath, entry)) {
+#endif
             newSnapshot->allApps.push_back(std::move(entry));
         }
     }
+#ifdef Q_OS_WIN
+    // Store apps: only those without a Start Menu shortcut of the same name
+    {
+        std::unordered_set<QString> labels;
+        for (const auto &a : newSnapshot->allApps) labels.insert(a.label.toLower());
+        for (const auto &p : m_packagedApps) {
+            if (!labels.contains(p.label.toLower())) newSnapshot->allApps.push_back(p);
+        }
+    }
+#endif
 
     // Alphabetical sort by label case-insensitively
     std::sort(newSnapshot->allApps.begin(), newSnapshot->allApps.end(),
@@ -460,6 +496,7 @@ QString AppIndexer::getAppActionsJson(const QString &desktopPath) const {
     return QString::fromUtf8(QJsonDocument(arr).toJson(QJsonDocument::Compact));
 }
 
+#ifndef Q_OS_WIN // Linux launch/activation (KWin D-Bus, gtk-launch, kioclient); Windows: AppIndexer_win.cpp
 bool AppIndexer::activateExistingWindow(const QString &desktopOrExec) const {
     const QString trimmed = desktopOrExec.trimmed();
     if (trimmed.isEmpty()) return false;
@@ -834,6 +871,8 @@ void AppIndexer::runInTerminal(const QString &desktopOrCmd) const {
                                        escaped + QStringLiteral("; exec $SHELL")});
     }
 }
+
+#endif // !Q_OS_WIN
 
 QString AppIndexer::resolveAppIcon(const QString &appId) const {
     auto snapshot = m_snapshot.load();
