@@ -101,6 +101,7 @@ jobs:
         shell: pwsh
         run: |
           $exe = (Resolve-Path dist/ravenspot.exe).Path
+          Set-Location dist   # load Menu.qml/compat from the packaged folder, not the repo
           function Invoke-Rs([string]$arg) {
             $out = Join-Path $env:RUNNER_TEMP "rs-$arg.txt"
             Start-Process $exe -ArgumentList $arg -Wait -NoNewWindow -RedirectStandardOutput $out | Out-Null

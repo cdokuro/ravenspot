@@ -118,7 +118,10 @@ bool SingleInstance::sendCommand(std::string_view command, std::string *response
     if (response) {
         response->clear();
         char buf[1024];
-        while (::GetTickCount64() < deadline + 300) {
+        // Connected: the daemon may be busy for a moment (startup, icon loading),
+        // so allow up to 2 s for the reply even though connecting has a short timeout.
+        const ULONGLONG replyDeadline = ::GetTickCount64() + 2000;
+        while (::GetTickCount64() < replyDeadline) {
             DWORD avail = 0;
             if (!::PeekNamedPipe(h, nullptr, 0, nullptr, &avail, nullptr)) break; // server closed
             if (avail == 0) { ::Sleep(5); continue; }
