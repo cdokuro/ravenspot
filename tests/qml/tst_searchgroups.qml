@@ -35,6 +35,8 @@ TestCase {
         compare(MenuModel.searchGroupKey(r("system.lock")), "system")
         compare(MenuModel.searchGroupKey(r("tools.capture.region")), "tools")
         compare(MenuModel.searchGroupKey(r("help.cachyos")), "help")
+        compare(MenuModel.searchGroupKey(r("apps.other.kcm-kded", { kind: "app" })), "otherApps")
+        compare(MenuModel.searchGroupKey(r("apps.other", { kind: "menu" })), "otherApps")
     }
 
     function test_fixedGroupOrderAndHeaders() {

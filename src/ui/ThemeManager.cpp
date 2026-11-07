@@ -34,6 +34,10 @@ QVariantMap ThemeTokens::toVariantMap() const {
     map[QStringLiteral("accent")] = accent;
     map[QStringLiteral("cpuColor")] = cpuColor;
     map[QStringLiteral("gpuColor")] = gpuColor;
+    map[QStringLiteral("style")] = style;
+    map[QStringLiteral("surface")] = surface;
+    map[QStringLiteral("panel")] = panel;
+    map[QStringLiteral("cardBorder")] = cardBorder.isEmpty() ? bgBorder : cardBorder;
     return map;
 }
 
@@ -54,6 +58,32 @@ ThemeTokens ThemeTokens::defaultRavenCyber() {
     t.accent = QStringLiteral("#ffd700");
     t.cpuColor = QStringLiteral("#ffd700");
     t.gpuColor = QStringLiteral("#00f0ff");
+    return t;
+}
+
+// Edna (Plasma global teması) ile uyumlu: Material blue‑grey yüzeyler, cyan
+// seçim, gün batımı turuncusu ikincil vurgu, kora ikonları, Noto Sans.
+ThemeTokens ThemeTokens::ednaTheme() {
+    ThemeTokens t;
+    t.key = QStringLiteral("edna");
+    t.name = QStringLiteral("Edna");
+    t.desc = QStringLiteral("Flat blue-grey Material surfaces, cyan focus and Kora icons");
+    t.font = QStringLiteral("Noto Sans");
+    t.iconTheme = QStringLiteral("kora");
+    t.style = QStringLiteral("edna");
+    t.bgColor = QStringLiteral("#f5263238");
+    t.cardBorder = QStringLiteral("#1fffffff");
+    t.surface = QStringLiteral("#2f3d44");
+    t.panel = QStringLiteral("#1f2a30");
+    t.bgBorder = QStringLiteral("#10a6d4");
+    t.glowColor = QStringLiteral("#000000");
+    t.selBg = QStringLiteral("#3310a6d4");
+    t.selFg = QStringLiteral("#ffffff");
+    t.fgColor = QStringLiteral("#edf0f2");
+    t.fgDim = QStringLiteral("#90a4ae");
+    t.accent = QStringLiteral("#10a6d4");
+    t.cpuColor = QStringLiteral("#f5a623");
+    t.gpuColor = QStringLiteral("#4dd0e1");
     return t;
 }
 
@@ -133,6 +163,8 @@ QMap<QString, ThemeTokens> ThemeTokens::builtInThemes() {
     obsidian.gpuColor = QStringLiteral("#a3a3a3");
     map[obsidian.key] = obsidian;
 
+    map[QStringLiteral("edna")] = ednaTheme();
+
     return map;
 }
 
@@ -162,6 +194,11 @@ ThemeTokens ThemeTokens::fromJsonObject(const QString &key, const QJsonObject &o
     t.accent = ThemeManager::sanitizeColor(obj[QStringLiteral("accent")].toString(), defaults.accent);
     t.cpuColor = ThemeManager::sanitizeColor(obj[QStringLiteral("cpuColor")].toString(), defaults.cpuColor);
     t.gpuColor = ThemeManager::sanitizeColor(obj[QStringLiteral("gpuColor")].toString(), defaults.gpuColor);
+    if (obj.contains(QStringLiteral("style"))) t.style = obj[QStringLiteral("style")].toString();
+    t.surface = ThemeManager::sanitizeColor(obj[QStringLiteral("surface")].toString(), defaults.surface);
+    t.panel = ThemeManager::sanitizeColor(obj[QStringLiteral("panel")].toString(), defaults.panel);
+    if (obj.contains(QStringLiteral("cardBorder")))
+        t.cardBorder = ThemeManager::sanitizeColor(obj[QStringLiteral("cardBorder")].toString(), defaults.cardBorder);
 
     return t;
 }

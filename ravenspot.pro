@@ -29,6 +29,8 @@ HEADERS += \
     src/audio/SoundConfig.hpp \
     src/search/SearchResultItem.hpp \
     src/search/AppIndexer.hpp \
+    src/search/AppClassify.hpp \
+    src/ui/IconAlias.hpp \
     src/search/CalcConverter.hpp \
     src/run/CommandAnalyzer.hpp \
     src/run/CommandRunner.hpp \
@@ -49,6 +51,8 @@ SOURCES += \
     src/audio/AudioEngine.cpp \
     src/audio/SoundConfig.cpp \
     src/search/AppIndexer.cpp \
+    src/search/AppClassify.cpp \
+    src/ui/IconAlias.cpp \
     src/search/CalcConverter.cpp \
     src/run/CommandAnalyzer.cpp \
     src/run/CommandRunner.cpp \

@@ -80,6 +80,26 @@
       "accent": "#ffffff",
       "cpuColor": "#e5e5e5",
       "gpuColor": "#a3a3a3"
+    },
+    "edna": {
+      "name": "Edna",
+      "desc": "Flat blue-grey Material surfaces, cyan focus and Kora icons",
+      "font": "Noto Sans",
+      "iconTheme": "kora",
+      "style": "edna",
+      "bgColor": "#f5263238",
+      "cardBorder": "#1fffffff",
+      "surface": "#2f3d44",
+      "panel": "#1f2a30",
+      "bgBorder": "#10a6d4",
+      "glowColor": "#000000",
+      "selBg": "#3310a6d4",
+      "selFg": "#ffffff",
+      "fgColor": "#edf0f2",
+      "fgDim": "#90a4ae",
+      "accent": "#10a6d4",
+      "cpuColor": "#f5a623",
+      "gpuColor": "#4dd0e1"
     }
   }
 }

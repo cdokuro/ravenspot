@@ -1,4 +1,5 @@
 #include "AppIndexer.hpp"
+#include "AppClassify.hpp"
 
 #include <QDir>
 #include <QFile>
@@ -349,10 +350,11 @@ bool AppIndexer::parseDesktopFile(const QString &filePath, AppEntry &outEntry, c
     if (isKcm) {
         outEntry.aliases.append({QStringLiteral("settings"), QStringLiteral("ayarlar"),
                                  QStringLiteral("setup"), QStringLiteral("kcm"), QStringLiteral("systemsettings")});
-        outEntry.category = QStringLiteral("system");
-    } else {
-        outEntry.category = categorizeApp(rawCategoriesStr);
     }
+    // Ayar modülleri, kaldırıcılar ve yardımcılar Apps listelerini doldurmasın:
+    // hepsi "Other Apps" (other) altında toplanır, All Apps'te görünmez.
+    outEntry.category = isNonUserApp(outEntry.id, outEntry.label, rawCategoriesStr)
+        ? QStringLiteral("other") : categorizeApp(rawCategoriesStr);
 
     outEntry.cleanedExec = cleanExecCommand(outEntry.rawExec);
 
@@ -408,10 +410,10 @@ void AppIndexer::rebuildIndex() {
     const QStringList standardCats = {
         QStringLiteral("games"), QStringLiteral("internet"), QStringLiteral("development"),
         QStringLiteral("multimedia"), QStringLiteral("graphics"), QStringLiteral("office"),
-        QStringLiteral("system"), QStringLiteral("utilities")
+        QStringLiteral("system"), QStringLiteral("utilities"), QStringLiteral("other")
     };
     for (const auto &c : standardCats) countMap[c] = 0;
-    countMap[QStringLiteral("all")] = static_cast<int>(newSnapshot->allApps.size());
+    countMap[QStringLiteral("all")] = 0;
 
     for (size_t i = 0; i < newSnapshot->allApps.size(); ++i) {
         const auto &app = newSnapshot->allApps[i];
@@ -419,7 +421,10 @@ void AppIndexer::rebuildIndex() {
         newSnapshot->desktopPathLookup[app.desktopPath] = i;
 
         newSnapshot->categoryIndices[app.category].push_back(i);
-        newSnapshot->categoryIndices[QStringLiteral("all")].push_back(i);
+        if (app.category != QStringLiteral("other")) {
+            newSnapshot->categoryIndices[QStringLiteral("all")].push_back(i);
+            countMap[QStringLiteral("all")] = countMap[QStringLiteral("all")].toInt() + 1;
+        }
 
         if (countMap.contains(app.category)) {
             countMap[app.category] = countMap[app.category].toInt() + 1;

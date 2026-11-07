@@ -103,6 +103,15 @@ Window {
     property color scrimColor: "#66000000"
     property color cpuColor: "#ffd700"
     property color gpuColor: "#00f0ff"
+    // Yapısal stil (ThemeManager "style"): "edna" düz Material yüzeyler, gölge,
+    // sol vurgu çubuklu seçim ve glif yerine ikon teması (kora) kullanır.
+    property string uiStyle: "neon"
+    readonly property bool edna: uiStyle === "edna"
+    property color surfaceColor: "#12ffffff"
+    property color panelColor: "#18000000"
+    property color cardBorderColor: "#ffd700"
+    property color accentColor: "#ffd700"
+    readonly property int iconSize: edna ? 28 : 26
     property string iconFont: "FantasqueSansM Nerd Font"
     property string textFont: "Inter"
     property int cardWidth: 495
@@ -191,6 +200,11 @@ Window {
         root.cpuColor = t.cpuColor
         root.gpuColor = t.gpuColor
         root.textFont = t.font || "Inter"
+        root.uiStyle = t.style || "neon"
+        root.surfaceColor = t.surface || "#12ffffff"
+        root.panelColor = t.panel || "#18000000"
+        root.cardBorderColor = t.cardBorder || t.bgBorder
+        root.accentColor = t.accent || t.bgBorder
         root.themeVersion += 1
     }
 
@@ -230,6 +244,7 @@ Window {
                 "apps.office": "office",
                 "apps.system": "system",
                 "apps.utilities": "utilities",
+                "apps.other": "other",
                 "apps.all": "all"
             }
             var empty = ({})
@@ -429,7 +444,9 @@ Window {
                 kind: "app",
                 icon: "",
                 iconFont: "",
-                appIcon: a.id,   // image://appicon/<desktop-id>
+                // .desktop Icon= değeri (tema adı ya da dosya yolu); kimlik yalnız yedek.
+                // Eskiden kimlik ("kcm_kded") gönderiliyordu, tema bulamayınca dişli çıkıyordu.
+                appIcon: a.icon || a.id,
                 appId: a.id,
                 label: a.label,
                 title: "",
@@ -1525,6 +1542,20 @@ Window {
     property var contextMainEntries: []
     property string renameError: ""
 
+    // Edna: bağlam menüsü eylemlerinin ikon teması (kora) karşılıkları
+    function contextIconName(actionType) {
+        var m = {
+            launchApp: "system-run", runAction: "system-run", activateCurrent: "system-run",
+            toggleAutostart: "preferences-system", openLocation: "folder-open", openPath: "document-open",
+            runInTerminal: "utilities-terminal", openInTerminal: "utilities-terminal",
+            openInDiscover: "plasmadiscover", editDesktop: "document-edit", copyPath: "edit-copy",
+            copyFile: "edit-copy", uninstall: "edit-delete", moveToTrash: "user-trash",
+            startRename: "edit-rename", showProperties: "document-properties", openWithMenu: "application-menu",
+            compress: "ark", extract: "archive-extract"
+        }
+        return m[actionType] || ""
+    }
+
     function snapshotContextEntries() {
         var out = []
         for (var i = 0; i < contextMenuModel.count; i++) {
@@ -1909,19 +1940,21 @@ Window {
         id: glowSource
         anchors.fill: card
         radius: card.radius
-        color: "transparent"
+        // Edna: neon hale yerine kartın altında yumuşak, aşağı düşen gölge
+        color: root.edna ? root.bgColor : "transparent"
         border.color: root.bgBorder
-        border.width: 2
+        border.width: root.edna ? 0 : 2
         visible: false
     }
     MultiEffect {
         anchors.fill: glowSource
         source: glowSource
         shadowEnabled: true
-        shadowColor: root.bgBorder
-        shadowBlur: 0.6
+        shadowColor: root.edna ? "#000000" : root.bgBorder
+        shadowOpacity: root.edna ? 0.55 : 1.0
+        shadowBlur: root.edna ? 1.0 : 0.6
         shadowHorizontalOffset: 0
-        shadowVerticalOffset: 0
+        shadowVerticalOffset: root.edna ? 10 : 0
         opacity: root.opened ? 1.0 : 0.0
         Behavior on opacity { id: glowOpacityB; OpenCloseAnimation { behavior: glowOpacityB; threshold: 0.5 } }
     }
@@ -1941,9 +1974,9 @@ Window {
         anchors.topMargin: 24
         anchors.horizontalCenter: parent.horizontalCenter
         color: root.bgColor
-        border.color: root.bgBorder
+        border.color: root.cardBorderColor
         border.width: 1
-        radius: 14
+        radius: root.edna ? 12 : 14
         clip: true
         opacity: root.opened ? 1.0 : 0.0
         scale: root.opened ? 1.0 : 0.97
@@ -2180,7 +2213,7 @@ Window {
                             text: "Raven"
                             color: root.fgColor
                             font.pixelSize: 13
-                            font.family: "Fira Sans, Inter, sans-serif"
+                            font.family: root.edna ? root.textFont : "Fira Sans, Inter, sans-serif"
                             font.weight: Font.Bold
                             font.letterSpacing: 0.8
                             anchors.verticalCenter: parent.verticalCenter
@@ -2188,9 +2221,9 @@ Window {
 
                         Text {
                             text: "Spot"
-                            color: root.selFg
+                            color: root.edna ? root.accentColor : root.selFg
                             font.pixelSize: 13
-                            font.family: "Fira Sans, Inter, sans-serif"
+                            font.family: root.edna ? root.textFont : "Fira Sans, Inter, sans-serif"
                             font.weight: Font.DemiBold
                             font.letterSpacing: 0.8
                             anchors.verticalCenter: parent.verticalCenter
@@ -2262,9 +2295,10 @@ Window {
                     anchors.centerIn: parent
                     height: 20
                     width: powerBtnContent.width + 14
-                    radius: 5
-                    color: powerProfileMouse.containsMouse || root.powerFlyoutOpen ? Qt.rgba(1, 1, 1, 0.14) : Qt.rgba(1, 1, 1, 0.06)
-                    border.color: powerProfileMouse.containsMouse || root.powerFlyoutOpen ? root.selFg : Qt.rgba(root.bgBorder.r, root.bgBorder.g, root.bgBorder.b, 0.25)
+                    radius: root.edna ? 10 : 5
+                    color: root.edna ? (powerProfileMouse.containsMouse || root.powerFlyoutOpen ? Qt.lighter(root.surfaceColor, 1.25) : root.surfaceColor)
+                         : (powerProfileMouse.containsMouse || root.powerFlyoutOpen ? Qt.rgba(1, 1, 1, 0.14) : Qt.rgba(1, 1, 1, 0.06))
+                    border.color: root.edna ? "transparent" : (powerProfileMouse.containsMouse || root.powerFlyoutOpen ? root.selFg : Qt.rgba(root.bgBorder.r, root.bgBorder.g, root.bgBorder.b, 0.25))
                     border.width: 1
 
                     Row {
@@ -2272,11 +2306,14 @@ Window {
                         spacing: 5
                         anchors.centerIn: parent
 
-                        Text {
-                            text: root.currentPowerProfile === "power-saver" ? "󰌪" : (root.currentPowerProfile === "performance" ? "󰓅" : "󰾆")
+                        ThemeGlyph {
+                            useIcon: root.edna
+                            version: root.themeVersion
+                            iconName: "power-profile-" + (root.currentPowerProfile || "balanced") + "-symbolic"
+                            glyph: root.currentPowerProfile === "power-saver" ? "󰌪" : (root.currentPowerProfile === "performance" ? "󰓅" : "󰾆")
                             color: root.currentPowerProfile === "power-saver" ? "#22c55e" : (root.currentPowerProfile === "performance" ? "#f97316" : root.selFg)
-                            font.pixelSize: 13
-                            font.family: root.iconFont
+                            size: 13
+                            glyphFont: root.iconFont
                             anchors.verticalCenter: parent.verticalCenter
                         }
 
@@ -2319,17 +2356,21 @@ Window {
                     anchors.verticalCenter: parent.verticalCenter
                     height: 22
                     width: 26
-                    radius: 5
-                    color: appVolMouse.containsMouse || root.audioFlyoutOpen ? Qt.rgba(1, 1, 1, 0.14) : Qt.rgba(1, 1, 1, 0.06)
-                    border.color: appVolMouse.containsMouse || root.audioFlyoutOpen ? root.selFg : Qt.rgba(root.bgBorder.r, root.bgBorder.g, root.bgBorder.b, 0.25)
+                    radius: root.edna ? 11 : 5
+                    color: root.edna ? (appVolMouse.containsMouse || root.audioFlyoutOpen ? Qt.lighter(root.surfaceColor, 1.25) : root.surfaceColor)
+                         : (appVolMouse.containsMouse || root.audioFlyoutOpen ? Qt.rgba(1, 1, 1, 0.14) : Qt.rgba(1, 1, 1, 0.06))
+                    border.color: root.edna ? "transparent" : (appVolMouse.containsMouse || root.audioFlyoutOpen ? root.selFg : Qt.rgba(root.bgBorder.r, root.bgBorder.g, root.bgBorder.b, 0.25))
                     border.width: 1
 
-                    Text {
+                    ThemeGlyph {
                         anchors.centerIn: parent
-                        text: root.appSoundMuted || root.appSoundVolume === 0 ? "󰝟" : (root.appSoundVolume > 50 ? "󰕾" : "󰖀")
+                        useIcon: root.edna
+                        version: root.themeVersion
+                        iconName: root.appSoundMuted || root.appSoundVolume === 0 ? "audio-volume-muted" : (root.appSoundVolume > 50 ? "audio-volume-high" : "audio-volume-low")
+                        glyph: root.appSoundMuted || root.appSoundVolume === 0 ? "󰝟" : (root.appSoundVolume > 50 ? "󰕾" : "󰖀")
                         color: root.appSoundMuted || root.appSoundVolume === 0 ? "#ef4444" : root.bgBorder
-                        font.pixelSize: 13
-                        font.family: root.iconFont
+                        size: 13
+                        glyphFont: root.iconFont
                     }
 
                     MouseArea {
@@ -2362,9 +2403,11 @@ Window {
                     anchors.leftMargin: 16
                     anchors.rightMargin: 16
                     height: 42
-                    radius: 12
-                    color: searchInput.activeFocus ? Qt.rgba(1, 1, 1, 0.12) : Qt.rgba(1, 1, 1, 0.07)
-                    border.color: searchInput.activeFocus ? Qt.rgba(255, 255, 255, 0.28) : Qt.rgba(255, 255, 255, 0.10)
+                    radius: root.edna ? 8 : 12
+                    color: root.edna ? root.surfaceColor
+                         : (searchInput.activeFocus ? Qt.rgba(1, 1, 1, 0.12) : Qt.rgba(1, 1, 1, 0.07))
+                    border.color: root.edna ? (searchInput.activeFocus ? Qt.rgba(root.accentColor.r, root.accentColor.g, root.accentColor.b, 0.65) : Qt.rgba(1, 1, 1, 0.05))
+                                : (searchInput.activeFocus ? Qt.rgba(255, 255, 255, 0.28) : Qt.rgba(255, 255, 255, 0.10))
                     border.width: searchInput.activeFocus ? 1.2 : 1
 
                     Behavior on border.color { ColorAnimation { duration: 120 } }
@@ -2380,17 +2423,20 @@ Window {
                     }
 
                     // Sol: Büyüteç İkonu (Apple Spotlight Style)
-                    Text {
+                    ThemeGlyph {
                         id: searchIcon
                         z: 1
                         anchors.left: parent.left
                         anchors.leftMargin: 12
                         anchors.verticalCenter: parent.verticalCenter
-                        text: "󰍉"
-                        font.family: root.iconFont
-                        font.pixelSize: 17
+                        useIcon: root.edna
+                        version: root.themeVersion
+                        iconName: "edit-find"
+                        glyph: "󰍉"
+                        glyphFont: root.iconFont
+                        size: root.edna ? 16 : 17
                         color: searchInput.text.length > 0 ? root.fgColor : root.fgDim
-                        Behavior on color { ColorAnimation { duration: 120 } }
+                        opacity: root.edna && searchInput.text.length === 0 ? 0.7 : 1.0
                     }
 
                     // Alt Kategori Dizin Breadcrumb Rozeti
@@ -2403,7 +2449,7 @@ Window {
                         anchors.verticalCenter: parent.verticalCenter
                         height: 24
                         radius: 6
-                        color: Qt.rgba(255, 255, 255, 0.12)
+                        color: root.edna ? Qt.rgba(root.accentColor.r, root.accentColor.g, root.accentColor.b, 0.18) : Qt.rgba(255, 255, 255, 0.12)
                         width: catBadgeContent.width + 16
 
                         Row {
@@ -2557,9 +2603,10 @@ Window {
                 id: cachyUpdateBadge
                 height: 22
                 width: updateContentRow.width + 12
-                radius: 5
-                color: updateBadgeMouse.containsMouse ? Qt.rgba(1, 1, 1, 0.12) : Qt.rgba(1, 1, 1, 0.06)
-                border.color: (root.sysUpdateInfo && root.sysUpdateInfo.has_updates) ? "#ff5252" : Qt.rgba(root.bgBorder.r, root.bgBorder.g, root.bgBorder.b, 0.25)
+                radius: root.edna ? 11 : 5
+                color: root.edna ? (updateBadgeMouse.containsMouse ? Qt.lighter(root.surfaceColor, 1.25) : root.surfaceColor)
+                     : (updateBadgeMouse.containsMouse ? Qt.rgba(1, 1, 1, 0.12) : Qt.rgba(1, 1, 1, 0.06))
+                border.color: (root.sysUpdateInfo && root.sysUpdateInfo.has_updates) ? "#ff5252" : (root.edna ? "transparent" : Qt.rgba(root.bgBorder.r, root.bgBorder.g, root.bgBorder.b, 0.25))
                 border.width: 1
 
                 Row {
@@ -2572,7 +2619,8 @@ Window {
                         height: 14
                         sourceSize.width: 14
                         sourceSize.height: 14
-                        source: (root.sysUpdateInfo && root.sysUpdateInfo.icon_path) ? "file://" + root.sysUpdateInfo.icon_path : "file:///usr/share/icons/hicolor/scalable/apps/cachy-update-blue.svg"
+                        source: root.edna ? ("image://themeicon/system-software-update?v=" + root.themeVersion)
+                              : ((root.sysUpdateInfo && root.sysUpdateInfo.icon_path) ? "file://" + root.sysUpdateInfo.icon_path : "file:///usr/share/icons/hicolor/scalable/apps/cachy-update-blue.svg")
                         anchors.verticalCenter: parent.verticalCenter
                     }
 
@@ -2606,9 +2654,9 @@ Window {
                 id: quickRebootBtn
                 height: 22
                 width: rebootContentRow.width + 14
-                radius: 5
-                color: rebootMouse.containsMouse ? Qt.rgba(255, 167, 38, 0.22) : Qt.rgba(1, 1, 1, 0.06)
-                border.color: rebootMouse.containsMouse ? "#ffa726" : Qt.rgba(root.bgBorder.r, root.bgBorder.g, root.bgBorder.b, 0.25)
+                radius: root.edna ? 11 : 5
+                color: rebootMouse.containsMouse ? Qt.rgba(255, 167, 38, 0.22) : (root.edna ? root.surfaceColor : Qt.rgba(1, 1, 1, 0.06))
+                border.color: rebootMouse.containsMouse ? "#ffa726" : (root.edna ? "transparent" : Qt.rgba(root.bgBorder.r, root.bgBorder.g, root.bgBorder.b, 0.25))
                 border.width: 1
 
                 Row {
@@ -2656,9 +2704,9 @@ Window {
                 id: quickShutdownBtn
                 height: 22
                 width: shutdownContentRow.width + 14
-                radius: 5
-                color: shutdownMouse.containsMouse ? Qt.rgba(255, 82, 82, 0.22) : Qt.rgba(1, 1, 1, 0.06)
-                border.color: shutdownMouse.containsMouse ? "#ff5252" : Qt.rgba(root.bgBorder.r, root.bgBorder.g, root.bgBorder.b, 0.25)
+                radius: root.edna ? 11 : 5
+                color: shutdownMouse.containsMouse ? Qt.rgba(255, 82, 82, 0.22) : (root.edna ? root.surfaceColor : Qt.rgba(1, 1, 1, 0.06))
+                border.color: shutdownMouse.containsMouse ? "#ff5252" : (root.edna ? "transparent" : Qt.rgba(root.bgBorder.r, root.bgBorder.g, root.bgBorder.b, 0.25))
                 border.width: 1
 
                 Row {
@@ -2706,7 +2754,7 @@ Window {
         Rectangle {
             width: parent.width
             height: 1
-            color: root.bgBorder
+            color: root.edna ? Qt.rgba(1, 1, 1, 0.06) : root.bgBorder
             anchors.top: header.bottom
         }
 
@@ -2745,9 +2793,20 @@ Window {
             boundsBehavior: Flickable.DragAndOvershootBounds
             highlight: Rectangle {
                 color: root.selBg
-                radius: 6
-                border.color: Qt.rgba(root.selFg.r, root.selFg.g, root.selFg.b, 0.18)
+                radius: root.edna ? 8 : 6
+                border.color: root.edna ? "transparent" : Qt.rgba(root.selFg.r, root.selFg.g, root.selFg.b, 0.18)
                 border.width: 1
+                // Edna (Plasma Kickoff gibi): seçili satırın solunda ince vurgu çubuğu
+                Rectangle {
+                    visible: root.edna
+                    width: 3
+                    radius: 1.5
+                    height: parent.height - 18
+                    anchors.left: parent.left
+                    anchors.leftMargin: 3
+                    anchors.verticalCenter: parent.verticalCenter
+                    color: root.accentColor
+                }
             }
             highlightMoveDuration: 110
             highlightMoveVelocity: -1
@@ -2766,7 +2825,7 @@ Window {
                     anchors.bottom: parent.bottom
                     anchors.bottomMargin: 5
                     text: parent.section.toUpperCase()
-                    color: root.fgDim
+                    color: root.edna ? root.accentColor : root.fgDim
                     font.family: root.textFont
                     font.pixelSize: 10
                     font.weight: Font.DemiBold
@@ -2817,13 +2876,13 @@ Window {
                 // Tema ikonu (menü girdileri için renkli candy-icons ikonu)
                 Image {
                     id: themeIconImg
-                    width: 26
-                    height: 26
+                    width: root.iconSize
+                    height: root.iconSize
                     anchors.left: glyph.left
-                    anchors.leftMargin: 9
+                    anchors.leftMargin: root.edna ? 8 : 9
                     anchors.verticalCenter: parent.verticalCenter
                     source: model.iconName ? ("image://themeicon/" + model.iconName + "?v=" + root.themeVersion) : ""
-                    sourceSize: Qt.size(26, 26)
+                    sourceSize: Qt.size(root.iconSize * 2, root.iconSize * 2)
                     visible: !!model.iconName
                     smooth: true
                     fillMode: Image.PreserveAspectFit
@@ -2842,13 +2901,13 @@ Window {
                 }
                 Image {
                     id: appIconImg
-                    width: 26
-                    height: 26
+                    width: root.iconSize
+                    height: root.iconSize
                     anchors.left: glyph.left
-                    anchors.leftMargin: 9
+                    anchors.leftMargin: root.edna ? 8 : 9
                     anchors.verticalCenter: parent.verticalCenter
                     source: model.appIcon ? ("image://appicon/" + model.appIcon + "?v=" + root.themeVersion) : ""
-                    sourceSize: Qt.size(26, 26)
+                    sourceSize: Qt.size(root.iconSize * 2, root.iconSize * 2)
                     visible: !!model.appIcon
                     smooth: true
                     fillMode: Image.PreserveAspectFit
@@ -3186,13 +3245,13 @@ Window {
             width: parent.width
             height: root.footerHeight
             anchors.bottom: parent.bottom
-            color: "#18000000"
+            color: root.edna ? root.panelColor : "#18000000"
 
             Rectangle {
                 width: parent.width
                 height: 1
                 anchors.top: parent.top
-                color: Qt.rgba(root.bgBorder.r, root.bgBorder.g, root.bgBorder.b, 0.20)
+                color: root.edna ? Qt.rgba(1, 1, 1, 0.05) : Qt.rgba(root.bgBorder.r, root.bgBorder.g, root.bgBorder.b, 0.20)
             }
 
             Row {
@@ -3211,11 +3270,14 @@ Window {
                         id: cpuRow
                         spacing: 4
                         anchors.centerIn: parent
-                        Text {
-                            text: ""
+                        ThemeGlyph {
+                            useIcon: root.edna
+                            version: root.themeVersion
+                            iconName: "cpu"
+                            glyph: ""
+                            glyphFont: root.iconFont
                             color: root.cpuColor
-                            font.pixelSize: 13
-                            font.family: root.iconFont
+                            size: root.edna ? 15 : 13
                             anchors.verticalCenter: parent.verticalCenter
                         }
                         Text {
@@ -3272,11 +3334,14 @@ Window {
                         id: gpuRow
                         spacing: 4
                         anchors.centerIn: parent
-                        Text {
-                            text: "󰢮"
+                        ThemeGlyph {
+                            useIcon: root.edna
+                            version: root.themeVersion
+                            iconName: "video-display"
+                            glyph: "󰢮"
+                            glyphFont: root.iconFont
                             color: root.gpuColor
-                            font.pixelSize: 13
-                            font.family: root.iconFont
+                            size: root.edna ? 15 : 13
                             anchors.verticalCenter: parent.verticalCenter
                         }
                         Text {
@@ -3346,11 +3411,14 @@ Window {
                         id: ramRow
                         spacing: 4
                         anchors.centerIn: parent
-                        Text {
-                            text: "󰘚"
+                        ThemeGlyph {
+                            useIcon: root.edna
+                            version: root.themeVersion
+                            iconName: "memory"
+                            glyph: "󰘚"
+                            glyphFont: root.iconFont
                             color: root.bgBorder
-                            font.pixelSize: 13
-                            font.family: root.iconFont
+                            size: root.edna ? 15 : 13
                             anchors.verticalCenter: parent.verticalCenter
                         }
                         Text {
@@ -3398,11 +3466,14 @@ Window {
                         id: diskRow
                         spacing: 4
                         anchors.centerIn: parent
-                        Text {
-                            text: "󰋊"
+                        ThemeGlyph {
+                            useIcon: root.edna
+                            version: root.themeVersion
+                            iconName: "drive-harddisk"
+                            glyph: "󰋊"
+                            glyphFont: root.iconFont
                             color: root.bgBorder
-                            font.pixelSize: 13
-                            font.family: root.iconFont
+                            size: root.edna ? 15 : 13
                             anchors.verticalCenter: parent.verticalCenter
                         }
                         Text {
@@ -3450,11 +3521,14 @@ Window {
                         id: tempRow
                         spacing: 4
                         anchors.centerIn: parent
-                        Text {
-                            text: ""
+                        ThemeGlyph {
+                            useIcon: root.edna
+                            version: root.themeVersion
+                            iconName: "psensor"
+                            glyph: ""
+                            glyphFont: root.iconFont
                             color: root.cpuColor
-                            font.pixelSize: 13
-                            font.family: root.iconFont
+                            size: root.edna ? 15 : 13
                             anchors.verticalCenter: parent.verticalCenter
                         }
                         Text {
@@ -3502,11 +3576,14 @@ Window {
                         id: uptimeRow
                         spacing: 4
                         anchors.centerIn: parent
-                        Text {
-                            text: "󰔚"
+                        ThemeGlyph {
+                            useIcon: root.edna
+                            version: root.themeVersion
+                            iconName: "preferences-system-time"
+                            glyph: "󰔚"
+                            glyphFont: root.iconFont
                             color: root.gpuColor
-                            font.pixelSize: 13
-                            font.family: root.iconFont
+                            size: root.edna ? 15 : 13
                             anchors.verticalCenter: parent.verticalCenter
                         }
                         Text {
@@ -4419,8 +4496,8 @@ Window {
         onClosed: { root.contextMode = "list"; root.renameError = ""; searchInput.forceActiveFocus() }
 
         background: Rectangle {
-            color: root.bgColor
-            border.color: root.bgBorder
+            color: root.edna ? Qt.rgba(root.bgColor.r, root.bgColor.g, root.bgColor.b, 1.0) : root.bgColor
+            border.color: root.edna ? root.cardBorderColor : root.bgBorder
             border.width: 1
             radius: 10
             layer.enabled: true
@@ -4520,14 +4597,20 @@ Window {
                     anchors.rightMargin: 10
                     spacing: 10
 
-                    Text {
+                    Item {
                         width: 18
+                        height: 18
                         anchors.verticalCenter: parent.verticalCenter
-                        horizontalAlignment: Text.AlignHCenter
-                        text: model.icon
-                        font.family: root.iconFont
-                        font.pixelSize: 14
-                        color: cItem.hot ? root.selFg : (model.isDanger ? "#ff5252" : root.fgColor)
+                        ThemeGlyph {
+                            anchors.centerIn: parent
+                            useIcon: root.edna
+                            version: root.themeVersion
+                            iconName: root.contextIconName(model.actionType)
+                            glyph: model.icon
+                            glyphFont: root.iconFont
+                            size: root.edna ? 16 : 14
+                            color: cItem.hot ? root.selFg : (model.isDanger ? "#ff5252" : root.fgColor)
+                        }
                     }
 
                     Text {

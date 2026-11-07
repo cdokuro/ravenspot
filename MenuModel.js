@@ -976,19 +976,19 @@ function enterGuarded(guardUntilMs, nowMs) {
 // Her sonuç sabit sıralı bir gruba düşer; grup adı ListView bölüm başlığı
 // olur. Tek grup varsa başlık gösterilmez (kendini tekrar eden başlık yok).
 var SEARCH_GROUP_ORDER = ["instant", "pc", "commandsFirst", "top", "apps", "windows", "system",
-                          "settings", "tools", "files", "help", "other", "commands", "web"]
+                          "settings", "tools", "files", "otherApps", "help", "other", "commands", "web"]
 var SEARCH_GROUP_TITLES = {
   instant: "Quick Answer", top: "Top Hit", apps: "Applications", windows: "Open Windows",
   system: "Power & Session", settings: "Settings", tools: "Tools", files: "Files & Folders",
-  help: "Help", other: "More", commands: "Run Command", commandsFirst: "Run Command",
+  help: "Help", other: "More", otherApps: "Other Apps", commands: "Run Command", commandsFirst: "Run Command",
   web: "Search the Web"
 }
 // Bu puanın altı tam/önek/kelime başı eşleşmedir (searchScore katmanları 0/10/20)
 var STRONG_MATCH_SCORE = 25000
 // Sabit sırayla dizilen gruplardan, yalnızca zayıf eşleşme içerenler güçlü
 // eşleşmesi olanların altına iner ("net" → Settings > Network, Apps > "Yönetim" değil)
-var RANKED_GROUPS = ["apps", "system", "settings", "tools", "files", "help", "other"]
-var SEARCH_GROUP_CAPS = { apps: 8, windows: 5, system: 5, settings: 5, tools: 5, files: 5, help: 3, other: 5 }
+var RANKED_GROUPS = ["apps", "system", "settings", "tools", "files", "otherApps", "help", "other"]
+var SEARCH_GROUP_CAPS = { otherApps: 5, apps: 8, windows: 5, system: 5, settings: 5, tools: 5, files: 5, help: 3, other: 5 }
 var PC_GROUP_TITLES = { "__clip_": "Clipboard", "__kill_": "Processes", "__recent_": "Recent Files", "__emoji_": "Emoji" }
 var INSTANT_PROVIDERS = ["set-volume", "toggle-mute", "open-folder-path", "open-folder-terminal"]
 var TOP_GROUP_BY_ROOT = { apps: "apps", files: "files", tools: "tools", settings: "settings",
@@ -1009,6 +1009,8 @@ function searchGroupKey(row) {
   if (id.indexOf("__web_") === 0) return "web"
   if (provider === "window-item") return "windows"
   if (provider === "sys-action") return "system"
+  // Ayar modülleri / yardımcılar (Apps › Other Apps) kendi grubunda
+  if (id.indexOf("apps.other") === 0) return "otherApps"
   if (row.kind === "app") return "apps"
   if (row.filePath || provider === "file-item") return "files"
   var top = id.split(".")[0]
@@ -1038,7 +1040,7 @@ function groupSearchRows(rows, opts) {
   // Top Hit: anlık yanıt yoksa ve birden çok grup yarışıyorsa, tam/önek eşleşen en iyi satır
   var contenders = keyOf.filter(function(g) { return g !== "web" })
   if (!buckets.instant && contenders.length >= 2) {
-    var eligible = ["apps", "system", "settings", "tools", "files", "help", "other"]
+    var eligible = ["apps", "system", "settings", "tools", "files", "otherApps", "help", "other"]
     var best = null, bestKey = ""
     for (var e = 0; e < eligible.length; e++) {
       var list = buckets[eligible[e]]

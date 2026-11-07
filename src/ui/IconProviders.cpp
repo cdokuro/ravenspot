@@ -1,4 +1,5 @@
 #include "IconProviders.hpp"
+#include "IconAlias.hpp"
 
 #include <QMutex>
 #include <QMutexLocker>
@@ -191,12 +192,13 @@ QString AppIconProvider::sanitizeIdentifier(const QString &rawId) {
 }
 
 QImage AppIconProvider::requestImage(const QString &id, QSize *size, const QSize &requestedSize) {
-    const QString cleanId = sanitizeIdentifier(id);
+    const QString cleanId = iconAliasFor(QIcon::themeName(), sanitizeIdentifier(id));
     noteRequestedIcon(QStringLiteral("appicon"), cleanId);
     const int w = std::max(requestedSize.width() > 0 ? requestedSize.width() : 64, 64);
     const int h = std::max(requestedSize.height() > 0 ? requestedSize.height() : 64, 64);
     const QSize targetSize(w, h);
-    const QString cacheKey = cleanId + QStringLiteral("@") + QString::number(w) + QStringLiteral("x") + QString::number(h);
+    // Tema adı anahtarda: tema değişince (candy → kora) eski çizimler dönmesin
+    const QString cacheKey = QIcon::themeName() + QLatin1Char('/') + cleanId + QStringLiteral("@") + QString::number(w) + QStringLiteral("x") + QString::number(h);
 
     QImage cached;
     if (m_cache.get(cacheKey, cached)) {
@@ -275,15 +277,7 @@ QString ThemeIconProvider::sanitizeIdentifier(const QString &rawId) {
 }
 
 QString ThemeIconProvider::resolveThemeAlias(const QString &cleanId) {
-    if (cleanId == QStringLiteral("folder-download") ||
-        cleanId == QStringLiteral("folder-downloads") ||
-        cleanId == QStringLiteral("download")) {
-        return QStringLiteral("aptdaemon-download");
-    }
-    if (cleanId == QStringLiteral("system-lock")) {
-        return QStringLiteral("system-lock-screen");
-    }
-    return cleanId;
+    return iconAliasFor(QIcon::themeName(), cleanId);
 }
 
 QImage ThemeIconProvider::requestImage(const QString &id, QSize *size, const QSize &requestedSize) {
@@ -292,7 +286,8 @@ QImage ThemeIconProvider::requestImage(const QString &id, QSize *size, const QSi
     const int w = std::max(requestedSize.width() > 0 ? requestedSize.width() : 64, 64);
     const int h = std::max(requestedSize.height() > 0 ? requestedSize.height() : 64, 64);
     const QSize targetSize(w, h);
-    const QString cacheKey = cleanId + QStringLiteral("@") + QString::number(w) + QStringLiteral("x") + QString::number(h);
+    // Tema adı anahtarda: tema değişince (candy → kora) eski çizimler dönmesin
+    const QString cacheKey = QIcon::themeName() + QLatin1Char('/') + cleanId + QStringLiteral("@") + QString::number(w) + QStringLiteral("x") + QString::number(h);
 
     QImage cached;
     if (m_cache.get(cacheKey, cached)) {

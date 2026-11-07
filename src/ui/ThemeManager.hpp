@@ -25,10 +25,17 @@ struct ThemeTokens {
     QString accent{QStringLiteral("#ffd700")};
     QString cpuColor{QStringLiteral("#ffd700")};
     QString gpuColor{QStringLiteral("#00f0ff")};
+    // Yapısal stil: "neon" (parlayan kenar, dolgu seçim) veya "edna" (düz
+    // Material yüzeyler, gölge, sol vurgu çubuklu seçim, tema ikonları)
+    QString style{QStringLiteral("neon")};
+    QString surface{QStringLiteral("#12ffffff")};   // arama kutusu / düğme zemini
+    QString panel{QStringLiteral("#18000000")};     // alt bilgi şeridi
+    QString cardBorder;                             // boşsa bgBorder kullanılır
 
     [[nodiscard]] QVariantMap toVariantMap() const;
     static ThemeTokens fromJsonObject(const QString &key, const QJsonObject &obj, const ThemeTokens &defaults);
     static ThemeTokens defaultRavenCyber();
+    static ThemeTokens ednaTheme();
     static QMap<QString, ThemeTokens> builtInThemes();
 };
 

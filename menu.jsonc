@@ -22,6 +22,7 @@
   "apps.office": { "icon": "󰏆", "iconName": "applications-office", "label": "Office", "aliases": ["ofis", "belge", "pdf"], "provider": "apps-office" },
   "apps.system": { "icon": "󰒓", "iconName": "applications-system", "label": "System", "aliases": ["sistem", "yönetim"], "provider": "apps-system" },
   "apps.utilities": { "icon": "󰘦", "iconName": "applications-utilities", "label": "Utilities", "aliases": ["araçlar", "faydalı"], "provider": "apps-utilities" },
+  "apps.other": { "icon": "󰒓", "iconName": "preferences-system", "label": "Other Apps", "description": "Settings modules, helpers and uninstallers", "aliases": ["other", "diğer", "kcm", "modules"], "provider": "apps-other" },
 
   // ─── Files ─────────────────────────────────────────────────────
   "files.home": { "icon": "󰋜", "iconName": "user-home", "label": "Home Folder", "description": "Open your home folder", "aliases": ["home", "ev", "~"], "action": "xdg-open \"$HOME\"" },

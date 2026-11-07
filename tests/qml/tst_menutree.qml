@@ -72,7 +72,8 @@ TestCase {
     function test_appsAllFirstThenAlphabetical() {
         var kids = childrenOf("apps")
         compare(kids[0], "apps.all")
-        var rest = kids.slice(1).map(function(k) { return items[k].label })
+        compare(kids[kids.length - 1], "apps.other") // Other Apps en sonda
+        var rest = kids.slice(1, -1).map(function(k) { return items[k].label })
         var sorted = rest.slice().sort(function(a, b) { return a.localeCompare(b) })
         compare(rest, sorted)
     }
