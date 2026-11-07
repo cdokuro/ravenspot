@@ -14,6 +14,7 @@
 #include "pc/ClipboardHistory.hpp"
 
 #include <QClipboard>
+#include <QCoreApplication>
 #include <QCryptographicHash>
 #include <QDateTime>
 #include <QDesktopServices>
@@ -653,7 +654,10 @@ QVariantMap ShellBridge::getUpdateInfo() const {
     QVariantMap map;
     map[QStringLiteral("has_updates")] = false;
     map[QStringLiteral("count")] = 0;
-    map[QStringLiteral("icon_path")] = QString();
+    // Menu.qml prefixes "file://": "/C:/..." gives a valid file:///C:/... URL
+    const QString icon = QCoreApplication::applicationDirPath()
+                         + QStringLiteral("/icons/candy-icons/apps/scalable/system-software-update.svg");
+    map[QStringLiteral("icon_path")] = QFileInfo::exists(icon) ? QLatin1Char('/') + icon : QString();
     map[QStringLiteral("tooltip")] = QStringLiteral("Windows Update — Click to Open");
     return map;
 }
