@@ -3779,6 +3779,147 @@ Window {
                         }
                     }
                 }
+
+                // ── RavenSpot'un kendi tıklama sesi (sistem sesinden bağımsız) ──
+                Rectangle {
+                    width: audioFlyoutCol.width
+                    height: 1
+                    color: Qt.rgba(1, 1, 1, 0.08)
+                }
+                Item { width: 1; height: 6 }
+
+                Row {
+                    spacing: 6
+                    ThemeGlyph {
+                        useIcon: root.edna
+                        version: root.themeVersion
+                        iconName: "preferences-desktop-sound"
+                        glyph: "󰌌"
+                        color: root.fgDim
+                        size: 12
+                        glyphFont: root.iconFont
+                        anchors.verticalCenter: parent.verticalCenter
+                    }
+                    Text {
+                        text: "RAVENSPOT CLICK SOUNDS"
+                        color: root.edna ? root.accentColor : root.fgDim
+                        font.family: root.textFont
+                        font.pixelSize: 10
+                        font.weight: Font.DemiBold
+                        font.letterSpacing: 1.2
+                        anchors.verticalCenter: parent.verticalCenter
+                    }
+                }
+                Text {
+                    width: audioFlyoutCol.width
+                    text: "Only RavenSpot's own key and click sounds"
+                    color: root.fgDim
+                    font.family: root.textFont
+                    font.pixelSize: 10
+                    elide: Text.ElideRight
+                    bottomPadding: 4
+                }
+
+                Item {
+                    width: audioFlyoutCol.width
+                    height: 22
+
+                    // Aç/kapat düğmesi
+                    Rectangle {
+                        id: clickMuteBtn
+                        width: 22
+                        height: 22
+                        radius: 6
+                        anchors.left: parent.left
+                        anchors.verticalCenter: parent.verticalCenter
+                        color: clickMuteMouse.containsMouse ? Qt.rgba(1, 1, 1, 0.12) : Qt.rgba(1, 1, 1, 0.05)
+                        ThemeGlyph {
+                            anchors.centerIn: parent
+                            useIcon: root.edna
+                            version: root.themeVersion
+                            iconName: root.appSoundMuted || root.appSoundVolume === 0 ? "audio-volume-muted" : "audio-volume-high"
+                            glyph: root.appSoundMuted || root.appSoundVolume === 0 ? "󰝟" : "󰕾"
+                            color: root.appSoundMuted || root.appSoundVolume === 0 ? "#ef4444" : root.bgBorder
+                            size: 13
+                            glyphFont: root.iconFont
+                        }
+                        MouseArea {
+                            id: clickMuteMouse
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: {
+                                Shell.toggleAppMute()
+                                Qt.callLater(Shell.playCreamy)
+                            }
+                        }
+                    }
+
+                    // Seviye
+                    Rectangle {
+                        id: clickVolTrack
+                        anchors.left: clickMuteBtn.right
+                        anchors.leftMargin: 10
+                        anchors.right: clickVolLabel.left
+                        anchors.rightMargin: 10
+                        anchors.verticalCenter: parent.verticalCenter
+                        height: 5
+                        radius: 2.5
+                        color: "#30ffffff"
+                        Rectangle {
+                            id: clickVolFill
+                            height: parent.height
+                            radius: 2.5
+                            width: root.appSoundMuted ? 0 : Math.max(0, Math.min(parent.width, (root.appSoundVolume / 100.0) * parent.width))
+                            color: root.bgBorder
+                        }
+                        Rectangle {
+                            width: 11; height: 11; radius: 5.5
+                            anchors.verticalCenter: parent.verticalCenter
+                            x: Math.max(0, Math.min(clickVolTrack.width - 11, clickVolFill.width - 5.5))
+                            color: root.selFg
+                            border.color: root.bgBorder
+                            border.width: 1
+                            visible: !root.appSoundMuted
+                        }
+                        WheelHandler {
+                            acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
+                            onWheel: function(event) {
+                                var v = Math.max(0, Math.min(100, root.appSoundVolume + (event.angleDelta.y > 0 ? 5 : -5)))
+                                if (root.appSoundMuted) Shell.toggleAppMute()
+                                Shell.setAppVolume(v)
+                            }
+                        }
+                        MouseArea {
+                            anchors.fill: parent
+                            anchors.topMargin: -8
+                            anchors.bottomMargin: -8
+                            cursorShape: Qt.PointingHandCursor
+                            function setFrom(mouse) {
+                                var v = Math.round(Math.max(0, Math.min(1, mouse.x / clickVolTrack.width)) * 100)
+                                if (root.appSoundMuted) Shell.toggleAppMute()
+                                root.appSoundVolume = v
+                                Shell.setAppVolume(v)
+                            }
+                            onPressed: function(mouse) { setFrom(mouse) }
+                            onPositionChanged: function(mouse) { if (pressed) setFrom(mouse) }
+                            onReleased: Shell.playThock() // bırakınca yeni seviyeyi duy
+                        }
+                    }
+
+                    Text {
+                        id: clickVolLabel
+                        anchors.right: parent.right
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: 34
+                        horizontalAlignment: Text.AlignRight
+                        text: root.appSoundMuted ? "Off" : root.appSoundVolume + "%"
+                        color: root.appSoundMuted ? "#ef4444" : root.fgDim
+                        font.family: root.textFont
+                        font.pixelSize: 11
+                        font.weight: Font.DemiBold
+                    }
+                }
             }
         }
 
