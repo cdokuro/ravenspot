@@ -1,3 +1,4 @@
+#include <QtGlobal>
 #include <iostream>
 #include <string>
 #include <string_view>
@@ -84,6 +85,12 @@ void setupSignalHandlers(QGuiApplication &app) {
 } // anonymous namespace
 
 int main(int argc, char *argv[]) {
+    // MangoHud genel olarak açıkken (environment.d: MANGOHUD=1) Vulkan katmanı
+    // RavenSpot'a da yüklenir; Qt Multimedia'nın FFmpeg arka ucu açılışta bir
+    // Vulkan aygıtı oluştururken MangoHud içinde çöküyordu (açılışta SIGSEGV
+    // döngüsü). Başlatıcıda HUD istenmez: katmanın kendi kapatma değişkeni.
+    qputenv("DISABLE_MANGOHUD", "1");
+
     std::string command;
     bool daemonMode = false;
 

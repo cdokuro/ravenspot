@@ -74,9 +74,6 @@ bool AudioEngine::init() {
         Q_EMIT audioConfigChanged(volume, muted);
     });
 
-    m_devices = new QMediaDevices(this);
-    connect(m_devices, &QMediaDevices::audioOutputsChanged, this, &AudioEngine::followDefaultOutput);
-
     m_initialized = true;
     return true;
 }
@@ -91,6 +88,14 @@ void AudioEngine::followDefaultOutput() {
 }
 
 void AudioEngine::setupVoices() {
+    // QMediaDevices Qt Multimedia'yı (FFmpeg + Vulkan donanım aygıtı) başlatır.
+    // Bunu main() içinde, ctor'da yapmak MangoHud Vulkan katmanı yüklüyken
+    // açılışta çökme döngüsüne yol açtı; sesler gibi ilk kullanımda oluşturulur
+    // (warmUp, açılıştan 250 ms sonra).
+    if (!m_devices) {
+        m_devices = new QMediaDevices(this);
+        connect(m_devices, &QMediaDevices::audioOutputsChanged, this, &AudioEngine::followDefaultOutput);
+    }
     if (!m_thockVoices[0] && !m_soundsDir.isEmpty()) {
         const QString thockPath = m_soundsDir + QStringLiteral("/thock.wav");
         const QString creamyPath = m_soundsDir + QStringLiteral("/creamy.wav");
