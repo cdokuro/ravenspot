@@ -34,6 +34,7 @@
 #include <unistd.h>
 #include <malloc.h>
 #include <algorithm>
+#include "pc/AudioDevices.hpp"
 
 namespace ravenspot {
 
@@ -236,6 +237,29 @@ void ShellBridge::playSound(const QString &soundType) {
     if (m_audioEngine) {
         m_audioEngine->play(soundType);
     }
+}
+
+QString ShellBridge::listAudioDevices(const QString &kind) const {
+    const bool input = kind == QStringLiteral("input");
+    auto run = [](const QStringList &args) -> QByteArray {
+        QProcess p;
+        p.start(QStringLiteral("pactl"), args);
+        if (!p.waitForFinished(1500)) { p.kill(); p.waitForFinished(200); return {}; }
+        return p.readAllStandardOutput();
+    };
+    const QString def = QString::fromUtf8(run({input ? QStringLiteral("get-default-source")
+                                                     : QStringLiteral("get-default-sink")})).trimmed();
+    const QByteArray json = run({QStringLiteral("--format=json"), QStringLiteral("list"),
+                                 input ? QStringLiteral("sources") : QStringLiteral("sinks")});
+    return QString::fromUtf8(QJsonDocument(QJsonArray::fromVariantList(pc::parseAudioDevices(json, def)))
+                                 .toJson(QJsonDocument::Compact));
+}
+
+void ShellBridge::setDefaultAudioDevice(const QString &kind, const QString &id) {
+    if (id.isEmpty() || id.startsWith(QLatin1Char('-'))) return;
+    const bool input = kind == QStringLiteral("input");
+    QProcess::startDetached(QStringLiteral("pactl"),
+        {input ? QStringLiteral("set-default-source") : QStringLiteral("set-default-sink"), id});
 }
 
 void ShellBridge::setAppVolume(int vol) {

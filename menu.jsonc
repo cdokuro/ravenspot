@@ -57,6 +57,7 @@
   "appearance.icons": { "icon": "󰀻", "iconName": "icons", "label": "Icon Theme", "action": "systemsettings kcm_icons" },
   "appearance.cursor": { "icon": "󰇀", "iconName": "preferences-desktop-mouse", "label": "Cursors", "action": "systemsettings kcm_cursortheme" },
   "appearance.fonts": { "icon": "", "iconName": "gnome-settings-font", "label": "Fonts", "action": "systemsettings kcm_fonts", "aliases": ["fonts", "yazı tipi", "font", "karakter boyutu"] },
+  "appearance.uisounds": { "icon": "󰕾", "iconName": "audio-volume-high", "label": "Interface Sounds", "aliases": ["click sound", "tuş sesi", "ui sounds", "sounds", "thock"], "provider": "ui-sounds" },
 
   // ─── Settings: most used first ─────────────────────────────────
   "settings.general": { "icon": "", "iconName": "preferences-system", "label": "System Settings", "aliases": ["general", "settings", "ayarlar", "system settings", "denetim masası"], "action": "systemsettings" },

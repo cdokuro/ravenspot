@@ -2,6 +2,8 @@
 #include "SoundConfig.hpp"
 
 #include <QSoundEffect>
+#include <QMediaDevices>
+#include <QAudioDevice>
 #include <QCoreApplication>
 #include <QStandardPaths>
 #include <QDir>
@@ -72,8 +74,20 @@ bool AudioEngine::init() {
         Q_EMIT audioConfigChanged(volume, muted);
     });
 
+    m_devices = new QMediaDevices(this);
+    connect(m_devices, &QMediaDevices::audioOutputsChanged, this, &AudioEngine::followDefaultOutput);
+
     m_initialized = true;
     return true;
+}
+
+void AudioEngine::followDefaultOutput() {
+    const QAudioDevice def = QMediaDevices::defaultAudioOutput();
+    if (def.isNull()) return;
+    for (auto &voice : m_thockVoices) {
+        if (voice && voice->audioDevice() != def) voice->setAudioDevice(def);
+    }
+    if (m_creamyVoice && m_creamyVoice->audioDevice() != def) m_creamyVoice->setAudioDevice(def);
 }
 
 void AudioEngine::setupVoices() {
@@ -134,6 +148,7 @@ bool AudioEngine::playThock() {
     }
 
     setupVoices();
+    followDefaultOutput();
 
     if (m_thockVoices[m_thockIndex]) {
         auto &voice = m_thockVoices[m_thockIndex];
@@ -152,6 +167,7 @@ bool AudioEngine::playCreamy() {
     }
 
     setupVoices();
+    followDefaultOutput();
 
     if (m_creamyVoice) {
         if (m_creamyVoice->status() != QSoundEffect::Error) {

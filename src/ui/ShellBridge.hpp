@@ -93,6 +93,10 @@ public slots:
     Q_INVOKABLE void playCreamy();
     Q_INVOKABLE void playSound(const QString &soundType);
     Q_INVOKABLE void setAppVolume(int vol);
+    // Sistem ses cihazları (kind: "output" | "input"): [{id, name, isDefault}]
+    Q_INVOKABLE QString listAudioDevices(const QString &kind) const;
+    // Varsayılan çıkışı/girişi değiştirir (pactl set-default-sink/source, argv)
+    Q_INVOKABLE void setDefaultAudioDevice(const QString &kind, const QString &id);
     Q_INVOKABLE void setAudioVolume(int vol);
     Q_INVOKABLE void toggleAppMute();
     Q_INVOKABLE void setAudioMuted(bool muted);

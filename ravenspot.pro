@@ -59,6 +59,7 @@ HEADERS += \
     src/search/KRunnerActions.hpp \
     src/search/AppClassify.hpp \
     src/ui/IconAlias.hpp \
+    src/pc/AudioDevices.hpp \
     src/search/CalcConverter.hpp \
     src/run/CommandAnalyzer.hpp \
     src/run/CommandRunner.hpp \
@@ -84,6 +85,7 @@ SOURCES += \
     src/search/KRunnerActions.cpp \
     src/search/AppClassify.cpp \
     src/ui/IconAlias.cpp \
+    src/pc/AudioDevices.cpp \
     src/search/CalcConverter.cpp \
     src/run/CommandAnalyzer.cpp \
     src/run/CommandRunner.cpp \

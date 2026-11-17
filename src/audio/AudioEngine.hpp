@@ -7,6 +7,7 @@
 #include <array>
 
 class QSoundEffect;
+class QMediaDevices;
 
 namespace ravenspot {
 
@@ -55,6 +56,11 @@ Q_SIGNALS:
 private:
     void updateVoiceVolumes();
     void setupVoices();
+    // Sesler oluşturuldukları anki varsayılan cihaza bağlı kalır; Bluetooth
+    // kulaklık bağlanıp kopunca o cihaz yok olur ve sesler sessizce kaybolur.
+    // Her çalışta ve cihaz listesi değişince varsayılan çıkışa yeniden bağlar.
+    void followDefaultOutput();
+    QMediaDevices *m_devices{nullptr};
 
     std::unique_ptr<SoundConfig> m_config;
     QString m_soundsDir;

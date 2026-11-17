@@ -126,6 +126,22 @@ Window {
     property int appSoundVolume: 10
     property bool appSoundMuted: false
     property bool audioFlyoutOpen: false
+    // Ses cihazı paneli: sistemin çıkış (hoparlör/kulaklık) ve giriş (mikrofon) cihazları
+    property var audioOutputs: []
+    property var audioInputs: []
+    function refreshAudioDevices() {
+        try { root.audioOutputs = JSON.parse(Shell.listAudioDevices("output") || "[]") } catch (e) { root.audioOutputs = [] }
+        try { root.audioInputs = JSON.parse(Shell.listAudioDevices("input") || "[]") } catch (e) { root.audioInputs = [] }
+    }
+    function chooseAudioDevice(kind, id) {
+        Shell.playCreamy()
+        Shell.setDefaultAudioDevice(kind, id)
+        // pactl ayrı süreçte çalışır; seçim işaretini hemen güncelle
+        var list = (kind === "input" ? root.audioInputs : root.audioOutputs).map(function(d) {
+            return { id: d.id, name: d.name, isDefault: d.id === id }
+        })
+        if (kind === "input") root.audioInputs = list; else root.audioOutputs = list
+    }
     property int sysVolume: 50
     property bool sysMuted: false
     property var sysMonitor: ({ "ram_text": "--", "ram_pct": 0, "disk_text": "--", "disk_pct": 0, "temp": "--", "uptime": "--" })
@@ -303,6 +319,8 @@ Window {
             loadClipboard(id)
         } else if (entry.provider === "recent") {
             loadRecentFiles(id)
+        } else if (entry.provider === "ui-sounds") {
+            loadUiSounds(id)
         } else if (entry.provider && entry.provider.startsWith("files-")) {
             loadFolderFiles(id, entry.provider.substring(6))
         } else if (entry.provider === "ravenspot-themes") {
@@ -322,6 +340,34 @@ Window {
                 label: c.label, title: "", target: "", description: c.truncated ? "Copy to clipboard · truncated to 4 KB" : "Copy to clipboard",
                 action: "", provider: "clipboard-item", aliases: [], searchTerms: [],
                 when: "", checked: "", disabled: "", value: c.value, order: j
+            })
+        }
+        var merged = MenuModel.swapProviderRows(root.items, root.itemOrder, id, rows)
+        root.items = merged.items
+        root.itemOrder = merged.itemOrder
+        rebuildDisplay()
+    }
+
+    // Appearance › Interface Sounds: RavenSpot'un tuş/tıklama sesi (sistem sesi değil)
+    function loadUiSounds(id) {
+        var on = !root.appSoundMuted && root.appSoundVolume > 0
+        var rows = [{
+            id: id + ".toggle", parent: id, kind: "action",
+            icon: "", iconFont: "", iconName: on ? "audio-volume-high" : "audio-volume-muted",
+            label: "Click Sounds", title: "", target: "", description: on ? "✓ On" : "Off",
+            action: "", provider: "ui-sound-toggle", aliases: ["click", "sound", "ses", "tık"], searchTerms: [],
+            when: "", checked: "", disabled: "", isCurrent: on, order: 0
+        }]
+        var levels = [["Quiet", 10], ["Soft", 25], ["Medium", 50], ["Loud", 100]]
+        for (var i = 0; i < levels.length; i++) {
+            var current = on && root.appSoundVolume === levels[i][1]
+            rows.push({
+                id: id + ".level-" + levels[i][1], parent: id, kind: "action",
+                icon: "", iconFont: "", iconName: levels[i][1] >= 50 ? "audio-volume-high" : "audio-volume-low",
+                label: levels[i][0] + " (" + levels[i][1] + "%)", title: "", target: "",
+                description: current ? "✓ Active" : "",
+                action: "", provider: "ui-sound-level", aliases: [], searchTerms: [],
+                when: "", checked: "", disabled: "", value: String(levels[i][1]), isCurrent: current, order: i + 1
             })
         }
         var merged = MenuModel.swapProviderRows(root.items, root.itemOrder, id, rows)
@@ -1440,6 +1486,20 @@ Window {
             root.opened = false
             Shell.openPath(row.value) // argv; eskiden "xdg-open <yol>" /bin/sh'ta genişliyordu
             Qt.callLater(closeMenu)
+        } else if (row.provider === "ui-sound-toggle" || row.provider === "ui-sound-level") {
+            // Menü açık kalır: seçimin sesi hemen duyulur, işaret güncellenir
+            if (row.provider === "ui-sound-toggle") {
+                Shell.toggleAppMute()
+            } else {
+                if (root.appSoundMuted) Shell.toggleAppMute()
+                Shell.setAppVolume(parseInt(row.value))
+            }
+            Qt.callLater(function() {
+                Shell.playCreamy()
+                root.providersLoaded[root.activeMenu] = false
+                loadUiSounds(root.activeMenu)
+            })
+            return
         } else if (row.provider === "open-folder-terminal") {
             Shell.playCreamy()
             root.opened = false
@@ -2269,22 +2329,37 @@ Window {
                     anchors.right: parent.right
                     anchors.verticalCenter: parent.verticalCenter
                     height: 22
-                    width: 26
+                    width: audioBtnRow.implicitWidth + 14
                     radius: root.edna ? 11 : 5
                     color: root.edna ? (appVolMouse.containsMouse || root.audioFlyoutOpen ? Qt.lighter(root.surfaceColor, 1.25) : root.surfaceColor)
                          : (appVolMouse.containsMouse || root.audioFlyoutOpen ? Qt.rgba(1, 1, 1, 0.14) : Qt.rgba(1, 1, 1, 0.06))
                     border.color: root.edna ? "transparent" : (appVolMouse.containsMouse || root.audioFlyoutOpen ? root.selFg : Qt.rgba(root.bgBorder.r, root.bgBorder.g, root.bgBorder.b, 0.25))
                     border.width: 1
 
-                    ThemeGlyph {
+                    // Hoparlör + mikrofon tek kutuda: tıklayınca çıkış/giriş cihazı seçimi
+                    Row {
+                        id: audioBtnRow
                         anchors.centerIn: parent
-                        useIcon: root.edna
-                        version: root.themeVersion
-                        iconName: root.appSoundMuted || root.appSoundVolume === 0 ? "audio-volume-muted" : (root.appSoundVolume > 50 ? "audio-volume-high" : "audio-volume-low")
-                        glyph: root.appSoundMuted || root.appSoundVolume === 0 ? "󰝟" : (root.appSoundVolume > 50 ? "󰕾" : "󰖀")
-                        color: root.appSoundMuted || root.appSoundVolume === 0 ? "#ef4444" : root.bgBorder
-                        size: 13
-                        glyphFont: root.iconFont
+                        spacing: 6
+                        ThemeGlyph {
+                            useIcon: root.edna
+                            version: root.themeVersion
+                            iconName: "audio-volume-high"
+                            glyph: "󰕾"
+                            color: root.bgBorder
+                            size: 13
+                            glyphFont: root.iconFont
+                        }
+                        Rectangle { width: 1; height: 12; color: Qt.rgba(1, 1, 1, 0.15); anchors.verticalCenter: parent.verticalCenter }
+                        ThemeGlyph {
+                            useIcon: root.edna
+                            version: root.themeVersion
+                            iconName: "audio-input-microphone"
+                            glyph: "󰍬"
+                            color: root.bgBorder
+                            size: 13
+                            glyphFont: root.iconFont
+                        }
                     }
 
                     MouseArea {
@@ -2295,6 +2370,7 @@ Window {
                         onEntered: Shell.playThock()
                         onClicked: {
                             Shell.playCreamy()
+                            if (!root.audioFlyoutOpen) root.refreshAudioDevices()
                             root.audioFlyoutOpen = !root.audioFlyoutOpen
                         }
                     }
@@ -3586,11 +3662,11 @@ Window {
             anchors.topMargin: 34
             anchors.right: parent.right
             anchors.rightMargin: 16
-            width: 210
-            height: 68
+            width: 270
+            height: audioFlyoutCol.implicitHeight + 20
             radius: 12
-            color: Qt.rgba(24/255, 27/255, 34/255, 0.98)
-            border.color: Qt.rgba(root.bgBorder.r, root.bgBorder.g, root.bgBorder.b, 0.40)
+            color: root.edna ? Qt.rgba(root.bgColor.r, root.bgColor.g, root.bgColor.b, 1.0) : Qt.rgba(24/255, 27/255, 34/255, 0.98)
+            border.color: root.edna ? root.cardBorderColor : Qt.rgba(root.bgBorder.r, root.bgBorder.g, root.bgBorder.b, 0.40)
             border.width: 1
 
             layer.enabled: true
@@ -3608,123 +3684,98 @@ Window {
             }
 
             Column {
-                anchors.fill: parent
+                id: audioFlyoutCol
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.top: parent.top
                 anchors.margins: 10
-                spacing: 8
+                spacing: 2
 
-                Row {
-                    width: parent.width
+                Repeater {
+                    model: [
+                        { kind: "output", title: "Output", icon: "audio-volume-high", glyph: "󰕾" },
+                        { kind: "input", title: "Input", icon: "audio-input-microphone", glyph: "󰍬" }
+                    ]
+                    delegate: Column {
+                        id: audioSection
+                        required property var modelData
+                        readonly property var devices: modelData.kind === "input" ? root.audioInputs : root.audioOutputs
+                        width: audioFlyoutCol.width
+                        spacing: 2
 
-                    Text {
-                        text: "UI Sounds"
-                        color: root.fgColor
-                        font.pixelSize: 11
-                        font.family: root.textFont
-                        font.weight: Font.DemiBold
-                        anchors.verticalCenter: parent.verticalCenter
-                    }
-
-                    Item {
-                        width: parent.width - 62 - flyoutMuteBox.width - 26
-                        height: 1
-                    }
-
-                    Rectangle {
-                        id: flyoutMuteBox
-                        height: 18
-                        width: 18
-                        radius: 4
-                        color: flyoutMuteMouse.containsMouse ? Qt.rgba(1, 1, 1, 0.15) : "transparent"
-                        anchors.verticalCenter: parent.verticalCenter
-
-                        Text {
-                            anchors.centerIn: parent
-                            text: root.appSoundMuted || root.appSoundVolume === 0 ? "󰝟" : "󰕾"
-                            color: root.appSoundMuted || root.appSoundVolume === 0 ? "#ef4444" : root.selFg
-                            font.pixelSize: 12
-                            font.family: root.iconFont
-                        }
-
-                        MouseArea {
-                            id: flyoutMuteMouse
-                            anchors.fill: parent
-                            cursorShape: Qt.PointingHandCursor
-                            onClicked: {
-                                Shell.playCreamy()
-                                Shell.toggleAppMute()
+                        Row {
+                            spacing: 6
+                            topPadding: modelData.kind === "input" ? 8 : 0
+                            bottomPadding: 2
+                            ThemeGlyph {
+                                useIcon: root.edna
+                                version: root.themeVersion
+                                iconName: audioSection.modelData.icon
+                                glyph: audioSection.modelData.glyph
+                                color: root.fgDim
+                                size: 12
+                                glyphFont: root.iconFont
+                                anchors.verticalCenter: parent.verticalCenter
+                            }
+                            Text {
+                                text: audioSection.modelData.title.toUpperCase()
+                                color: root.edna ? root.accentColor : root.fgDim
+                                font.family: root.textFont
+                                font.pixelSize: 10
+                                font.weight: Font.DemiBold
+                                font.letterSpacing: 1.2
+                                anchors.verticalCenter: parent.verticalCenter
                             }
                         }
-                    }
 
-                    Text {
-                        text: root.appSoundMuted ? "0%" : root.appSoundVolume + "%"
-                        color: root.appSoundMuted ? "#ef4444" : root.fgDim
-                        font.pixelSize: 10
-                        font.family: root.textFont
-                        font.weight: Font.Bold
-                        anchors.verticalCenter: parent.verticalCenter
-                    }
-                }
-
-                Rectangle {
-                    id: appVolTrack
-                    width: parent.width
-                    height: 5
-                    radius: 2.5
-                    color: "#30ffffff"
-
-                    Rectangle {
-                        id: appVolFill
-                        height: parent.height
-                        radius: 2.5
-                        width: root.appSoundMuted ? 0 : Math.max(0, Math.min(parent.width, (root.appSoundVolume / 100.0) * parent.width))
-                        color: root.bgBorder
-                        Behavior on width { NumberAnimation { duration: 40 } }
-                    }
-
-                    Rectangle {
-                        width: 9
-                        height: 9
-                        radius: 4.5
-                        anchors.verticalCenter: parent.verticalCenter
-                        x: Math.max(0, Math.min(appVolTrack.width - 9, appVolFill.width - 4.5))
-                        color: root.selFg
-                        border.color: root.bgBorder
-                        border.width: 1
-                        visible: !root.appSoundMuted
-                    }
-
-                    WheelHandler {
-                        acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
-                        onWheel: function(event) {
-                            var delta = event.angleDelta.y > 0 ? 5 : -5
-                            var v = Math.max(0, Math.min(100, root.appSoundVolume + delta))
-                            root.appSoundVolume = v
-                            root.appSoundMuted = false
-                            Shell.setAppVolume(v)
-                        }
-                    }
-
-                    MouseArea {
-                        anchors.fill: parent
-                        anchors.topMargin: -8
-                        anchors.bottomMargin: -8
-                        hoverEnabled: true
-                        cursorShape: Qt.PointingHandCursor
-
-                        function updateVol(mouse) {
-                            var ratio = Math.max(0.0, Math.min(1.0, mouse.x / appVolTrack.width))
-                            var newVol = Math.round(ratio * 100)
-                            root.appSoundVolume = newVol
-                            root.appSoundMuted = false
-                            Shell.setAppVolume(newVol)
+                        Text {
+                            visible: audioSection.devices.length === 0
+                            text: "No devices found"
+                            color: root.fgDim
+                            font.family: root.textFont
+                            font.pixelSize: 11
+                            leftPadding: 8
                         }
 
-                        onPressed: function(mouse) {
-                            updateVol(mouse)
-                        }
-                        onPositionChanged: function(mouse) {
-                            if (pressed) updateVol(mouse)
+                        Repeater {
+                            model: audioSection.devices
+                            delegate: Rectangle {
+                                required property var modelData
+                                width: audioSection.width
+                                height: 28
+                                radius: 6
+                                color: devMouse.containsMouse ? Qt.rgba(1, 1, 1, 0.08)
+                                     : (modelData.isDefault ? Qt.rgba(root.bgBorder.r, root.bgBorder.g, root.bgBorder.b, 0.16) : "transparent")
+                                Rectangle {
+                                    visible: modelData.isDefault
+                                    width: 3; radius: 1.5
+                                    height: parent.height - 12
+                                    anchors.left: parent.left
+                                    anchors.leftMargin: 2
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    color: root.bgBorder
+                                }
+                                Text {
+                                    anchors.left: parent.left
+                                    anchors.leftMargin: 12
+                                    anchors.right: parent.right
+                                    anchors.rightMargin: 8
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    text: modelData.name
+                                    elide: Text.ElideRight
+                                    color: modelData.isDefault ? root.fgColor : root.fgDim
+                                    font.family: root.textFont
+                                    font.pixelSize: 12
+                                    font.weight: modelData.isDefault ? Font.DemiBold : Font.Normal
+                                }
+                                MouseArea {
+                                    id: devMouse
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: if (!modelData.isDefault) root.chooseAudioDevice(audioSection.modelData.kind, modelData.id)
+                                }
+                            }
                         }
                     }
                 }
