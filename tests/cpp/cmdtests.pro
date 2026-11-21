@@ -5,7 +5,8 @@ CONFIG += c++20 console testcase
 CONFIG -= app_bundle
 TARGET = cmdtests
 INCLUDEPATH += ../../src
-SOURCES += main.cpp tst_commandanalyzer.cpp tst_commandrunner.cpp tst_commandhistory.cpp tst_fileactions.cpp tst_clipboardhistory.cpp tst_processlist.cpp tst_recentfiles.cpp tst_emojiindex.cpp tst_appclassify.cpp tst_audiodevices.cpp \
+SOURCES += main.cpp tst_commandanalyzer.cpp tst_commandrunner.cpp tst_commandhistory.cpp tst_fileactions.cpp tst_clipboardhistory.cpp tst_processlist.cpp tst_recentfiles.cpp tst_emojiindex.cpp tst_appclassify.cpp tst_audiodevices.cpp tst_colorpick.cpp \
+    ../../src/pc/ColorPick.cpp \
     ../../src/pc/AudioDevices.cpp \
     ../../src/search/AppClassify.cpp \
     ../../src/ui/IconAlias.cpp \
@@ -17,5 +18,5 @@ SOURCES += main.cpp tst_commandanalyzer.cpp tst_commandrunner.cpp tst_commandhis
     ../../src/run/CommandHistory.cpp \
     ../../src/run/CommandRunner.cpp \
     ../../src/run/CommandAnalyzer.cpp
-HEADERS += ../../src/run/CommandAnalyzer.hpp ../../src/run/CommandRunner.hpp ../../src/run/CommandHistory.hpp ../../src/files/FileActions.hpp ../../src/pc/ClipboardHistory.hpp ../../src/pc/ProcessList.hpp ../../src/pc/RecentFiles.hpp ../../src/pc/EmojiIndex.hpp ../../src/search/AppClassify.hpp ../../src/ui/IconAlias.hpp ../../src/pc/AudioDevices.hpp
+HEADERS += ../../src/run/CommandAnalyzer.hpp ../../src/run/CommandRunner.hpp ../../src/run/CommandHistory.hpp ../../src/files/FileActions.hpp ../../src/pc/ClipboardHistory.hpp ../../src/pc/ProcessList.hpp ../../src/pc/RecentFiles.hpp ../../src/pc/EmojiIndex.hpp ../../src/search/AppClassify.hpp ../../src/ui/IconAlias.hpp ../../src/pc/AudioDevices.hpp ../../src/pc/ColorPick.hpp
 DEFINES += SRCDIR=\\\"$$PWD\\\"

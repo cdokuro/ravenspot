@@ -93,6 +93,9 @@ public slots:
     Q_INVOKABLE void playCreamy();
     Q_INVOKABLE void playSound(const QString &soundType);
     Q_INVOKABLE void setAppVolume(int vol);
+    // Ekrandan renk seç (xdg-desktop-portal PickColor). Menü kapandıktan sonra
+    // çağrılır; seçilen #RRGGBB panoya kopyalanır ve bildirim gösterilir.
+    Q_INVOKABLE void pickColor();
     // Sistem ses cihazları (kind: "output" | "input"): [{id, name, isDefault}]
     Q_INVOKABLE QString listAudioDevices(const QString &kind) const;
     // Varsayılan çıkışı/girişi değiştirir (pactl set-default-sink/source, argv)
@@ -205,6 +208,9 @@ public slots:
     Q_INVOKABLE QVariantMap getUpdateInfo() const;
     Q_INVOKABLE void launchUpdate();
     Q_INVOKABLE void openSystemMonitor(const QString &section = QStringLiteral("overview"));
+
+private Q_SLOTS:
+    void onColorPickResponse(uint response, const QVariantMap &results);
 
 private:
     void updateTelemetry();

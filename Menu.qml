@@ -1355,6 +1355,12 @@ Window {
     property string armedRunId: ""
     property var lastKill: null // { rowId, at }: ikinci Enter ile SIGKILL
     property real enterGuardUntil: 0
+    // Renk seçici: kapanış animasyonu bitince portal seçicisini başlat
+    Timer {
+        id: colorPickDelay
+        interval: 250
+        onTriggered: Shell.pickColor()
+    }
     Timer {
         id: killRefresh
         interval: 700
@@ -1486,6 +1492,13 @@ Window {
             root.opened = false
             Shell.openPath(row.value) // argv; eskiden "xdg-open <yol>" /bin/sh'ta genişliyordu
             Qt.callLater(closeMenu)
+        } else if (row.provider === "color-picker") {
+            // Menü kapanmadan seçici başlarsa kart ekranda kalır: önce kapat
+            Shell.playCreamy()
+            root.opened = false
+            Qt.callLater(closeMenu)
+            colorPickDelay.restart()
+            return
         } else if (row.provider === "ui-sound-toggle" || row.provider === "ui-sound-level") {
             // Menü açık kalır: seçimin sesi hemen duyulur, işaret güncellenir
             if (row.provider === "ui-sound-toggle") {

@@ -60,6 +60,7 @@ HEADERS += \
     src/search/AppClassify.hpp \
     src/ui/IconAlias.hpp \
     src/pc/AudioDevices.hpp \
+    src/pc/ColorPick.hpp \
     src/search/CalcConverter.hpp \
     src/run/CommandAnalyzer.hpp \
     src/run/CommandRunner.hpp \
@@ -86,6 +87,7 @@ SOURCES += \
     src/search/AppClassify.cpp \
     src/ui/IconAlias.cpp \
     src/pc/AudioDevices.cpp \
+    src/pc/ColorPick.cpp \
     src/search/CalcConverter.cpp \
     src/run/CommandAnalyzer.cpp \
     src/run/CommandRunner.cpp \

@@ -35,6 +35,9 @@
 #include <malloc.h>
 #include <algorithm>
 #include "pc/AudioDevices.hpp"
+#include "pc/ColorPick.hpp"
+#include <QDBusArgument>
+#include <QRandomGenerator>
 
 namespace ravenspot {
 
@@ -260,6 +263,62 @@ void ShellBridge::setDefaultAudioDevice(const QString &kind, const QString &id) 
     const bool input = kind == QStringLiteral("input");
     QProcess::startDetached(QStringLiteral("pactl"),
         {input ? QStringLiteral("set-default-source") : QStringLiteral("set-default-sink"), id});
+}
+
+void ShellBridge::pickColor() {
+    // Portal isteği: yanıt Request nesnesinin Response sinyaliyle gelir; yolu
+    // tahmin edip sinyale çağrıdan ÖNCE abone olunur (portal belgesindeki yöntem).
+    QDBusConnection bus = QDBusConnection::sessionBus();
+    const QString token = QStringLiteral("ravenspot_color_%1").arg(QRandomGenerator::global()->generate());
+    QString sender = bus.baseService();
+    sender.remove(0, 1).replace(QLatin1Char('.'), QLatin1Char('_'));
+    const QString requestPath = QStringLiteral("/org/freedesktop/portal/desktop/request/%1/%2").arg(sender, token);
+    bus.connect(QStringLiteral("org.freedesktop.portal.Desktop"), requestPath,
+                QStringLiteral("org.freedesktop.portal.Request"), QStringLiteral("Response"),
+                this, SLOT(onColorPickResponse(uint,QVariantMap)));
+
+    QDBusMessage msg = QDBusMessage::createMethodCall(
+        QStringLiteral("org.freedesktop.portal.Desktop"), QStringLiteral("/org/freedesktop/portal/desktop"),
+        QStringLiteral("org.freedesktop.portal.Screenshot"), QStringLiteral("PickColor"));
+    QVariantMap options;
+    options.insert(QStringLiteral("handle_token"), token);
+    msg << QString() << options;
+    auto *watcher = new QDBusPendingCallWatcher(bus.asyncCall(msg), this);
+    connect(watcher, &QDBusPendingCallWatcher::finished, this, [](QDBusPendingCallWatcher *w) {
+        if (w->isError())
+            QProcess::startDetached(QStringLiteral("notify-send"),
+                {QStringLiteral("-a"), QStringLiteral("RavenSpot"), QStringLiteral("-i"), QStringLiteral("dialog-error"),
+                 QStringLiteral("Color picker unavailable"), w->error().message()});
+        w->deleteLater();
+    });
+}
+
+void ShellBridge::onColorPickResponse(uint response, const QVariantMap &results) {
+    if (response != 0) return; // iptal (Esc) ya da hata: sessizce çık
+    const QVariant colorVar = results.value(QStringLiteral("color"));
+    if (!colorVar.canConvert<QDBusArgument>()) return;
+    double r = 0, g = 0, b = 0;
+    const QDBusArgument arg = colorVar.value<QDBusArgument>();
+    arg.beginStructure();
+    arg >> r >> g >> b;
+    arg.endStructure();
+    const QString hex = pc::colorHex(r, g, b);
+    const QString rgb = pc::colorRgb(r, g, b);
+
+    // Menü kapalıyken (odak yok) Wayland panosuna Qt üzerinden yazılamayabilir:
+    // wl-copy ayrı süreçte panoyu sahiplenir; yoksa Qt panosu.
+    QProcess copy;
+    copy.start(QStringLiteral("wl-copy"), {});
+    if (copy.waitForStarted(500)) {
+        copy.write(hex.toUtf8());
+        copy.closeWriteChannel();
+        copy.waitForFinished(1500);
+    } else {
+        copyToClipboard(hex);
+    }
+    QProcess::startDetached(QStringLiteral("notify-send"),
+        {QStringLiteral("-a"), QStringLiteral("RavenSpot"), QStringLiteral("-i"), QStringLiteral("color-picker"),
+         QStringLiteral("%1 copied").arg(hex), rgb});
 }
 
 void ShellBridge::setAppVolume(int vol) {

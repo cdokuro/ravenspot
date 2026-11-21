@@ -34,6 +34,7 @@
   "files.recent": { "icon": "󰋚", "iconName": "document-open-recent", "label": "Recent Files", "aliases": ["recent", "son dosyalar", "son açılanlar"], "provider": "recent" },
 
   // ─── Tools ─────────────────────────────────────────────────────
+  "tools.colorpicker": { "icon": "󰈊", "iconName": "color-picker", "label": "Color Picker", "description": "Copies the HEX code", "aliases": ["color", "colour", "renk", "renk seçici", "picker", "hex", "eyedropper", "damlalık", "pipet"], "action": "ravenspot:pick-color", "provider": "color-picker" },
   "tools.capture": { "icon": "", "iconName": "gnome-screenshot", "label": "Screenshot", "aliases": ["screenshot", "screenrecord", "ekran görüntüsü"] },
   "tools.capture.fullscreen": { "icon": "󰍹", "iconName": "gnome-screenshot", "label": "Fullscreen", "action": "spectacle -f -b -n" },
   "tools.capture.activewindow": { "icon": "󰖲", "iconName": "gnome-screenshot", "label": "Active Window", "action": "spectacle -a -b -n" },

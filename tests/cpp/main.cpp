@@ -12,11 +12,12 @@ QObject *makeTestRecentFiles();
 QObject *makeTestEmojiIndex();
 QObject *makeTestAppClassify();
 QObject *makeTestAudioDevices();
+QObject *makeTestColorPick();
 
 int main(int argc, char **argv) {
     QCoreApplication app(argc, argv);
     int failures = 0;
-    for (auto make : {&makeTestCommandAnalyzer, &makeTestCommandRunner, &makeTestCommandHistory, &makeTestFileActions, &makeTestClipboardHistory, &makeTestProcessList, &makeTestRecentFiles, &makeTestEmojiIndex, &makeTestAppClassify, &makeTestAudioDevices}) {
+    for (auto make : {&makeTestCommandAnalyzer, &makeTestCommandRunner, &makeTestCommandHistory, &makeTestFileActions, &makeTestClipboardHistory, &makeTestProcessList, &makeTestRecentFiles, &makeTestEmojiIndex, &makeTestAppClassify, &makeTestAudioDevices, &makeTestColorPick}) {
         std::unique_ptr<QObject> t(make());
         failures += QTest::qExec(t.get(), argc, argv);
     }
