@@ -30,6 +30,46 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt pyinstaller
 
+      - name: Flatten symlinks for Windows non-admin compatibility
+        shell: python
+        run: |
+          import os, shutil
+          flattened = 0
+          removed = 0
+          for root_dir in ("icons", "assets", "sounds"):
+              if not os.path.isdir(root_dir):
+                  continue
+              for dirpath, dirnames, filenames in os.walk(root_dir, topdown=False):
+                  for name in filenames + dirnames:
+                      p = os.path.join(dirpath, name)
+                      if os.path.islink(p):
+                          target = os.path.realpath(p)
+                          exists = os.path.exists(target)
+                          is_file = os.path.isfile(target)
+                          is_dir = os.path.isdir(target)
+                          if os.path.isdir(p):
+                              os.rmdir(p)
+                          else:
+                              os.unlink(p)
+                          if exists and is_file:
+                              shutil.copy2(target, p)
+                              flattened += 1
+                          elif exists and is_dir:
+                              shutil.copytree(target, p, symlinks=False)
+                              flattened += 1
+                          else:
+                              removed += 1
+          remaining = [
+              os.path.join(dp, n)
+              for root_dir in ("icons", "assets", "sounds")
+              if os.path.isdir(root_dir)
+              for dp, dns, fns in os.walk(root_dir)
+              for n in dns + fns
+              if os.path.islink(os.path.join(dp, n))
+          ]
+          assert not remaining, f"Symlinks still exist: {remaining[:5]}"
+          print(f"Symlinks flattened: {flattened}, broken removed: {removed}")
+
       - name: Build standalone executable with PyInstaller
         shell: cmd
         run: |
