@@ -1949,6 +1949,9 @@ Window {
             root.appSoundVolume = vol
             root.appSoundMuted = muted
         }
+        function onAppUpdateChanged() {
+            root.sysUpdateInfo = Shell.getUpdateInfo()
+        }
     }
 
     function handleHotkeyTrigger() {
@@ -2611,15 +2614,20 @@ Window {
             spacing: 10
             height: 22
 
-            // CachyOS Canlı Güncelleme Butonu
+            // Canlı Güncelleme Butonu (Windows: GitHub Release otomatik kontrol + 1-tık güncelleme)
             Rectangle {
                 id: cachyUpdateBadge
                 height: 22
                 width: updateContentRow.width + 12
                 radius: root.edna ? 11 : 5
-                color: root.edna ? (updateBadgeMouse.containsMouse ? Qt.lighter(root.surfaceColor, 1.25) : root.surfaceColor)
-                     : (updateBadgeMouse.containsMouse ? Qt.rgba(1, 1, 1, 0.12) : Qt.rgba(1, 1, 1, 0.06))
-                border.color: (root.sysUpdateInfo && root.sysUpdateInfo.has_updates) ? "#ff5252" : (root.edna ? "transparent" : Qt.rgba(root.bgBorder.r, root.bgBorder.g, root.bgBorder.b, 0.25))
+                readonly property bool isUpdating: !!(root.sysUpdateInfo && root.sysUpdateInfo.updating)
+                readonly property bool isChecking: !!(root.sysUpdateInfo && root.sysUpdateInfo.checking)
+                readonly property bool hasUpdates: !!(root.sysUpdateInfo && root.sysUpdateInfo.has_updates)
+                color: hasUpdates
+                     ? (updateBadgeMouse.containsMouse ? Qt.rgba(96/255, 205/255, 255/255, 0.28) : Qt.rgba(96/255, 205/255, 255/255, 0.16))
+                     : (root.edna ? (updateBadgeMouse.containsMouse ? Qt.lighter(root.surfaceColor, 1.25) : root.surfaceColor)
+                                  : (updateBadgeMouse.containsMouse ? Qt.rgba(1, 1, 1, 0.12) : Qt.rgba(1, 1, 1, 0.06)))
+                border.color: hasUpdates ? (Shell.isWindows ? "#60cdff" : "#ff5252") : (root.edna ? "transparent" : Qt.rgba(root.bgBorder.r, root.bgBorder.g, root.bgBorder.b, 0.25))
                 border.width: 1
 
                 Row {
@@ -2643,8 +2651,13 @@ Window {
                     }
 
                     Text {
-                        text: (root.sysUpdateInfo && root.sysUpdateInfo.has_updates) ? (root.sysUpdateInfo.count > 0 ? root.sysUpdateInfo.count + " Updates" : "Update") : "Up to date"
-                        color: (root.sysUpdateInfo && root.sysUpdateInfo.has_updates) ? "#ff5252" : root.fgDim
+                        text: cachyUpdateBadge.isUpdating ? "Updating…"
+                            : (cachyUpdateBadge.isChecking ? "Checking…"
+                            : (cachyUpdateBadge.hasUpdates
+                                ? (Shell.isWindows && root.sysUpdateInfo.latest ? ("Update " + root.sysUpdateInfo.latest) : (root.sysUpdateInfo.count > 0 ? root.sysUpdateInfo.count + " Updates" : "Update"))
+                                : (Shell.isWindows && root.sysUpdateInfo && root.sysUpdateInfo.current ? (root.sysUpdateInfo.current + " · Up to date") : "Up to date")))
+                        color: cachyUpdateBadge.isUpdating ? "#fbbf24"
+                             : (cachyUpdateBadge.hasUpdates ? (Shell.isWindows ? "#60cdff" : "#ff5252") : root.fgDim)
                         font.pixelSize: 10
                         font.family: root.textFont
                         font.weight: Font.DemiBold
@@ -2660,6 +2673,10 @@ Window {
                     onEntered: Shell.playThock()
                     onClicked: {
                         Shell.playCreamy()
+                        if (Shell.isWindows && !cachyUpdateBadge.hasUpdates) {
+                            Shell.checkAppUpdates(true)
+                            return
+                        }
                         root.opened = false
                         Shell.launchUpdate()
                         Qt.callLater(closeMenu)

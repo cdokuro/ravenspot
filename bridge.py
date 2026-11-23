@@ -20,7 +20,14 @@ import subprocess
 import sys
 import threading
 
-__version__ = "0.3.3"
+__version__ = "0.3.4"
+GITHUB_REPO = "cdokuro/ravenspot"
+
+
+def _parse_semver(tag: str):
+    """Parse version strings like 'v0.3.4' or '0.3.4' into a comparable int tuple."""
+    nums = re.findall(r"\d+", str(tag or ""))
+    return tuple(int(n) for n in nums[:4]) if nums else (0,)
 
 # ── Platform Path & IPC Definitions ───────────────────────────
 IS_WINDOWS = sys.platform == "win32"
@@ -395,6 +402,10 @@ class Shell(QObject):
     telemetryUpdated = Signal("QVariantMap")
     fileSearchFinished = Signal(int, str, str)
     windowSearchFinished = Signal(int, str, str)
+    appUpdateChanged = Signal()
+    _updateCheckDone = Signal("QVariantMap", bool)
+    _updateInstallError = Signal(str)
+    _requestAppQuit = Signal()
 
     def __init__(self, start_hidden=False):
         super().__init__()
@@ -411,9 +422,33 @@ class Shell(QObject):
         self._file_search_seq = 0
         self._color_picker_win = None
         self._tray = None
+        self._tray_update_action = None
+        self._notified_update_tag = ""
+        self._app_update_info = {
+            "has_updates": False,
+            "checking": False,
+            "updating": False,
+            "count": 0,
+            "current": f"v{__version__}",
+            "latest": f"v{__version__}",
+            "download_url": "",
+            "release_url": f"https://github.com/{GITHUB_REPO}/releases/latest",
+            "notes": "",
+            "icon_path": "image://themeicon/system-software-update",
+            "tooltip": f"RavenSpot v{__version__} — Click to Check for Updates",
+        }
+        self._updateCheckDone.connect(self._apply_update_check_result)
+        self._updateInstallError.connect(self._on_update_install_error)
+        self._requestAppQuit.connect(lambda: QTimer.singleShot(250, QApplication.quit))
         self._win_audio = wp.WinAudioController() if (IS_WINDOWS and wp) else None
         self._win_lhm = wp.WinLhmMiniPoller(APP_DIR) if (IS_WINDOWS and wp) else None
         self._init_extra()
+        if IS_WINDOWS and os.environ.get("RAVENSPOT_TESTING") != "1":
+            QTimer.singleShot(4000, lambda: self.checkAppUpdates(False))
+            self._update_timer = QTimer(self)
+            self._update_timer.setInterval(30 * 60 * 1000)  # every 30 minutes
+            self._update_timer.timeout.connect(lambda: self.checkAppUpdates(False))
+            self._update_timer.start()
         self._menu_path = MENU_PATH
         self._user_menu_path = USER_MENU_PATH
         self._apps_cache = None  # [ {id,label,icon,aliases,keywords,desktop} ]
@@ -638,6 +673,12 @@ class Shell(QObject):
                     "RavenSpot Shortcuts",
                     "Alt+Space / Win+Space: Toggle • >: Shell • *: Files • :emoji • clip • kill",
                 )
+                return
+            if cmd == "ravenspot:check-updates":
+                if self._app_update_info.get("has_updates"):
+                    self.installAppUpdate()
+                else:
+                    self.checkAppUpdates(True)
                 return
             expanded = os.path.expandvars(cmd)
             if expanded.lower() == "ms-screenclip:":
@@ -1970,15 +2011,180 @@ class Shell(QObject):
             "uptime": up_text or "--"
         }
 
+    @Slot(bool)
+    def checkAppUpdates(self, manual=True):
+        """GitHub Releases (cdokuro/ravenspot) üzerinden yeni sürüm kontrolü yap (arka planda)."""
+        if self._app_update_info.get("checking") or self._app_update_info.get("updating"):
+            return
+        self._app_update_info["checking"] = True
+        self.appUpdateChanged.emit()
+
+        def _worker():
+            import urllib.request
+            res = dict(self._app_update_info)
+            res["checking"] = False
+            res["error"] = ""
+            try:
+                api_url = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
+                req = urllib.request.Request(
+                    api_url,
+                    headers={
+                        "Accept": "application/vnd.github+json",
+                        "User-Agent": f"RavenSpot/{__version__}",
+                    },
+                )
+                with urllib.request.urlopen(req, timeout=10) as resp:
+                    data = json.loads(resp.read().decode("utf-8", errors="replace"))
+                tag = str(data.get("tag_name") or "").strip()
+                release_url = str(data.get("html_url") or f"https://github.com/{GITHUB_REPO}/releases/latest")
+                notes = str(data.get("body") or "").strip()
+                dl_zip = ""
+                dl_exe = ""
+                allowed_prefix = f"https://github.com/{GITHUB_REPO}/releases/download/"
+                for asset in data.get("assets") or []:
+                    aname = str(asset.get("name") or "")
+                    aurl = str(asset.get("browser_download_url") or "")
+                    if not aurl.startswith(allowed_prefix):
+                        continue
+                    if aname.lower() == "ravenspot-windows-x64.zip":
+                        dl_zip = aurl
+                    elif aname.lower() == "ravenspot.exe":
+                        dl_exe = aurl
+                has_new = bool(tag) and (_parse_semver(tag) > _parse_semver(__version__))
+                res["has_updates"] = has_new
+                res["count"] = 1 if has_new else 0
+                res["latest"] = tag or f"v{__version__}"
+                res["current"] = f"v{__version__}"
+                res["download_url"] = dl_zip or dl_exe
+                res["release_url"] = release_url
+                res["notes"] = notes[:400]
+                res["tooltip"] = (
+                    f"RavenSpot {res['latest']} available — Click to Update"
+                    if has_new else f"RavenSpot v{__version__} is up to date"
+                )
+            except Exception as exc:
+                res["error"] = str(exc)
+            self._updateCheckDone.emit(res, bool(manual))
+
+        threading.Thread(target=_worker, daemon=True).start()
+
+    @Slot("QVariantMap", bool)
+    def _apply_update_check_result(self, info, manual):
+        err = info.pop("error", "")
+        self._app_update_info.update(info)
+        self.appUpdateChanged.emit()
+        has_new = bool(self._app_update_info.get("has_updates"))
+        latest = str(self._app_update_info.get("latest") or "")
+        if self._tray_update_action is not None:
+            try:
+                if has_new:
+                    self._tray_update_action.setText(f"Update Available: {latest}")
+                else:
+                    self._tray_update_action.setText(f"Check for Updates (v{__version__})")
+            except Exception:
+                pass
+        if has_new and (manual or latest != self._notified_update_tag):
+            self._notified_update_tag = latest
+            self.notify(
+                "RavenSpot Güncellemesi Hazır",
+                f"Yeni sürüm {latest} yayınlandı! Üstteki Update butonuna tıklayarak tek tıkla güncelleyebilirsin.",
+            )
+        elif manual:
+            if err:
+                self.notify("RavenSpot Güncelleme", "GitHub kontrol edilemedi (internet bağlantını kontrol et).")
+            else:
+                self.notify("RavenSpot Güncel", f"En son sürümü kullanıyorsun (v{__version__}).")
+
+    @Slot(str)
+    def _on_update_install_error(self, msg):
+        self._app_update_info["updating"] = False
+        self.appUpdateChanged.emit()
+        self.notify("RavenSpot Güncelleme Hatası", msg or "İndirme başarısız, GitHub sayfası açılıyor.")
+        rel_url = self._app_update_info.get("release_url") or f"https://github.com/{GITHUB_REPO}/releases/latest"
+        self.openPath(rel_url)
+
+    @Slot()
+    def installAppUpdate(self):
+        """Yeni GitHub sürümünü indirip Windows'ta kendini otomatik güncelle ve yeniden başlat."""
+        if not self._app_update_info.get("has_updates"):
+            self.checkAppUpdates(True)
+            return
+        if self._app_update_info.get("updating"):
+            return
+        dl_url = str(self._app_update_info.get("download_url") or "")
+        rel_url = str(self._app_update_info.get("release_url") or f"https://github.com/{GITHUB_REPO}/releases/latest")
+        latest = str(self._app_update_info.get("latest") or "latest")
+        allowed_prefix = f"https://github.com/{GITHUB_REPO}/releases/download/"
+
+        if (not IS_WINDOWS) or (not getattr(sys, "frozen", False)) or (not dl_url.startswith(allowed_prefix)):
+            self.openPath(rel_url)
+            return
+
+        self._app_update_info["updating"] = True
+        self.appUpdateChanged.emit()
+        self.notify("RavenSpot Güncelleniyor", f"{latest} indiriliyor, bitince otomatik yeniden başlayacak...")
+
+        def _dl_and_apply():
+            import tempfile, urllib.request, zipfile
+            try:
+                tmp_dir = tempfile.gettempdir()
+                is_zip = dl_url.lower().endswith(".zip")
+                ext = ".zip" if is_zip else ".exe"
+                safe_tag = re.sub(r"[^a-zA-Z0-9._-]", "", latest) or "latest"
+                dl_path = os.path.join(tmp_dir, f"RavenSpot-update-{safe_tag}{ext}")
+                req = urllib.request.Request(dl_url, headers={"User-Agent": f"RavenSpot/{__version__}"})
+                with urllib.request.urlopen(req, timeout=120) as resp, open(dl_path, "wb") as out_f:
+                    shutil.copyfileobj(resp, out_f, length=256 * 1024)
+
+                if is_zip:
+                    with zipfile.ZipFile(dl_path, "r") as zf:
+                        names = [n.lower() for n in zf.namelist()]
+                        if not any(n.endswith("ravenspot.exe") for n in names):
+                            raise RuntimeError("Zip paketi içinde RavenSpot.exe bulunamadı.")
+
+                ps_path = os.path.join(tmp_dir, f"ravenspot_apply_update_{os.getpid()}.ps1")
+                exe_dir_escaped = EXE_DIR.replace("'", "''")
+                dl_escaped = dl_path.replace("'", "''")
+                ps_escaped = ps_path.replace("'", "''")
+                cur_pid = os.getpid()
+
+                if is_zip:
+                    apply_body = f"Expand-Archive -Path '{dl_escaped}' -DestinationPath '{exe_dir_escaped}' -Force"
+                else:
+                    apply_body = f"Copy-Item -Path '{dl_escaped}' -Destination (Join-Path '{exe_dir_escaped}' 'RavenSpot.exe') -Force"
+
+                ps_script = f"""$ErrorActionPreference = 'SilentlyContinue'
+for ($i = 0; $i -lt 40; $i++) {{
+  $alive = @(Get-Process -Name 'RavenSpot' -ErrorAction SilentlyContinue)
+  if ($alive.Count -eq 0) {{ break }}
+  Start-Sleep -Milliseconds 500
+}}
+Start-Sleep -Milliseconds 600
+{apply_body}
+Start-Process -FilePath (Join-Path '{exe_dir_escaped}' 'RavenSpot.exe') -WorkingDirectory '{exe_dir_escaped}'
+Remove-Item -Path '{dl_escaped}' -Force -ErrorAction SilentlyContinue
+Remove-Item -Path '{ps_escaped}' -Force -ErrorAction SilentlyContinue
+"""
+                with open(ps_path, "w", encoding="utf-8") as f:
+                    f.write(ps_script)
+
+                flags = 0x08000000 | 0x00000200 | 0x00000008  # CREATE_NO_WINDOW | CREATE_NEW_PROCESS_GROUP | DETACHED_PROCESS
+                subprocess.Popen(
+                    ["powershell.exe", "-NoProfile", "-NonInteractive", "-WindowStyle", "Hidden",
+                     "-ExecutionPolicy", "Bypass", "-File", ps_path],
+                    creationflags=flags,
+                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, stdin=subprocess.DEVNULL,
+                )
+                self._requestAppQuit.emit()
+            except Exception as exc:
+                self._updateInstallError.emit(f"Güncelleme indirilemedi: {exc}")
+
+        threading.Thread(target=_dl_and_apply, daemon=True).start()
+
     @Slot(result="QVariantMap")
     def getUpdateInfo(self):
         if IS_WINDOWS:
-            return {
-                "has_updates": False,
-                "count": 0,
-                "icon_path": "image://themeicon/system-software-update",
-                "tooltip": "Windows Update — Click to Check"
-            }
+            return dict(self._app_update_info)
         """
         CachyOS / Arch güncelleme durumunu döndürür.
         Photo 2: cachy-update_updates-available-blue.svg (Kırmızı ok + güncelleme adedi)
@@ -2045,7 +2251,10 @@ class Shell(QObject):
     def launchUpdate(self):
         """Güncelleme aracını ayrık (detached) çalıştır."""
         if IS_WINDOWS:
-            self.runDetached("ms-settings:windowsupdate")
+            if self._app_update_info.get("has_updates"):
+                self.installAppUpdate()
+            else:
+                self.checkAppUpdates(True)
             return
         for term in ["konsole", "alacritty", "kitty", "xterm"]:
             if shutil.which(term):
@@ -3232,10 +3441,14 @@ def main():
             shell._apps_cache = None
             shell.reloadRequested.emit()
         act_reload.triggered.connect(_do_reload)
+        act_update = QAction(f"Check for Updates (v{__version__})", tray_menu)
+        act_update.triggered.connect(shell.launchUpdate)
+        shell._tray_update_action = act_update
         act_quit = QAction("Quit RavenSpot", tray_menu)
         act_quit.triggered.connect(app.quit)
         tray_menu.addAction(act_open)
         tray_menu.addAction(act_reload)
+        tray_menu.addAction(act_update)
         tray_menu.addSeparator()
         tray_menu.addAction(act_quit)
         tray.setContextMenu(tray_menu)
