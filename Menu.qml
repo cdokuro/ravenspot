@@ -3,7 +3,6 @@ import QtQuick
 import QtQuick.Window
 import QtQuick.Controls
 import QtQuick.Effects
-import org.kde.plasma.private.batterymonitor
 import "MenuModel.js" as MenuModel
 
 Window {
@@ -16,14 +15,10 @@ Window {
     width: root.cardWidth + 48
     height: root.maxCardHeight + 48
     color: "transparent"
-    flags: Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint
+    flags: (Shell.isWindows ? (Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.Tool)
+                            : (Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint))
 
-    InhibitionControl {
-        id: kdeInhibitCtrl
-        onIsManuallyInhibitedChanged: {
-            root.sleepInhibited = isManuallyInhibited
-        }
-    }
+    property var kdeInhibitCtrl: null
 
     property bool canCloseOnInactive: false
 
@@ -112,7 +107,7 @@ Window {
     property color cardBorderColor: "#ffd700"
     property color accentColor: "#ffd700"
     readonly property int iconSize: edna ? 28 : 26
-    property string iconFont: "FantasqueSansM Nerd Font"
+    property string iconFont: (Shell.iconFontName && Shell.iconFontName.length > 0) ? Shell.iconFontName : "FantasqueSansM Nerd Font"
     property string textFont: "Inter"
     property int cardWidth: 495
     readonly property int maxCardHeight: 720
@@ -1088,8 +1083,8 @@ Window {
                 try { rows = MenuModel.pcRows("emoji", JSON.parse(Shell.searchEmoji(query.substring(1)) || "[]")).concat(rows) } catch (e) {}
             }
 
-            // 5. Dizin ve Dosya Yolu Açıcı (~/ veya /)
-            if (query.startsWith("~") || query.startsWith("/")) {
+            // 5. Dizin ve Dosya Yolu Açıcı (~/, / veya Windows sürücü yolu C:\)
+            if (query.startsWith("~") || query.startsWith("/") || (Shell.isWindows && /^[A-Za-z]:[\\/]/.test(query))) {
                 var cleanPath = query
                 rows.unshift({
                     itemId: "__open_dir__",
@@ -1101,7 +1096,7 @@ Window {
                     appId: "",
                     label: "Open Folder: " + cleanPath,
                     target: "",
-                    detail: "Open this location in Dolphin",
+                    detail: Shell.isWindows ? "Open this location in File Explorer" : "Open this location in Dolphin",
                     path: "Files",
                     childCount: 0,
                     action: "",
@@ -1122,7 +1117,7 @@ Window {
                     appId: "",
                     label: "Open Terminal Here: " + cleanPath,
                     target: "",
-                    detail: "Start Konsole in this folder",
+                    detail: Shell.isWindows ? "Start Windows Terminal in this folder" : "Start Konsole in this folder",
                     path: "Terminal",
                     childCount: 0,
                     action: "",
@@ -1853,6 +1848,7 @@ Window {
         root.canCloseOnInactive = false
         root.visible = true
         root.opened = true
+        if (Shell.onMenuVisibilityChanged) Shell.onMenuVisibilityChanged(true)
         if (!root.loaded) {
             loadItems()
         } else {
@@ -2623,7 +2619,9 @@ Window {
                         sourceSize.width: 14
                         sourceSize.height: 14
                         source: root.edna ? ("image://themeicon/system-software-update?v=" + root.themeVersion)
-                              : ((root.sysUpdateInfo && root.sysUpdateInfo.icon_path) ? "file://" + root.sysUpdateInfo.icon_path : "file:///usr/share/icons/hicolor/scalable/apps/cachy-update-blue.svg")
+                              : ((root.sysUpdateInfo && root.sysUpdateInfo.icon_path)
+                                 ? (root.sysUpdateInfo.icon_path.indexOf("image://") === 0 ? root.sysUpdateInfo.icon_path : "file://" + root.sysUpdateInfo.icon_path)
+                                 : "image://themeicon/system-software-update")
                         anchors.verticalCenter: parent.verticalCenter
                     }
 
@@ -3339,7 +3337,7 @@ Window {
                         onEntered: Shell.playThock()
                         onClicked: {
                             Shell.playCreamy()
-                            if (!Shell.isCommandAvailable("cpu-x")) {
+                            if (!Shell.isWindows && !Shell.isCommandAvailable("cpu-x")) {
                                 showDependencyPrompt(
                                     "cpu-x",
                                     "CPU-X System Monitor",
@@ -3403,6 +3401,12 @@ Window {
                         onEntered: Shell.playThock()
                         onClicked: {
                             Shell.playCreamy()
+                            if (Shell.isWindows) {
+                                root.opened = false
+                                Shell.openSystemMonitor("gpu")
+                                Qt.callLater(closeMenu)
+                                return
+                            }
                             var vendor = Shell.detectGpuVendor()
                             if (vendor === "amd") {
                                 if (!Shell.isCommandAvailable("lact")) {

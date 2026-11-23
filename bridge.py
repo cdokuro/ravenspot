@@ -9,15 +9,18 @@ Architecture:
   - bridge.py     : daemon and system integration bridge (Python/Qt6)
 """
 
+import ctypes
 import json
 import os
 import re
 import shutil
+import signal
 import socket
 import subprocess
 import sys
+import threading
 
-__version__ = "0.2.23"
+__version__ = "0.3.0-win"
 
 # ── Platform Path & IPC Definitions ───────────────────────────
 IS_WINDOWS = sys.platform == "win32"
@@ -38,8 +41,14 @@ else:
     APP_DIR = os.path.dirname(os.path.abspath(__file__))
 
 LEGACY_CONFIG_DIR = USER_CONFIG_DIR
-MENU_PATH = os.path.join(APP_DIR, "menu.jsonc")
+_WIN_MENU_PATH = os.path.join(APP_DIR, "menu_win.jsonc")
+MENU_PATH = _WIN_MENU_PATH if (IS_WINDOWS and os.path.isfile(_WIN_MENU_PATH)) else os.path.join(APP_DIR, "menu.jsonc")
 USER_MENU_PATH = os.path.join(USER_CONFIG_DIR, "menu.jsonc")
+
+if IS_WINDOWS:
+    import win_platform as wp
+else:
+    wp = None
 
 def _try_fast_client():
     if "unittest" in sys.modules or os.environ.get("RAVENSPOT_TESTING") == "1":
@@ -80,12 +89,133 @@ def _try_fast_client():
 
 START_HIDDEN = _try_fast_client()
 
-from PySide6.QtCore import QObject, QUrl, Qt, Slot, QTimer, QSize, Signal, Property, QThread
+from PySide6.QtCore import QObject, QUrl, Qt, Slot, QTimer, QSize, Signal, Property, QThread, QProcess, QPoint, QMimeData
 from PySide6.QtMultimedia import QSoundEffect
-from PySide6.QtGui import QGuiApplication, QIcon, QImage
+from PySide6.QtGui import QGuiApplication, QIcon, QImage, QCursor, QRegion, QAction, QFontDatabase
+from PySide6.QtWidgets import QApplication, QSystemTrayIcon, QMenu, QFileIconProvider
 from PySide6.QtQml import QQmlApplicationEngine
 from PySide6.QtQuick import QQuickImageProvider
 from PySide6.QtNetwork import QLocalServer, QLocalSocket
+
+
+class InlineCommandRunner(QObject):
+    """Satır içi komut çalıştırıcı (CommandOutputPanel.qml için Shell.runner)."""
+
+    outputChanged = Signal()
+    runningChanged = Signal()
+    finished = Signal(int, bool)
+
+    MAX_LINES = 2000
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._proc = None
+        self._command = ""
+        self._lines = []
+        self._partial = ""
+        self._exit_code = 0
+        self._emit_timer = QTimer(self)
+        self._emit_timer.setSingleShot(True)
+        self._emit_timer.setInterval(50)
+        self._emit_timer.timeout.connect(self.outputChanged.emit)
+
+    @Property(bool, notify=runningChanged)
+    def running(self):
+        return self._proc is not None
+
+    @Property(str, notify=outputChanged)
+    def output(self):
+        if self._partial:
+            return "\n".join(self._lines + [self._partial])
+        return "\n".join(self._lines)
+
+    @Property(str, notify=runningChanged)
+    def command(self):
+        return self._command
+
+    @Property(int, notify=finished)
+    def exitCode(self):
+        return self._exit_code
+
+    def _append_bytes(self, raw: bytes):
+        if not raw:
+            return
+        text = raw.decode("utf-8", errors="replace").replace("\r\n", "\n").replace("\r", "\n")
+        combined = self._partial + text
+        parts = combined.split("\n")
+        self._partial = parts.pop()
+        for ln in parts:
+            self._lines.append(ln[:4000])
+        if len(self._lines) > self.MAX_LINES:
+            self._lines = self._lines[-self.MAX_LINES:]
+        if not self._emit_timer.isActive():
+            self._emit_timer.start()
+
+    @Slot(str, result=bool)
+    def start(self, command):
+        if self._proc is not None or not (command or "").strip():
+            return False
+        self._command = command.strip()
+        self._lines = []
+        self._partial = ""
+        self._exit_code = 0
+        proc = QProcess(self)
+        proc.setProcessChannelMode(QProcess.MergedChannels)
+        proc.readyReadStandardOutput.connect(lambda: self._append_bytes(bytes(proc.readAllStandardOutput())))
+        proc.finished.connect(self._on_finished)
+        self._proc = proc
+        self.runningChanged.emit()
+        self.outputChanged.emit()
+        if IS_WINDOWS:
+            proc.start("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", self._command])
+        else:
+            proc.start("bash", ["-c", self._command])
+        if not proc.waitForStarted(3000):
+            self._proc = None
+            self._lines = ["Failed to start shell process."]
+            self._exit_code = 1
+            self.runningChanged.emit()
+            self.outputChanged.emit()
+            self.finished.emit(1, True)
+            return False
+        return True
+
+    def _on_finished(self, exit_code, exit_status):
+        proc = self._proc
+        if proc is not None:
+            self._append_bytes(bytes(proc.readAllStandardOutput()))
+            proc.deleteLater()
+        self._proc = None
+        self._exit_code = int(exit_code)
+        crashed = exit_status == QProcess.CrashExit
+        self.runningChanged.emit()
+        self.outputChanged.emit()
+        self.finished.emit(self._exit_code, crashed)
+
+    @Slot()
+    def stop(self):
+        proc = self._proc
+        if proc is None:
+            return
+        try:
+            pid = proc.processId()
+            if IS_WINDOWS and pid:
+                subprocess.Popen(["taskkill", "/T", "/F", "/PID", str(pid)], **(wp._hidden_kwargs() if wp else {}))
+            else:
+                proc.terminate()
+                if not proc.waitForFinished(1500):
+                    proc.kill()
+        except Exception:
+            try:
+                proc.kill()
+            except Exception:
+                pass
+
+    @Slot()
+    def clear(self):
+        self._lines = []
+        self._partial = ""
+        self.outputChanged.emit()
 
 LEGACY_CONFIG_DIR = os.path.join(os.path.expanduser("~"), ".config", "omarchy-menu")
 USER_MENU_PATH = os.path.join(USER_CONFIG_DIR, "menu.jsonc")
@@ -227,22 +357,106 @@ class Shell(QObject):
     showRequested = Signal()
     hideRequested = Signal()
     reloadRequested = Signal()
+    audioConfigChanged = Signal(int, bool)
+    powerProfileChanged = Signal(str)
+    sleepInhibitedChanged = Signal(bool)
+    telemetryUpdated = Signal("QVariantMap")
+    fileSearchFinished = Signal(int, str, str)
+    windowSearchFinished = Signal(int, str, str)
 
     def __init__(self, start_hidden=False):
         super().__init__()
         self._start_hidden = start_hidden
+        self._win = None
+        self._drag_origin_cursor = None
+        self._drag_origin_win = None
+        self._runner = InlineCommandRunner(self)
+        self._emoji_entries = None
+        self._clip_history = []
+        self._clip_file = os.path.join(USER_CONFIG_DIR, "clipboard.json")
+        self._cmd_hist_file = os.path.join(USER_CONFIG_DIR, "command_history.json")
+        self._cmd_history = self._load_json_list(self._cmd_hist_file)
+        self._clip_history = self._load_json_list(self._clip_file)
+        self._color_picker_win = None
+        self._tray = None
+        self._win_audio = wp.WinAudioController() if (IS_WINDOWS and wp) else None
+        self._win_lhm = wp.WinLhmMiniPoller(APP_DIR) if (IS_WINDOWS and wp) else None
         self._init_extra()
         self._menu_path = MENU_PATH
         self._user_menu_path = USER_MENU_PATH
         self._apps_cache = None  # [ {id,label,icon,aliases,keywords,desktop} ]
 
+    @staticmethod
+    def _load_json_list(path):
+        try:
+            if os.path.isfile(path):
+                with open(path, "r", encoding="utf-8") as f:
+                    d = json.load(f)
+                    if isinstance(d, list):
+                        return d
+        except Exception:
+            pass
+        return []
+
+    @staticmethod
+    def _save_json_list(path, items):
+        try:
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            with open(path, "w", encoding="utf-8") as f:
+                json.dump(items, f, ensure_ascii=False, indent=2)
+        except Exception:
+            pass
+
     @Property(bool, constant=True)
     def startHidden(self):
         return self._start_hidden
 
+    @Property(bool, constant=True)
+    def isWindows(self):
+        return IS_WINDOWS
+
+    @Property(str, constant=True)
+    def iconFontName(self):
+        return getattr(self, "_icon_font_name", "") or "FantasqueSansM Nerd Font"
+
     @Property(str, constant=True)
     def version(self):
         return __version__
+
+    @Property(QObject, constant=True)
+    def runner(self):
+        return self._runner
+
+    def attachWindow(self, win):
+        self._win = win
+
+    def attachTray(self, tray):
+        self._tray = tray
+
+    def notify(self, title, body):
+        if self._tray is not None:
+            try:
+                self._tray.showMessage(title, body, QSystemTrayIcon.Information, 3500)
+                return
+            except Exception:
+                pass
+
+    def _on_clipboard_changed(self):
+        try:
+            cb = QApplication.clipboard()
+            if not cb:
+                return
+            txt = cb.text() or ""
+            if not txt.strip():
+                return
+            if len(txt) > 65536:
+                txt = txt[:65536]
+            self._clip_history = [x for x in self._clip_history if x != txt]
+            self._clip_history.insert(0, txt)
+            self._clip_history = self._clip_history[:50]
+            self._save_json_list(self._clip_file, self._clip_history)
+        except Exception:
+            pass
 
     @Slot(bool)
     def onMenuVisibilityChanged(self, visible):
@@ -250,9 +464,73 @@ class Shell(QObject):
             self._update_telemetry()
             if hasattr(self, "_telemetry_timer") and not self._telemetry_timer.isActive():
                 self._telemetry_timer.start(1000)
+            if IS_WINDOWS and wp and self._win is not None:
+                try:
+                    hwnd = int(self._win.winId())
+                    QTimer.singleShot(25, lambda: wp.force_foreground_window(hwnd))
+                except Exception:
+                    pass
         else:
             if hasattr(self, "_telemetry_timer") and self._telemetry_timer.isActive():
                 self._telemetry_timer.stop()
+
+    @Slot()
+    def toggleMenu(self):
+        self.toggleRequested.emit()
+
+    @Slot()
+    def showMenu(self):
+        self.showRequested.emit()
+
+    @Slot()
+    def hideMenu(self):
+        self.hideRequested.emit()
+
+    @Slot(float, float)
+    def beginDrag(self, initialDx=0.0, initialDy=0.0):
+        if self._win is None:
+            return
+        self._drag_origin_cursor = QCursor.pos()
+        self._drag_origin_win = self._win.position()
+
+    @Slot(float, float, result=QPoint)
+    def dragBy(self, deltaX=0.0, deltaY=0.0):
+        if self._win is None:
+            return QPoint(0, 0)
+        if self._drag_origin_cursor is not None and self._drag_origin_win is not None:
+            cur = QCursor.pos()
+            nx = self._drag_origin_win.x() + (cur.x() - self._drag_origin_cursor.x())
+            ny = self._drag_origin_win.y() + (cur.y() - self._drag_origin_cursor.y())
+            self._win.setPosition(int(nx), int(ny))
+            return QPoint(int(nx), int(ny))
+        pos = self._win.position()
+        nx, ny = int(pos.x() + deltaX), int(pos.y() + deltaY)
+        self._win.setPosition(nx, ny)
+        return QPoint(nx, ny)
+
+    @Slot()
+    def endDrag(self):
+        self._drag_origin_cursor = None
+        self._drag_origin_win = None
+
+    @Slot(int)
+    def setCardHeight(self, height):
+        if self._win is None or not IS_WINDOWS:
+            return
+        try:
+            w = self._win.width()
+            h = max(80, min(self._win.height(), int(height) + 48))
+            self._win.setMask(QRegion(0, 0, w, h))
+        except Exception:
+            pass
+
+    @Slot(result=bool)
+    def isSwitchingScreen(self):
+        return False
+
+    @Slot(result=bool)
+    def perfLogging(self):
+        return bool(os.environ.get("RAVENSPOT_PERF"))
 
     # ── Dosya okuma ──────────────────────────────────────────────
     @Slot(str, result=str)
@@ -277,13 +555,15 @@ class Shell(QObject):
         """Senkron bash çalıştır, stdout döndür (guard batch'leri için)."""
         if not script or not script.strip():
             return ""
+        if IS_WINDOWS:
+            return ""
         try:
             p = subprocess.run(
                 ["bash", "-c", script],
                 capture_output=True, text=True, timeout=20,
             )
             return p.stdout or ""
-        except Exception as e:
+        except Exception:
             return ""
 
     @Slot(str)
@@ -291,16 +571,96 @@ class Shell(QObject):
         """Eylemi arka planda, menü kapanınca ölmeden çalıştır."""
         if not command or not command.strip():
             return
+        cmd = command.strip()
+        if IS_WINDOWS:
+            # Built-in RavenSpot internal actions
+            if cmd == "ravenspot:pick-color":
+                self.pickColor()
+                return
+            if cmd == "ravenspot:lock":
+                self.lockScreen()
+                return
+            if cmd == "ravenspot:suspend":
+                self.suspendSystem()
+                return
+            if cmd == "ravenspot:logout":
+                self.logoutUser()
+                return
+            if cmd == "ravenspot:reboot":
+                self.rebootSystem()
+                return
+            if cmd == "ravenspot:shutdown":
+                self.powerOff()
+                return
+            if cmd == "ravenspot:terminal":
+                self.openInTerminal(os.path.expanduser("~"))
+                return
+            if cmd == "ravenspot:screenshot-full":
+                QTimer.singleShot(250, self._take_windows_fullscreen_screenshot)
+                return
+            if cmd == "ravenspot:shortcuts-help":
+                self.notify(
+                    "RavenSpot Shortcuts",
+                    "Alt+Space / Win+Space: Toggle • >: Shell • *: Files • :emoji • clip • kill",
+                )
+                return
+            expanded = os.path.expandvars(cmd)
+            if re.match(r"^(ms-settings:|ms-windows-store:|ms-screenclip:|https?://|mailto:)", expanded, re.I):
+                try:
+                    os.startfile(expanded)
+                except Exception:
+                    subprocess.Popen(["cmd.exe", "/c", "start", "", expanded], **(wp._hidden_kwargs() if wp else {}))
+                return
+            if expanded.lower().startswith("explorer.exe "):
+                arg = expanded[len("explorer.exe "):].strip().strip('"')
+                subprocess.Popen(["explorer.exe", os.path.normpath(arg)])
+                return
+            if os.path.exists(expanded):
+                try:
+                    os.startfile(expanded)
+                    return
+                except Exception:
+                    pass
+            try:
+                subprocess.Popen(
+                    ["powershell.exe", "-NoProfile", "-WindowStyle", "Hidden", "-Command", expanded],
+                    **(wp._hidden_kwargs() if wp else {}),
+                )
+            except Exception:
+                subprocess.Popen(expanded, shell=True)
+            return
+
         subprocess.Popen(
-            ["bash", "-c", command],
+            ["bash", "-c", cmd],
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
             start_new_session=True,  # menü kapanınca SIGHUP almasın
         )
 
+    def _take_windows_fullscreen_screenshot(self):
+        try:
+            pics = self.getFolderPath("pictures") or os.path.expanduser("~")
+            out_dir = os.path.join(pics, "Screenshots")
+            os.makedirs(out_dir, exist_ok=True)
+            import datetime
+            fname = datetime.datetime.now().strftime("Screenshot_%Y-%m-%d_%H-%M-%S.png")
+            out_path = os.path.join(out_dir, fname)
+            screen = QGuiApplication.screenAt(QCursor.pos()) or QGuiApplication.primaryScreen()
+            if screen:
+                pm = screen.grabWindow(0)
+                pm.save(out_path, "PNG")
+                QApplication.clipboard().setPixmap(pm)
+                self.notify("Screenshot Saved", f"Copied & saved to {fname}")
+        except Exception:
+            pass
+
     @Slot(str)
-    def executeCommand(self, command):
-        """Komutu arka planda çalıştır (runDetached takma adı)."""
-        self.runDetached(command)
+    @Slot(str, bool)
+    def executeCommand(self, command, in_terminal=False):
+        """Komutu arka planda veya terminalde çalıştır."""
+        if in_terminal:
+            self.runCommandInTerminal(command)
+        else:
+            self.runDetached(command)
 
     # ── Provider: apps ───────────────────────────────────────────
     def _categorize_app(self, categories_str):
@@ -338,6 +698,13 @@ class Shell(QObject):
                     if k not in seen:
                         seen.add(k)
                         apps.append(app)
+            if wp:
+                for app in wp.scan_windows_uwp_apps():
+                    k = app["label"].lower()
+                    if k not in seen:
+                        seen.add(k)
+                        apps.append(app)
+            apps.sort(key=lambda a: a["label"].lower())
             self._apps_cache = apps
             return apps
 
@@ -438,14 +805,14 @@ class Shell(QObject):
         counts = {
             "games": 0, "internet": 0, "development": 0,
             "multimedia": 0, "graphics": 0, "office": 0,
-            "system": 0, "utilities": 0, "all": len(all_apps)
+            "system": 0, "utilities": 0, "other": 0, "all": len(all_apps)
         }
         for a in all_apps:
             cat = a.get("category", "utilities")
             if cat in counts:
                 counts[cat] += 1
             else:
-                counts["utilities"] += 1
+                counts["other"] += 1
         return json.dumps(counts)
 
     @Slot(str)
@@ -454,10 +821,13 @@ class Shell(QObject):
         if not desktop:
             return
         if IS_WINDOWS:
+            if desktop.lower().startswith("shell:"):
+                subprocess.Popen(["explorer.exe", desktop])
+                return
             try:
                 os.startfile(desktop)
             except Exception:
-                subprocess.Popen(["cmd", "/c", "start", "", desktop], shell=True)
+                subprocess.Popen(["cmd.exe", "/c", "start", "", desktop], **(wp._hidden_kwargs() if wp else {}))
             return
 
         subprocess.Popen(
@@ -505,6 +875,8 @@ class Shell(QObject):
 
     @Slot(result=str)
     def listColorschemes(self):
+        if IS_WINDOWS and wp:
+            return json.dumps(wp.list_windows_color_modes())
         current = ""
         try:
             current = subprocess.run(
@@ -571,6 +943,9 @@ class Shell(QObject):
     def applyColorscheme(self, name):
         if not name:
             return
+        if IS_WINDOWS and wp:
+            wp.apply_windows_color_mode(name)
+            return
         subprocess.Popen(
             ["plasma-apply-colorscheme", name],
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
@@ -580,6 +955,8 @@ class Shell(QObject):
     # ── Provider: power-profiles ─────────────────────────────────
     @Slot(result=str)
     def listPowerProfiles(self):
+        if IS_WINDOWS and wp:
+            return json.dumps(wp.list_windows_power_profiles())
         try:
             p = subprocess.run(
                 ["powerprofilesctl", "list"],
@@ -635,6 +1012,10 @@ class Shell(QObject):
     def applyPowerProfile(self, profile):
         if not profile:
             return
+        if IS_WINDOWS and wp:
+            if wp.set_windows_power_profile(profile):
+                self.powerProfileChanged.emit(wp.get_windows_power_profile())
+            return
         subprocess.Popen(
             ["powerprofilesctl", "set", profile],
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
@@ -642,8 +1023,37 @@ class Shell(QObject):
         )
 
     # ── Provider: clipboard ───────────────────────────────────────
+    def _clip_rows(self, query=""):
+        ql = (query or "").strip().lower()
+        rows = []
+        # Also include current clipboard text if not yet captured
+        try:
+            cb = QApplication.clipboard()
+            cur = (cb.text() or "") if cb else ""
+            if cur.strip() and (not self._clip_history or self._clip_history[0] != cur):
+                self._clip_history = [cur] + [x for x in self._clip_history if x != cur]
+                self._clip_history = self._clip_history[:50]
+        except Exception:
+            pass
+        for item in self._clip_history:
+            if ql and ql not in item.lower():
+                continue
+            display = " ".join(item.split())
+            if len(display) > 64:
+                display = display[:61] + "..."
+            rows.append({
+                "label": display,
+                "value": item[:4096],
+                "truncated": len(item) > 4096,
+            })
+            if len(rows) >= 30:
+                break
+        return rows
+
     @Slot(result=str)
     def listClipboard(self):
+        if IS_WINDOWS:
+            return json.dumps(self._clip_rows(""))
         try:
             p = subprocess.run(
                 ["qdbus6", "org.kde.klipper", "/klipper", "org.kde.klipper.klipper.getClipboardHistoryMenu"],
@@ -669,9 +1079,30 @@ class Shell(QObject):
         except Exception:
             return "[]"
 
+    @Slot(str, result=str)
+    def clipboardMatching(self, query):
+        if IS_WINDOWS:
+            return json.dumps(self._clip_rows(query))
+        try:
+            all_rows = json.loads(self.listClipboard() or "[]")
+            ql = (query or "").strip().lower()
+            if not ql:
+                return json.dumps(all_rows)
+            return json.dumps([r for r in all_rows if ql in (r.get("value") or "").lower()])
+        except Exception:
+            return "[]"
+
     @Slot(str)
     def setClipboard(self, text):
         if not text:
+            return
+        if IS_WINDOWS:
+            try:
+                cb = QApplication.clipboard()
+                if cb:
+                    cb.setText(text)
+            except Exception:
+                pass
             return
         try:
             subprocess.run(
@@ -680,6 +1111,10 @@ class Shell(QObject):
             )
         except Exception:
             pass
+
+    @Slot(str)
+    def copyToClipboard(self, text):
+        self.setClipboard(text)
 
     # ── Provider: files (downloads / user dirs) ───────────────────
     @Slot(str, result=str)
@@ -740,14 +1175,15 @@ class Shell(QObject):
                     return exp
 
         # 5. Apps listesi içinde desktop kontrolü (uygulama konumu)
+        apps_list = self._load_apps()
         if item_id:
-            for a in self._apps:
+            for a in apps_list:
                 aid = (a.get("id") or "").lower()
                 if aid == low_id or aid.endswith("." + low_id):
                     return a.get("desktop", "")
         if action:
             act_cmd = action.split()[0].lower() if action.split() else ""
-            for a in self._apps:
+            for a in apps_list:
                 aid = (a.get("id") or "").lower()
                 if aid == act_cmd or aid.endswith("." + act_cmd):
                     return a.get("desktop", "")
@@ -1304,7 +1740,9 @@ class Shell(QObject):
 
         # GPU
         gpu_pct = 0
-        if not IS_WINDOWS:
+        if IS_WINDOWS and self._win_lhm and self._win_lhm.available:
+            gpu_pct = int(self._win_lhm.data.get("gpu_load") or 0)
+        elif not IS_WINDOWS:
             try:
                 for p in ["/sys/class/drm/card1/device/gpu_busy_percent", "/sys/class/drm/card0/device/gpu_busy_percent"]:
                     if os.path.exists(p):
@@ -1317,7 +1755,9 @@ class Shell(QObject):
         # Audio volume & mute
         vol_pct = 50
         is_muted = False
-        if not IS_WINDOWS:
+        if IS_WINDOWS and self._win_audio:
+            vol_pct, is_muted = self._win_audio.get_volume_info()
+        elif not IS_WINDOWS:
             try:
                 out = subprocess.check_output(["wpctl", "get-volume", "@DEFAULT_AUDIO_SINK@"], timeout=1).decode().strip()
                 is_muted = "[MUTED]" in out
@@ -1402,7 +1842,9 @@ class Shell(QObject):
 
         # CPU Temp
         temp_c = 0
-        if not IS_WINDOWS:
+        if IS_WINDOWS and self._win_lhm and self._win_lhm.available:
+            temp_c = int(self._win_lhm.data.get("cpu_temp") or 0)
+        elif not IS_WINDOWS:
             try:
                 for t in ["/sys/class/hwmon/hwmon4/temp6_input", "/sys/class/hwmon/hwmon3/temp1_input", "/sys/class/thermal/thermal_zone0/temp"]:
                     if os.path.exists(t):
@@ -1426,6 +1868,13 @@ class Shell(QObject):
 
     @Slot(result="QVariantMap")
     def getUpdateInfo(self):
+        if IS_WINDOWS:
+            return {
+                "has_updates": False,
+                "count": 0,
+                "icon_path": "image://themeicon/system-software-update",
+                "tooltip": "Windows Update — Click to Check"
+            }
         """
         CachyOS / Arch güncelleme durumunu döndürür.
         Photo 2: cachy-update_updates-available-blue.svg (Kırmızı ok + güncelleme adedi)
@@ -1491,6 +1940,9 @@ class Shell(QObject):
     @Slot()
     def launchUpdate(self):
         """Güncelleme aracını ayrık (detached) çalıştır."""
+        if IS_WINDOWS:
+            self.runDetached("ms-settings:windowsupdate")
+            return
         for term in ["konsole", "alacritty", "kitty", "xterm"]:
             if shutil.which(term):
                 if shutil.which("arch-update"):
@@ -1502,9 +1954,9 @@ class Shell(QObject):
 
     @Slot(result=str)
     def getPowerProfile(self):
-        """KDE / Linux power-profiles-daemon aktif profilini döndürür."""
-        if IS_WINDOWS:
-            return "balanced"
+        """KDE / Linux veya Windows aktif güç profilini döndürür."""
+        if IS_WINDOWS and wp:
+            return wp.get_windows_power_profile()
         try:
             res = subprocess.run(["powerprofilesctl", "get"], capture_output=True, text=True, check=True, timeout=2)
             return res.stdout.strip()
@@ -1514,8 +1966,11 @@ class Shell(QObject):
     @Slot(str, result=bool)
     def setPowerProfile(self, profile: str):
         """Sistem güç profilini ayarlar (power-saver, balanced, performance)."""
-        if IS_WINDOWS:
-            return False
+        if IS_WINDOWS and wp:
+            ok = wp.set_windows_power_profile(profile)
+            if ok:
+                self.powerProfileChanged.emit(wp.get_windows_power_profile())
+            return ok
         if profile not in ("power-saver", "balanced", "performance"):
             return False
         try:
@@ -1533,8 +1988,11 @@ class Shell(QObject):
     @Slot(bool, result=bool)
     def setSleepInhibited(self, inhibit: bool):
         """Uykuyu ve Ekran Kilidini Elle Engelle (Inhibit / UnInhibit) açıp kapatır."""
-        if IS_WINDOWS:
-            return False
+        if IS_WINDOWS and wp:
+            ok = wp.set_sleep_inhibited(bool(inhibit))
+            self._sleep_inhibit_cookie = 1 if (inhibit and ok) else None
+            self.sleepInhibitedChanged.emit(self._sleep_inhibit_cookie is not None)
+            return self._sleep_inhibit_cookie is not None
         if inhibit:
             if self._sleep_inhibit_cookie is not None:
                 return True
@@ -1569,17 +2027,24 @@ class Shell(QObject):
 
     def cleanup(self):
         """Uygulama sonlanırken engellemeleri serbest bırak."""
+        if self._win_lhm is not None:
+            self._win_lhm.stop()
+        if self._runner is not None:
+            self._runner.stop()
         if self._sleep_inhibit_cookie is not None:
-            try:
-                subprocess.run(
-                    ["qdbus6", "org.freedesktop.PowerManagement.Inhibit",
-                     "/org/freedesktop/PowerManagement/Inhibit",
-                     "org.freedesktop.PowerManagement.Inhibit.UnInhibit",
-                     str(self._sleep_inhibit_cookie)],
-                    timeout=1
-                )
-            except Exception:
-                pass
+            if IS_WINDOWS and wp:
+                wp.set_sleep_inhibited(False)
+            else:
+                try:
+                    subprocess.run(
+                        ["qdbus6", "org.freedesktop.PowerManagement.Inhibit",
+                         "/org/freedesktop/PowerManagement/Inhibit",
+                         "org.freedesktop.PowerManagement.Inhibit.UnInhibit",
+                         str(self._sleep_inhibit_cookie)],
+                        timeout=1
+                    )
+                except Exception:
+                    pass
             self._sleep_inhibit_cookie = None
 
     @Slot(str)
@@ -1654,10 +2119,10 @@ class Shell(QObject):
 
         # 5. Windows için Task Manager / Resource Monitor
         if IS_WINDOWS:
-            if section in ("ram", "disk", "cpu"):
-                subprocess.Popen(["resmon.exe"], start_new_session=True)
+            if section in ("ram", "disk"):
+                subprocess.Popen(["resmon.exe"])
             else:
-                subprocess.Popen(["taskmgr.exe"], start_new_session=True)
+                subprocess.Popen(["taskmgr.exe"])
             return
 
         # Fallback: kinfocenter
@@ -1679,6 +2144,8 @@ class Shell(QObject):
 
     @Slot(QObject)
     def centerWindowOnActiveScreen(self, qquick_window):
+        if qquick_window:
+            self._win = qquick_window
         target_screen = None
         if not IS_WINDOWS:
             out_name = self.getActiveOutputName()
@@ -1687,22 +2154,24 @@ class Shell(QObject):
                     target_screen = s
                     break
         if not target_screen:
-            from PySide6.QtGui import QCursor
             target_screen = QGuiApplication.screenAt(QCursor.pos()) or QGuiApplication.primaryScreen()
         if target_screen and qquick_window:
             geom = target_screen.geometry()
             if qquick_window.screen() != target_screen:
                 qquick_window.setScreen(target_screen)
-            w = qquick_window.width() if qquick_window.width() > 0 else 728
-            h = qquick_window.height() if qquick_window.height() > 0 else 548
+            w = qquick_window.width() if qquick_window.width() > 0 else 543
+            h = qquick_window.height() if qquick_window.height() > 0 else 648
             x = geom.x() + (geom.width() - w) // 2
-            y = geom.y() + (geom.height() - h) // 2
+            y = geom.y() + max(40, (geom.height() - h) // 3)
             qquick_window.setPosition(x, y)
 
     @Slot(result="QVariantMap")
     def getInitialAudioInfo(self):
         vol_pct = 50
         is_muted = False
+        if IS_WINDOWS and self._win_audio:
+            vol_pct, is_muted = self._win_audio.get_volume_info()
+            return {"volume": vol_pct, "muted": is_muted}
         try:
             out = subprocess.check_output(["wpctl", "get-volume", "@DEFAULT_AUDIO_SINK@"], timeout=1).decode().strip()
             is_muted = "[MUTED]" in out
@@ -1718,20 +2187,35 @@ class Shell(QObject):
 
     @Slot(int)
     def setSystemVolume(self, volume):
+        if IS_WINDOWS and self._win_audio:
+            self._win_audio.set_volume(volume)
+            return
         vol = max(0, min(100, volume)) / 100.0
-        if not IS_WINDOWS:
-            try:
-                subprocess.Popen(["wpctl", "set-volume", "@DEFAULT_AUDIO_SINK@", f"{vol:.2f}"])
-            except Exception:
-                pass
+        try:
+            subprocess.Popen(["wpctl", "set-volume", "@DEFAULT_AUDIO_SINK@", f"{vol:.2f}"])
+        except Exception:
+            pass
 
     @Slot()
     def toggleSystemMute(self):
-        if not IS_WINDOWS:
-            try:
-                subprocess.Popen(["wpctl", "set-mute", "@DEFAULT_AUDIO_SINK@", "toggle"])
-            except Exception:
-                pass
+        if IS_WINDOWS and self._win_audio:
+            self._win_audio.toggle_mute()
+            return
+        try:
+            subprocess.Popen(["wpctl", "set-mute", "@DEFAULT_AUDIO_SINK@", "toggle"])
+        except Exception:
+            pass
+
+    @Slot(str, result=str)
+    def listAudioDevices(self, kind="output"):
+        if IS_WINDOWS and self._win_audio:
+            return json.dumps(self._win_audio.list_devices(kind))
+        return "[]"
+
+    @Slot(str, str)
+    def setDefaultAudioDevice(self, kind, dev_id):
+        if IS_WINDOWS and self._win_audio:
+            self._win_audio.set_default_device(kind, dev_id)
 
     @Slot(result="QVariantMap")
     def currentTheme(self):
@@ -1891,97 +2375,452 @@ class Shell(QObject):
     @Slot(str, result=str)
     def listProcesses(self, query=""):
         """Çalışan süreçleri filtrele (kill komutu için)."""
-        if not query:
+        if not query or not query.strip():
             return "[]"
         query_lower = query.lower().strip()
         results = []
         try:
-            if IS_WINDOWS:
-                p = subprocess.run(["tasklist", "/FO", "CSV", "/NH"], capture_output=True, text=True, timeout=2)
-                for line in p.stdout.splitlines():
-                    parts = line.strip().split('","')
-                    if len(parts) >= 2:
-                        name = parts[0].strip('"')
-                        pid = parts[1].strip('"')
-                        if query_lower in name.lower():
-                            results.append({"name": name, "pid": pid})
-                            if len(results) >= 8:
-                                break
-            else:
-                p = subprocess.run(["ps", "-eo", "pid,comm", "--sort=-%cpu"], capture_output=True, text=True, timeout=2)
-                lines = p.stdout.splitlines()[1:]
-                for line in lines:
-                    parts = line.strip().split(None, 1)
-                    if len(parts) == 2:
-                        pid, name = parts[0], parts[1]
-                        if query_lower in name.lower() and name.lower() not in ["ps", "bash", "python", "python3"]:
-                            results.append({"name": name, "pid": pid})
-                            if len(results) >= 8:
-                                break
+            import psutil
+            rows = []
+            for p in psutil.process_iter(["pid", "name", "cmdline", "memory_info"]):
+                try:
+                    info = p.info
+                    pid = info.get("pid") or 0
+                    if pid <= 4:
+                        continue
+                    name = info.get("name") or ""
+                    cmd_parts = info.get("cmdline") or []
+                    cmd = " ".join(cmd_parts)[:300] if isinstance(cmd_parts, list) else str(cmd_parts)
+                    if query_lower not in name.lower() and query_lower not in cmd.lower():
+                        continue
+                    mi = info.get("memory_info")
+                    rss_kb = int(mi.rss // 1024) if mi else 0
+                    if rss_kb >= 1024 * 1024:
+                        rss_txt = f"{rss_kb / 1048576.0:.1f} GB"
+                    elif rss_kb >= 1024:
+                        rss_txt = f"{rss_kb / 1024.0:.1f} MB"
+                    else:
+                        rss_txt = f"{rss_kb} KB"
+                    rows.append((rss_kb, {
+                        "pid": pid,
+                        "name": name,
+                        "cmd": cmd,
+                        "rssKb": rss_kb,
+                        "rssText": rss_txt,
+                    }))
+                except Exception:
+                    continue
+            rows.sort(key=lambda x: x[0], reverse=True)
+            results = [r[1] for r in rows[:12]]
         except Exception:
-            pass
+            if IS_WINDOWS:
+                try:
+                    p = subprocess.run(["tasklist", "/FO", "CSV", "/NH"], capture_output=True, text=True, timeout=2, **(wp._hidden_kwargs() if wp else {}))
+                    for line in p.stdout.splitlines():
+                        parts = line.strip().split('","')
+                        if len(parts) >= 2:
+                            name = parts[0].strip('"')
+                            pid = parts[1].strip('"')
+                            if query_lower in name.lower():
+                                results.append({"name": name, "pid": int(pid) if pid.isdigit() else pid, "cmd": name, "rssKb": 0, "rssText": ""})
+                                if len(results) >= 12:
+                                    break
+                except Exception:
+                    pass
         return json.dumps(results)
 
     @Slot(str, result=bool)
     def killProcess(self, pid):
-        """PID'si verilen süreci sonlandır."""
+        """PID'si verilen süreci nazikçe sonlandır."""
         try:
             p = int(pid)
             if IS_WINDOWS:
-                subprocess.run(["taskkill", "/F", "/PID", str(p)], check=False)
+                try:
+                    import psutil
+                    psutil.Process(p).terminate()
+                    return True
+                except Exception:
+                    subprocess.run(["taskkill", "/PID", str(p)], check=False, **(wp._hidden_kwargs() if wp else {}))
+                    return True
             else:
                 os.kill(p, signal.SIGTERM)
+                return True
+        except Exception:
+            return False
+
+    @Slot(str, result=bool)
+    def forceKillProcess(self, pid):
+        """PID'si verilen süreci zorla sonlandır (ikinci Enter)."""
+        try:
+            p = int(pid)
+            if IS_WINDOWS:
+                subprocess.run(["taskkill", "/F", "/PID", str(p)], check=False, **(wp._hidden_kwargs() if wp else {}))
+            else:
+                os.kill(p, signal.SIGKILL)
             return True
         except Exception:
             return False
+
+    # ── Phase 2: Async File Search & Window Switcher ──────────────
+    @Slot(str, int)
+    def requestFileSearch(self, pattern, request_id):
+        pat = (pattern or "").strip()
+        rid = int(request_id)
+        def _worker():
+            res = self.searchFiles(pat)
+            self.fileSearchFinished.emit(rid, pat, res)
+        threading.Thread(target=_worker, daemon=True).start()
+
+    @Slot(str, int)
+    def requestWindowSearch(self, query, request_id):
+        q = (query or "").strip()
+        rid = int(request_id)
+        def _worker():
+            if IS_WINDOWS and wp:
+                wins = wp.list_open_windows(q, exclude_pid=os.getpid())
+                self.windowSearchFinished.emit(rid, q, json.dumps(wins))
+            else:
+                self.windowSearchFinished.emit(rid, q, "[]")
+        threading.Thread(target=_worker, daemon=True).start()
+
+    @Slot(str, result=bool)
+    def activateWindow(self, match_id):
+        if IS_WINDOWS and wp:
+            return wp.activate_window_by_id(match_id)
+        return False
+
+    # ── Phase 2: Paste-to-Run Command Analyzer & Runner ───────────
+    @Slot(str, result="QVariantMap")
+    def analyzeCommand(self, text):
+        raw = (text or "").strip()
+        if not raw:
+            return {"signal": 0, "dangerous": False, "needsTerminal": False, "firstLine": "", "extraLines": 0}
+        lines = [ln.strip() for ln in raw.splitlines() if ln.strip()]
+        first_ln = lines[0] if lines else ""
+        extra = max(0, len(lines) - 1)
+        tokens = first_ln.split()
+        tok0 = tokens[0].lower() if tokens else ""
+
+        strong_re = re.compile(r"(\||&&|;|\$\(|`|\n|(^|\s)\d?[<>]{1,2}\s*\S)")
+        priv_re = re.compile(r"^(sudo|doas|pkexec|runas)(\s|$)", re.I)
+        sig = 0
+        if priv_re.search(raw) or strong_re.search(raw):
+            sig = 2
+        elif raw.startswith(("./", "~/", "/")) or (IS_WINDOWS and re.match(r"^[A-Za-z]:[\\/]", raw)):
+            sig = 2 if len(tokens) >= 2 else 1
+        elif len(tokens) >= 2 and (self.isCommandAvailable(tok0) or tok0 in (
+            "dir", "cd", "echo", "cls", "type", "copy", "move", "del", "rd", "md", "mkdir",
+            "ipconfig", "ping", "tracert", "netstat", "nslookup", "tasklist", "taskkill",
+            "winget", "choco", "scoop", "git", "python", "pip", "node", "npm", "curl", "ssh",
+            "scp", "powercfg", "sfc", "dism", "wsl", "get-process", "get-service", "get-childitem",
+        ) or "-" in tok0 and tok0.startswith(("get-", "set-", "new-", "remove-", "start-", "stop-", "restart-", "test-"))):
+            sig = 1
+
+        dangerous = bool(re.search(
+            r"(rm\s+-[a-z]*r[a-z]*\s+(/|\*|~)|del\s+/[sqf]+|rd\s+/s|rmdir\s+/s|remove-item\s+.*-recurse|format\s+[a-z]:|diskpart|bcdedit\s+/delete)",
+            raw, re.I
+        ))
+        interactive_cmds = {"ssh", "vim", "nvim", "vi", "nano", "btop", "htop", "top", "less", "more", "diskpart", "wsl", "python", "node", "powershell", "pwsh", "cmd"}
+        needs_term = bool(priv_re.search(raw) or tok0 in interactive_cmds)
+        return {
+            "signal": sig,
+            "dangerous": dangerous,
+            "needsTerminal": needs_term,
+            "firstLine": first_ln,
+            "extraLines": extra,
+        }
+
+    def _record_cmd_history(self, cmd):
+        c = (cmd or "").strip()
+        if not c:
+            return
+        self._cmd_history = [x for x in self._cmd_history if x != c]
+        self._cmd_history.insert(0, c)
+        self._cmd_history = self._cmd_history[:60]
+        self._save_json_list(self._cmd_hist_file, self._cmd_history)
+
+    @Slot(str)
+    def runCommandInTerminal(self, command):
+        c = (command or "").strip()
+        if not c:
+            return
+        self._record_cmd_history(c)
+        self.runInTerminal(c)
+
+    @Slot(str, result=bool)
+    def runCommandInline(self, command):
+        c = (command or "").strip()
+        if not c:
+            return False
+        info = self.analyzeCommand(c)
+        if info.get("needsTerminal"):
+            self.runCommandInTerminal(c)
+            return False
+        if self._runner.running:
+            return False
+        self._record_cmd_history(c)
+        return self._runner.start(c)
+
+    @Slot()
+    def stopInlineCommand(self):
+        self._runner.stop()
+
+    @Slot(str, result="QStringList")
+    def commandHistory(self, query=""):
+        ql = (query or "").strip().lower()
+        if not ql:
+            return self._cmd_history[:12]
+        return [x for x in self._cmd_history if ql in x.lower()][:12]
+
+    # ── Phase 3: File & App Context Actions ───────────────────────
+    @Slot(str, result="QVariantMap")
+    def fileProperties(self, path):
+        if IS_WINDOWS and wp:
+            return wp.get_file_properties(path)
+        return {"name": os.path.basename(path or ""), "path": path or "", "isDir": os.path.isdir(path or ""),
+                "sizeText": "--", "mime": "", "mimeComment": "", "modified": "--", "permissions": "", "owner": ""}
+
+    @Slot(str, str, result=str)
+    def renamePath(self, path, new_name):
+        if IS_WINDOWS and wp:
+            return wp.rename_file_path(path, new_name)
+        return "Not supported"
+
+    @Slot(str, result=bool)
+    def isArchive(self, path):
+        if IS_WINDOWS and wp:
+            return wp.is_archive_path(path)
+        return False
+
+    @Slot(str)
+    def extractHere(self, path):
+        if IS_WINDOWS and wp:
+            wp.extract_archive_here(path)
+            self.notify("Extracting Archive", os.path.basename(path or ""))
+
+    @Slot(str)
+    def compressPath(self, path):
+        if IS_WINDOWS and wp:
+            wp.compress_to_zip(path)
+            self.notify("Compressing to ZIP", os.path.basename(path or ""))
+
+    @Slot(str, result=str)
+    def openWithApps(self, path):
+        if IS_WINDOWS and wp:
+            return json.dumps(wp.list_open_with_apps(path))
+        return "[]"
+
+    @Slot(str, str)
+    def openWith(self, path, app_path):
+        if IS_WINDOWS and wp:
+            wp.open_path_with(path, app_path)
+
+    @Slot(str)
+    def copyFileToClipboard(self, path):
+        if not path:
+            return
+        try:
+            exp = os.path.abspath(os.path.expandvars(os.path.expanduser(path)))
+            md = QMimeData()
+            md.setUrls([QUrl.fromLocalFile(exp)])
+            cb = QApplication.clipboard()
+            if cb:
+                cb.setMimeData(md)
+        except Exception:
+            pass
+
+    @Slot(str, result=bool)
+    def isAutostart(self, desktop_file):
+        if not desktop_file:
+            return False
+        if IS_WINDOWS:
+            startup = os.path.expandvars(r"%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup")
+            return os.path.isfile(os.path.join(startup, os.path.basename(desktop_file)))
+        return False
+
+    @Slot(str, bool, result=bool)
+    def setAutostart(self, desktop_file, enabled):
+        if not desktop_file or not IS_WINDOWS:
+            return False
+        startup = os.path.expandvars(r"%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup")
+        target = os.path.join(startup, os.path.basename(desktop_file))
+        try:
+            if not enabled:
+                if os.path.exists(target):
+                    os.remove(target)
+                return True
+            if os.path.isfile(desktop_file):
+                os.makedirs(startup, exist_ok=True)
+                shutil.copy2(desktop_file, target)
+                return True
+        except Exception:
+            pass
+        return False
+
+    @Slot(str, result=bool)
+    def canUninstall(self, desktop_file):
+        return bool(IS_WINDOWS and desktop_file)
+
+    @Slot(str)
+    def uninstallApp(self, desktop_file):
+        if IS_WINDOWS:
+            self.runDetached("ms-settings:appsfeatures")
+
+    # ── Phase 4: Recent Files, Emoji, Color Picker & Misc ─────────
+    @Slot(str, result=str)
+    def recentFiles(self, query=""):
+        if IS_WINDOWS and wp:
+            return json.dumps(wp.list_windows_recent_files(query))
+        return "[]"
+
+    def _ensure_emoji(self):
+        if self._emoji_entries is not None:
+            return
+        self._emoji_entries = []
+        path = os.path.join(APP_DIR, "assets", "emoji.json")
+        if not os.path.isfile(path):
+            return
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                arr = json.load(f)
+            for e in arr:
+                if not isinstance(e, list) or len(e) < 4:
+                    continue
+                glyph = str(e[0])
+                name = str(e[1])
+                aliases = [a for a in str(e[2]).lower().split() if a]
+                words = [w for w in re.split(r"[\s_-]+", (name + " " + str(e[3])).lower()) if w]
+                if glyph:
+                    self._emoji_entries.append((glyph, name, aliases, words))
+        except Exception:
+            pass
+
+    @Slot(str, result=str)
+    def searchEmoji(self, query=""):
+        self._ensure_emoji()
+        q = (query or "").strip().lower()
+        if q.startswith(":"):
+            q = q[1:]
+        hits = []
+        for idx, (glyph, name, aliases, words) in enumerate(self._emoji_entries):
+            score = -1
+            if not q:
+                score = 3
+            elif q in aliases:
+                score = 0
+            elif any(a.startswith(q) for a in aliases):
+                score = 1
+            elif any(w.startswith(q) for w in words):
+                score = 2
+            if score >= 0:
+                hits.append((score, idx, glyph, name))
+        hits.sort(key=lambda x: (x[0], x[1]))
+        out = [{"glyph": g, "name": n} for _, _, g, n in hits[:24]]
+        return json.dumps(out)
+
+    @Slot()
+    def pickColor(self):
+        if not IS_WINDOWS or not wp:
+            return
+        def _start():
+            def _on_picked(hex_code):
+                self.setClipboard(hex_code)
+                self.notify("Color Picked", f"Copied {hex_code} to clipboard")
+                self._color_picker_win = None
+            self._color_picker_win = wp.launch_color_picker(_on_picked)
+        QTimer.singleShot(180, _start)
+
+    @Slot(result=str)
+    def detectGpuVendor(self):
+        if IS_WINDOWS:
+            if self._win_lhm and self._win_lhm.data.get("gpu_name"):
+                gn = self._win_lhm.data["gpu_name"].lower()
+                if "amd" in gn or "radeon" in gn:
+                    return "amd"
+                if "nvidia" in gn or "geforce" in gn or "rtx" in gn:
+                    return "nvidia"
+                if "intel" in gn or "arc" in gn:
+                    return "intel"
+            return "windows"
+        return "unknown"
+
+    @Slot(str, result=bool)
+    def isCommandAvailable(self, command):
+        if not command:
+            return False
+        return shutil.which(command) is not None
+
+    @Slot(result=str)
+    def getNashiPath(self):
+        for cand in (
+            shutil.which("nashi") or "",
+            os.path.expandvars(r"%LOCALAPPDATA%\nashi\nashi.exe"),
+        ):
+            if cand and os.path.isfile(cand):
+                return cand
+        return ""
+
+    @Slot(str, str)
+    def installPackage(self, pkg_name, custom_cmd):
+        if custom_cmd:
+            self.runCommandInTerminal(custom_cmd)
+
+    @Slot()
+    def saveSession(self):
+        self.notify("RavenSpot", "Session state saved.")
 
 
 class AppIconProvider(QQuickImageProvider):
     """QML'e `image://appicon/<desktop-id>` üzerinden uygulama ikonu verir."""
 
-    def __init__(self, shell):
+    def __init__(self, shell, candy_resolver=None):
         super().__init__(QQuickImageProvider.Image)
         self._shell = shell
+        self._candy = candy_resolver
+        self._file_icon_provider = QFileIconProvider()
 
     def requestImage(self, id, size, requestedSize):
         clean_id = id.split("?")[0] if "?" in id else id
         sz = requestedSize if requestedSize.isValid() and requestedSize.width() > 0 else QSize(48, 48)
 
-        if IS_WINDOWS or (os.path.exists(clean_id) and clean_id.lower().endswith((".lnk", ".exe", ".url"))):
+        target_path = clean_id
+        app_label = ""
+        if not os.path.exists(target_path):
+            for app in self._shell._load_apps():
+                if app["id"] == clean_id:
+                    target_path = app.get("desktop") or app.get("icon") or clean_id
+                    app_label = app.get("label", "")
+                    break
+
+        if IS_WINDOWS and target_path and os.path.exists(target_path):
             try:
-                from PySide6.QtWidgets import QFileIconProvider
                 from PySide6.QtCore import QFileInfo
-                if not hasattr(self, "_file_icon_provider"):
-                    self._file_icon_provider = QFileIconProvider()
-                fi_icon = self._file_icon_provider.icon(QFileInfo(clean_id))
+                fi_icon = self._file_icon_provider.icon(QFileInfo(target_path))
                 if not fi_icon.isNull():
                     pm = fi_icon.pixmap(sz)
                     img = pm.toImage()
-                    size.setWidth(img.width())
-                    size.setHeight(img.height())
-                    return img
+                    if not img.isNull():
+                        size.setWidth(img.width())
+                        size.setHeight(img.height())
+                        return img
             except Exception:
                 pass
 
-        icon_name = ""
-        desktop = ""
-        apps = self._shell._load_apps()
-        for app in apps:
-            if app["id"] == clean_id:
-                icon_name = app["icon"]
-                desktop = app["desktop"]
-                break
-        icon = QIcon.fromTheme(icon_name) if icon_name else QIcon()
-        if icon.isNull() and icon_name and os.path.isabs(icon_name):
-            # Bazı .desktop'larda Icon mutlak yol olabilir
-            icon = QIcon(icon_name)
+        # Fallback: try Candy icon resolver by app id / label / generic executable
+        icon = QIcon()
+        if self._candy:
+            for cand in (clean_id.replace("uwp-", ""), app_label.lower().replace(" ", "-"), "application-x-executable"):
+                svg = self._candy.resolve(cand)
+                if svg:
+                    icon = QIcon(svg)
+                    if not icon.isNull():
+                        break
+        if icon.isNull():
+            icon = QIcon.fromTheme(clean_id)
         if icon.isNull():
             icon = QIcon.fromTheme("application-x-executable")
-        sz = requestedSize if requestedSize.isValid() and requestedSize.width() > 0 else QSize(48, 48)
         pm = icon.pixmap(sz)
         img = pm.toImage()
-        # QQuickImageProvider.requestImage, QImage döndürmeyi bekler; gerçek boyut
-        # referansla verilen `size` argümanı üzerinden geri bildirilir (tuple değil).
         size.setWidth(img.width())
         size.setHeight(img.height())
         return img
@@ -1990,22 +2829,40 @@ class AppIconProvider(QQuickImageProvider):
 class ThemeIconProvider(QQuickImageProvider):
     """QML'e `image://themeicon/<freedesktop-ikon-adi>` üzerinden temalı ikon verir."""
 
-    def __init__(self):
+    def __init__(self, candy_resolver=None):
         super().__init__(QQuickImageProvider.Image)
+        self._candy = candy_resolver
+        self._file_icon_provider = QFileIconProvider() if IS_WINDOWS else None
 
     def requestImage(self, id, size, requestedSize):
         clean_id = id.split("?")[0] if "?" in id else id
         icon = QIcon()
-        if os.path.exists(clean_id) or os.path.isabs(clean_id):
+        if IS_WINDOWS and clean_id and os.path.exists(clean_id):
+            if clean_id.lower().endswith((".exe", ".lnk", ".ico")):
+                try:
+                    from PySide6.QtCore import QFileInfo
+                    icon = self._file_icon_provider.icon(QFileInfo(clean_id))
+                except Exception:
+                    pass
+            if icon.isNull():
+                icon = QIcon(clean_id)
+        elif os.path.exists(clean_id) or os.path.isabs(clean_id):
             icon = QIcon(clean_id)
+
+        if icon.isNull() and self._candy:
+            svg = self._candy.resolve(clean_id)
+            if svg:
+                icon = QIcon(svg)
         if icon.isNull() and clean_id in ("folder-download", "folder-downloads", "download"):
             icon = QIcon.fromTheme("aptdaemon-download")
         if icon.isNull():
             icon = QIcon.fromTheme(clean_id)
+        if icon.isNull() and self._candy:
+            svg = self._candy.resolve("application-x-executable")
+            if svg:
+                icon = QIcon(svg)
         if icon.isNull():
             icon = QIcon.fromTheme("application-x-executable")
-        # Candy icon temasındaki 48x48 ve scalable zengin renkli ikonların seçilmesi için
-        # en az 64x64 çözünürlük talep ediyoruz (places/16 monokrom ikonlar yerine).
         w = max(requestedSize.width() if requestedSize.isValid() and requestedSize.width() > 0 else 48, 64)
         h = max(requestedSize.height() if requestedSize.isValid() and requestedSize.height() > 0 else 48, 64)
         pm = icon.pixmap(QSize(w, h))
@@ -2019,8 +2876,9 @@ def main():
     start_hidden = START_HIDDEN
 
     # ── Daemon Başlatma ──────────────────────────────────────────
-    QGuiApplication.setDesktopFileName("ravenspot")
-    app = QGuiApplication(sys.argv)
+    QApplication.setDesktopFileName("ravenspot")
+    app = QApplication(sys.argv)
+    app.setQuitOnLastWindowClosed(False)
 
     # Eski soket dosyasını / pipe temizle
     if not IS_WINDOWS and os.path.exists(SOCKET_PATH):
@@ -2036,7 +2894,23 @@ def main():
         print(f"ravenspot: Soket dinlenemedi ({SERVER_NAME})", file=sys.stderr)
 
     os.chdir(APP_DIR)
+    # Bundled Nerd Font (eliminates missing glyph boxes on Windows)
+    loaded_icon_font = ""
+    nf_path = os.path.join(APP_DIR, "assets", "SymbolsNerdFont-Regular.ttf")
+    if os.path.isfile(nf_path):
+        fid = QFontDatabase.addApplicationFont(nf_path)
+        if fid >= 0:
+            fams = QFontDatabase.applicationFontFamilies(fid)
+            if fams:
+                loaded_icon_font = fams[0]
     shell = Shell(start_hidden=start_hidden)
+    shell._icon_font_name = loaded_icon_font
+    candy_resolver = wp.CandyIconResolver(os.path.join(APP_DIR, "icons")) if (IS_WINDOWS and wp) else None
+
+    # Live Windows clipboard monitoring
+    if IS_WINDOWS and app.clipboard():
+        app.clipboard().dataChanged.connect(shell._on_clipboard_changed)
+        shell._on_clipboard_changed()
 
     def handle_new_connection():
         sock = server.nextPendingConnection()
@@ -2056,7 +2930,7 @@ def main():
                         elif cmd_line == "reload":
                             shell.reloadRequested.emit()
                         elif cmd_line == "quit":
-                            QGuiApplication.quit()
+                            QApplication.quit()
                 except Exception as e:
                     print(f"ravenspot IPC hata: {e}", flush=True)
 
@@ -2076,6 +2950,29 @@ def main():
         hotkey_thread.start()
         app.aboutToQuit.connect(hotkey_thread.stop)
 
+    # Windows System Tray Icon
+    tray = None
+    if IS_WINDOWS and QSystemTrayIcon.isSystemTrayAvailable():
+        tray_icon_path = candy_resolver.resolve("applications-all") if candy_resolver else ""
+        tray_icon = QIcon(tray_icon_path) if tray_icon_path else QIcon.fromTheme("applications-all")
+        tray = QSystemTrayIcon(tray_icon, app)
+        tray.setToolTip("RavenSpot — Press Alt+Space or Win+Space")
+        tray_menu = QMenu()
+        act_open = QAction("Open RavenSpot (Alt+Space)", tray_menu)
+        act_open.triggered.connect(shell.toggleRequested.emit)
+        act_reload = QAction("Reload Menu", tray_menu)
+        act_reload.triggered.connect(shell.reloadRequested.emit)
+        act_quit = QAction("Quit RavenSpot", tray_menu)
+        act_quit.triggered.connect(app.quit)
+        tray_menu.addAction(act_open)
+        tray_menu.addAction(act_reload)
+        tray_menu.addSeparator()
+        tray_menu.addAction(act_quit)
+        tray.setContextMenu(tray_menu)
+        tray.activated.connect(lambda reason: shell.toggleRequested.emit() if reason in (QSystemTrayIcon.Trigger, QSystemTrayIcon.DoubleClick) else None)
+        tray.show()
+        shell.attachTray(tray)
+
     app.aboutToQuit.connect(shell.cleanup)
 
     engine = QQmlApplicationEngine()
@@ -2083,8 +2980,8 @@ def main():
         for p in ("/usr/lib/qt6/qml", "/usr/lib64/qt6/qml", "/usr/local/lib/qt6/qml"):
             if os.path.isdir(p) and p not in engine.importPathList():
                 engine.addImportPath(p)
-    engine.addImageProvider("appicon", AppIconProvider(shell))
-    engine.addImageProvider("themeicon", ThemeIconProvider())
+    engine.addImageProvider("appicon", AppIconProvider(shell, candy_resolver))
+    engine.addImageProvider("themeicon", ThemeIconProvider(candy_resolver))
     ctx = engine.rootContext()
     ctx.setContextProperty("Shell", shell)
 
@@ -2094,16 +2991,21 @@ def main():
     if not engine.rootObjects():
         print("ravenspot: QML yüklenemedi", file=sys.stderr)
         server.close()
-        if os.path.exists(SOCKET_PATH):
+        if not IS_WINDOWS and os.path.exists(SOCKET_PATH):
             try:
                 os.unlink(SOCKET_PATH)
             except OSError:
                 pass
         sys.exit(1)
 
+    shell.attachWindow(engine.rootObjects()[0])
+    if IS_WINDOWS and not start_hidden:
+        shell.centerWindowOnActiveScreen(engine.rootObjects()[0])
+        shell.onMenuVisibilityChanged(True)
+
     ret = app.exec()
     server.close()
-    if os.path.exists(SOCKET_PATH):
+    if not IS_WINDOWS and os.path.exists(SOCKET_PATH):
         try:
             os.unlink(SOCKET_PATH)
         except OSError:

@@ -899,7 +899,7 @@ function appContextEntries(info) {
   var acts = info.actions || []
   for (var i = 0; i < acts.length; i++) out.push(ctxEntry(acts[i].name, "", "runAction", acts[i].exec))
   out.push(ctxEntry((info.autostart ? "✓ " : "") + "Launch at Login", "", "toggleAutostart", d))
-  out.push(ctxEntry("Open Location (Dolphin)", "󰉋", "openLocation", d))
+  out.push(ctxEntry("Open Containing Folder", "󰉋", "openLocation", d))
   out.push(ctxEntry("Run in Terminal", "", "runInTerminal", d))
   out.push(ctxEntry("Open in Software Center", "󰀻", "openInDiscover", d))
   out.push(ctxEntry("Edit Application", "", "editDesktop", d))

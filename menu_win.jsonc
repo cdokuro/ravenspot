@@ -1,0 +1,85 @@
+{
+  // RavenSpot menu definition — Windows 11 Native Spotlight Launcher.
+  // Ek alan: "iconName" — candy-icons (freedesktop) ikon temasından renkli ikon.
+
+  // ─── Root (category menus only) ────────────────────────────────
+  "apps": { "icon": "󰀻", "iconName": "applications-all", "label": "Apps", "aliases": ["app", "applications", "uygulamalar"] },
+  "files": { "icon": "󰉋", "iconName": "system-file-manager", "label": "Files", "aliases": ["files", "dosyalar", "folders", "klasörler"] },
+  "tools": { "icon": "󰘦", "iconName": "applications-utilities", "label": "Tools", "aliases": ["tools", "araçlar", "utilities", "trigger"] },
+  "appearance": { "icon": "󰏘", "iconName": "cs-themes", "label": "Appearance", "aliases": ["style", "theme", "görünüm"] },
+  "settings": { "icon": "", "iconName": "gnome-settings", "label": "Settings", "aliases": ["settings", "ayarlar", "setup", "config", "control", "yapılandırma", "sistem ayarları"] },
+  "system": { "icon": "", "iconName": "system-shutdown", "label": "Power", "aliases": ["power", "system", "power-menu", "güç"] },
+  "help": { "icon": "", "iconName": "help-browser", "label": "Help", "aliases": ["help", "yardım", "kılavuz", "info"] },
+
+  // ─── Apps: All Apps first, then categories A→Z ─────────────────
+  "apps.all": { "icon": "󰀻", "iconName": "applications-all", "label": "All Apps", "aliases": ["all", "tümü", "hepsi"], "provider": "apps-all" },
+  "apps.development": { "icon": "󰅩", "iconName": "applications-development", "label": "Development", "aliases": ["dev", "geliştirme", "kod"], "provider": "apps-development" },
+  "apps.games": { "icon": "󰊴", "iconName": "applications-games", "label": "Games", "aliases": ["games", "oyunlar"], "provider": "apps-games" },
+  "apps.graphics": { "icon": "󰏘", "iconName": "applications-graphics", "label": "Graphics", "aliases": ["grafik", "resim", "tasarım"], "provider": "apps-graphics" },
+  "apps.internet": { "icon": "󰖟", "iconName": "applications-internet", "label": "Internet", "aliases": ["internet", "web", "tarayıcı"], "provider": "apps-internet" },
+  "apps.multimedia": { "icon": "󰕼", "iconName": "applications-multimedia", "label": "Multimedia", "aliases": ["media", "müzik", "video", "ses"], "provider": "apps-multimedia" },
+  "apps.office": { "icon": "󰏆", "iconName": "applications-office", "label": "Office", "aliases": ["ofis", "belge", "pdf"], "provider": "apps-office" },
+  "apps.system": { "icon": "󰒓", "iconName": "applications-system", "label": "System", "aliases": ["sistem", "yönetim"], "provider": "apps-system" },
+  "apps.utilities": { "icon": "󰘦", "iconName": "applications-utilities", "label": "Utilities", "aliases": ["araçlar", "faydalı"], "provider": "apps-utilities" },
+  "apps.other": { "icon": "󰒓", "iconName": "preferences-system", "label": "Other Apps", "aliases": ["other", "diğer", "store", "uwp"], "provider": "apps-other" },
+
+  // ─── Files ─────────────────────────────────────────────────────
+  "files.home": { "icon": "󰋜", "iconName": "user-home", "label": "Home Folder", "aliases": ["home", "ev", "~"], "action": "explorer.exe %USERPROFILE%" },
+  "files.downloads": { "icon": "󰇚", "iconName": "aptdaemon-download", "label": "Downloads", "aliases": ["downloads", "indirilenler", "download"], "provider": "files-downloads" },
+  "files.documents": { "icon": "󰉋", "iconName": "folder-documents", "label": "Documents", "aliases": ["documents", "belgeler", "docs"], "provider": "files-documents" },
+  "files.pictures": { "icon": "󰉋", "iconName": "folder-pictures", "label": "Pictures", "aliases": ["pictures", "resimler", "photos", "fotoğraflar"], "provider": "files-pictures" },
+  "files.music": { "icon": "󰉋", "iconName": "folder-music", "label": "Music", "aliases": ["music", "müzik"], "provider": "files-music" },
+  "files.videos": { "icon": "󰉋", "iconName": "folder-videos", "label": "Videos", "aliases": ["videos", "videolar"], "provider": "files-videos" },
+  "files.recent": { "icon": "󰋚", "iconName": "document-open-recent", "label": "Recent Files", "aliases": ["recent", "son dosyalar", "son açılanlar"], "provider": "recent" },
+
+  // ─── Tools ─────────────────────────────────────────────────────
+  "tools.colorpicker": { "icon": "󰈊", "iconName": "color-picker", "label": "Color Picker", "description": "Pick screen pixel & copy HEX", "aliases": ["color", "colour", "renk", "renk seçici", "picker", "hex", "eyedropper", "damlalık", "pipet"], "action": "ravenspot:pick-color", "provider": "color-picker" },
+  "tools.capture": { "icon": "", "iconName": "gnome-screenshot", "label": "Screenshot", "aliases": ["screenshot", "screenrecord", "ekran görüntüsü", "snip"] },
+  "tools.capture.region": { "icon": "󰆞", "iconName": "gnome-screenshot", "label": "Snipping Tool (Region)", "action": "ms-screenclip:" },
+  "tools.capture.fullscreen": { "icon": "󰍹", "iconName": "gnome-screenshot", "label": "Fullscreen Screenshot", "action": "ravenspot:screenshot-full" },
+  "tools.capture.screenrecord": { "icon": "", "iconName": "gnome-screenshot", "label": "Snipping Tool / Record", "action": "snippingtool.exe" },
+  "tools.clipboard": { "icon": "󰅇", "iconName": "org.kde.plasma.clipboard", "label": "Clipboard History", "aliases": ["clipboard", "pano", "kopyalananlar"], "provider": "clipboard" },
+  "tools.terminal": { "icon": "", "iconName": "utilities-terminal", "label": "Windows Terminal", "aliases": ["terminal", "powershell", "cmd", "wt", "shell"], "action": "ravenspot:terminal" },
+  "tools.taskmgr": { "icon": "󰍛", "iconName": "utilities-system-monitor", "label": "Task Manager", "aliases": ["taskmgr", "görev yöneticisi", "monitor", "processes"], "action": "taskmgr.exe" },
+  "tools.store": { "icon": "󰀻", "iconName": "plasmadiscover", "label": "Microsoft Store", "aliases": ["store", "mağaza", "discover", "yazılım", "market"], "action": "ms-windows-store:" },
+
+  // ─── Appearance ────────────────────────────────────────────────
+  "appearance.ravenspot_theme": { "icon": "󰔉", "iconName": "cs-themes", "label": "RavenSpot Themes", "aliases": ["ravenspot theme", "tema", "theme", "style", "görünüm"], "provider": "ravenspot-themes" },
+  "appearance.colorscheme": { "icon": "󰸌", "iconName": "cs-color", "label": "Windows Color Mode", "aliases": ["colors", "renk", "renkler", "color scheme", "koyu mod", "dark mode", "light mode"], "provider": "colorschemes" },
+  "appearance.wallpaper": { "icon": "", "iconName": "gnome-settings-background", "label": "Wallpaper", "action": "ms-settings:personalization-background", "aliases": ["wallpaper", "duvar kağıdı", "arka plan", "background", "desktop"] },
+  "appearance.nightlight": { "icon": "󰔎", "iconName": "redshift-status-on", "label": "Night Light", "action": "ms-settings:nightlight", "aliases": ["night light", "gece ışığı", "mavi ışık"] },
+  "appearance.cursor": { "icon": "󰇀", "iconName": "preferences-desktop-mouse", "label": "Mouse Pointer & Cursors", "action": "ms-settings:easeofaccess-mousepointer" },
+  "appearance.fonts": { "icon": "", "iconName": "gnome-settings-font", "label": "Fonts", "action": "ms-settings:fonts", "aliases": ["fonts", "yazı tipi", "font", "karakter boyutu"] },
+  "appearance.uisounds": { "icon": "󰕾", "iconName": "audio-volume-high", "label": "Interface Sounds", "aliases": ["click sound", "tuş sesi", "ui sounds", "sounds", "thock"], "provider": "ui-sounds" },
+
+  // ─── Settings: Windows 11 ms-settings URIs ─────────────────────
+  "settings.general": { "icon": "", "iconName": "preferences-system", "label": "Windows Settings", "aliases": ["general", "settings", "ayarlar", "system settings", "denetim masası"], "action": "ms-settings:" },
+  "settings.monitors": { "icon": "󰍹", "iconName": "cs-display", "label": "Monitors & Display", "aliases": ["display", "monitors", "ekran", "çözünürlük", "screen", "hz", "yenileme hızı"], "action": "ms-settings:display" },
+  "settings.audio": { "icon": "󰕾", "iconName": "audio-volume-high", "label": "Audio & Sound", "aliases": ["sound", "audio", "ses", "mikrofon", "hoparlör", "volume"], "action": "ms-settings:sound" },
+  "settings.network": { "icon": "󰛳", "iconName": "cs-network", "label": "Network & Internet", "aliases": ["network", "wifi", "ağ", "internet", "ethernet", "ip"], "action": "ms-settings:network" },
+  "settings.bluetooth": { "icon": "󰂯", "iconName": "bluetooth", "label": "Bluetooth & Devices", "aliases": ["bluetooth", "bt", "kablosuz aygıtlar"], "action": "ms-settings:bluetooth" },
+  "settings.keyboard": { "icon": "", "iconName": "cs-keyboard", "label": "Keyboard & Language", "aliases": ["keyboard", "klavye", "dil", "layout", "f klavye", "q klavye"], "action": "ms-settings:regionlanguage" },
+  "settings.mouse": { "icon": "󰍽", "iconName": "preferences-desktop-mouse", "label": "Mouse & Pointer", "aliases": ["mouse", "fare", "hız", "pointer", "imleç"], "action": "ms-settings:mousetouchpad" },
+  "settings.power": { "icon": "󰂄", "iconName": "preferences-system-power-management", "label": "Power & Sleep", "aliases": ["power", "battery", "pil", "enerji", "güç", "sleep timer", "uyku"], "action": "ms-settings:powersleep" },
+  "settings.powerprofile": { "icon": "󰂖", "iconName": "battery", "label": "Power Plan", "provider": "power-profiles" },
+  "settings.notifications": { "icon": "󰂛", "iconName": "gnome-panel-notification-area", "label": "Notifications", "aliases": ["notifications", "bildirimler", "uyarılar", "rahatsız etme"], "action": "ms-settings:notifications" },
+  "settings.defaultapps": { "icon": "󰀻", "iconName": "preferences-desktop-default-applications", "label": "Default Applications", "aliases": ["default apps", "varsayılan uygulamalar", "öntanımlı"], "action": "ms-settings:defaultapps" },
+  "settings.autostart": { "icon": "󰐥", "iconName": "system-run", "label": "Startup Apps", "aliases": ["autostart", "başlangıç", "açılışta çalışanlar", "startup"], "action": "ms-settings:startupapps" },
+  "settings.installedapps": { "icon": "󰀻", "iconName": "plasmadiscover", "label": "Installed Apps", "aliases": ["installed", "uninstall", "program ekle kaldır", "apps"], "action": "ms-settings:appsfeatures" },
+  "settings.users": { "icon": "󰏘", "iconName": "user-identity", "label": "Accounts & Users", "aliases": ["users", "kullanıcı", "hesap", "accounts", "şifre"], "action": "ms-settings:yourinfo" },
+  "settings.screenlocker": { "icon": "󰌾", "iconName": "system-lock-screen", "label": "Lock Screen", "aliases": ["screen lock", "ekran kilidi", "güvenlik", "kilit"], "action": "ms-settings:lockscreen" },
+  "settings.firewall": { "icon": "󰒃", "iconName": "security-high", "label": "Windows Security", "aliases": ["firewall", "güvenlik duvarı", "defender"], "action": "ms-settings:windowsdefender" },
+  "settings.updates": { "icon": "󰚰", "iconName": "system-software-update", "label": "Windows Update", "aliases": ["update", "güncelleme", "windows update"], "action": "ms-settings:windowsupdate" },
+  "settings.about": { "icon": "", "iconName": "help-about", "label": "About System", "aliases": ["about", "hakkında", "sistem bilgisi", "windows", "donanım"], "action": "ms-settings:about" },
+
+  // ─── Power: least → most destructive ───────────────────────────
+  "system.lock": { "icon": "", "iconName": "system-lock-screen", "label": "Lock", "description": "Lock Windows session", "aliases": ["lock", "kilitle", "lock screen", "ekranı kilitle", "ekrani kilitle"], "action": "ravenspot:lock" },
+  "system.suspend": { "icon": "󰒲", "iconName": "system-suspend", "label": "Sleep", "description": "Suspend system to RAM", "aliases": ["suspend", "sleep", "uyku", "uyut", "askıya al", "askiya al"], "action": "ravenspot:suspend" },
+  "system.logout": { "icon": "󰍃", "iconName": "system-log-out", "label": "Sign Out", "description": "Sign out of Windows cleanly", "aliases": ["logout", "log out", "sign out", "çıkış", "oturumu kapat", "oturum kapat", "cikis"], "action": "ravenspot:logout" },
+  "system.reboot": { "icon": "󰜉", "iconName": "system-reboot", "label": "Restart", "description": "Restart Windows", "aliases": ["reboot", "restart", "yeniden başlat", "yeniden baslat"], "action": "ravenspot:reboot" },
+  "system.shutdown": { "icon": "󰐥", "iconName": "system-shutdown", "label": "Shut Down", "description": "Power off the computer", "aliases": ["shutdown", "poweroff", "kapat", "power off", "sistemi kapat"], "action": "ravenspot:shutdown" },
+
+  // ─── Help ──────────────────────────────────────────────────────
+  "help.shortcuts": { "icon": "󰌌", "iconName": "preferences-desktop-keyboard", "label": "Keyboard Shortcuts", "description": "Alt+Space: Toggle · >: Shell · *: Files · :emoji · clip · kill", "action": "ravenspot:shortcuts-help" },
+  "help.ravenspot": { "icon": "󰘦", "iconName": "help-about", "label": "RavenSpot GitHub", "action": "https://github.com/cdokuro/ravenspot" }
+}

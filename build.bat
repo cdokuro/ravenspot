@@ -20,10 +20,24 @@ pip install -r requirements.txt pyinstaller
 echo.
 echo [2/3] PyInstaller ile RavenSpot.exe derleniyor...
 pyinstaller --noconsole --onefile --name "RavenSpot" ^
+    --hidden-import=win_platform ^
+    --hidden-import=pycaw ^
+    --hidden-import=pycaw.pycaw ^
+    --hidden-import=comtypes ^
+    --hidden-import=comtypes.stream ^
+    --hidden-import=PySide6.QtSvg ^
+    --hidden-import=PySide6.QtSvgWidgets ^
+    --hidden-import=PySide6.QtNetwork ^
+    --hidden-import=PySide6.QtMultimedia ^
     --add-data "Menu.qml;." ^
+    --add-data "CommandOutputPanel.qml;." ^
+    --add-data "OpenCloseAnimation.qml;." ^
+    --add-data "ThemeGlyph.qml;." ^
     --add-data "MenuModel.js;." ^
     --add-data "menu.jsonc;." ^
+    --add-data "menu_win.jsonc;." ^
     --add-data "themes.json;." ^
+    --add-data "assets;assets" ^
     --add-data "sounds;sounds" ^
     --add-data "icons;icons" ^
     --clean ^

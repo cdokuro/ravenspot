@@ -20,10 +20,10 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up Python 3.11
+      - name: Set up Python 3.12
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: '3.12'
 
       - name: Install dependencies
         run: |
@@ -34,10 +34,24 @@ jobs:
         shell: cmd
         run: |
           pyinstaller --noconsole --onefile --name "RavenSpot" ^
+            --hidden-import=win_platform ^
+            --hidden-import=pycaw ^
+            --hidden-import=pycaw.pycaw ^
+            --hidden-import=comtypes ^
+            --hidden-import=comtypes.stream ^
+            --hidden-import=PySide6.QtSvg ^
+            --hidden-import=PySide6.QtSvgWidgets ^
+            --hidden-import=PySide6.QtNetwork ^
+            --hidden-import=PySide6.QtMultimedia ^
             --add-data "Menu.qml;." ^
+            --add-data "CommandOutputPanel.qml;." ^
+            --add-data "OpenCloseAnimation.qml;." ^
+            --add-data "ThemeGlyph.qml;." ^
             --add-data "MenuModel.js;." ^
             --add-data "menu.jsonc;." ^
+            --add-data "menu_win.jsonc;." ^
             --add-data "themes.json;." ^
+            --add-data "assets;assets" ^
             --add-data "sounds;sounds" ^
             --add-data "icons;icons" ^
             --clean ^
@@ -62,7 +76,7 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/v')
         shell: pwsh
         run: |
-          Compress-Archive -Path dist/RavenSpot.exe, README.md, LICENSE, menu.jsonc, themes.json -DestinationPath RavenSpot-Windows-x64.zip
+          Compress-Archive -Path dist/RavenSpot.exe, README.md, LICENSE, menu_win.jsonc, themes.json -DestinationPath RavenSpot-Windows-x64.zip
 
       - name: Publish GitHub Release
         if: startsWith(github.ref, 'refs/tags/v')
