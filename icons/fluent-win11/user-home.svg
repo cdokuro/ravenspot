@@ -1,5 +1,9 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48">
-  <defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#60CDFF"/><stop offset="100%" stop-color="#0078D4"/></linearGradient></defs>
-  <path d="M24 7L6 22h5v17a3 3 0 0 0 3 3h20a3 3 0 0 0 3-3V22h5L24 7z" fill="url(#g)"/>
-  <rect x="20" y="27" width="8" height="15" rx="2" fill="#E0F2FE"/>
+  <defs>
+    <linearGradient id="roof" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#38BDF8"/><stop offset="100%" stop-color="#2563EB"/></linearGradient>
+    <linearGradient id="wall" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#E0F2FE"/><stop offset="100%" stop-color="#93C5FD"/></linearGradient>
+  </defs>
+  <path d="M10 23v17a3 3 0 0 0 3 3h22a3 3 0 0 0 3-3V23L24 11 10 23z" fill="url(#wall)"/>
+  <path d="M6 24L24 8l18 16" fill="none" stroke="url(#roof)" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect x="20" y="29" width="8" height="14" rx="2" fill="url(#roof)"/>
 </svg>

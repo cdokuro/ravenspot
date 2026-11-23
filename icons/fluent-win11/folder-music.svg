@@ -1,6 +1,11 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48">
-  <defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#F472B6"/><stop offset="100%" stop-color="#DB2777"/></linearGradient></defs>
-  <rect x="6" y="6" width="36" height="36" rx="10" fill="url(#g)"/>
-  <path d="M20 31V16l14-3v15" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
-  <circle cx="17" cy="31" r="4" fill="#fff"/><circle cx="31" cy="28" r="4" fill="#fff"/>
+  <defs>
+    <linearGradient id="back" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#A855F7"/><stop offset="100%" stop-color="#6B21A8"/></linearGradient>
+    <linearGradient id="front" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#C084FC"/><stop offset="100%" stop-color="#7E22CE"/></linearGradient>
+  </defs>
+  <path d="M6 12a4 4 0 0 1 4-4h10l4 4h14a4 4 0 0 1 4 4v21a4 4 0 0 1-4 4H10a4 4 0 0 1-4-4V12z" fill="url(#back)"/>
+  <rect x="6" y="16" width="36" height="25" rx="4" fill="url(#front)"/>
+  <path d="M22 33V22l10-2v11" fill="none" stroke="#FFFFFF" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="19.5" cy="33.5" r="2.8" fill="#FFFFFF"/>
+  <circle cx="29.5" cy="31.5" r="2.8" fill="#FFFFFF"/>
 </svg>

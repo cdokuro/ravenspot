@@ -35,9 +35,9 @@
   // ─── Tools ─────────────────────────────────────────────────────
   "tools.colorpicker": { "icon": "󰈊", "iconName": "color-picker", "label": "Color Picker", "description": "Pick screen pixel & copy HEX", "aliases": ["color", "colour", "renk", "renk seçici", "picker", "hex", "eyedropper", "damlalık", "pipet"], "action": "ravenspot:pick-color", "provider": "color-picker" },
   "tools.capture": { "icon": "", "iconName": "gnome-screenshot", "label": "Screenshot", "aliases": ["screenshot", "screenrecord", "ekran görüntüsü", "snip"] },
-  "tools.capture.region": { "icon": "󰆞", "iconName": "gnome-screenshot", "label": "Snipping Tool (Region)", "action": "ms-screenclip:" },
-  "tools.capture.fullscreen": { "icon": "󰍹", "iconName": "gnome-screenshot", "label": "Fullscreen Screenshot", "action": "ravenspot:screenshot-full" },
-  "tools.capture.screenrecord": { "icon": "", "iconName": "gnome-screenshot", "label": "Snipping Tool / Record", "action": "snippingtool.exe" },
+  "tools.capture.region": { "icon": "󰆞", "iconName": "screenshot-region", "label": "Snipping Tool (Region)", "action": "ms-screenclip:" },
+  "tools.capture.fullscreen": { "icon": "󰍹", "iconName": "screenshot-fullscreen", "label": "Fullscreen Screenshot", "action": "ravenspot:screenshot-full" },
+  "tools.capture.screenrecord": { "icon": "", "iconName": "screenshot-record", "label": "Snipping Tool / Record", "action": "snippingtool.exe" },
   "tools.clipboard": { "icon": "󰅇", "iconName": "org.kde.plasma.clipboard", "label": "Clipboard History", "aliases": ["clipboard", "pano", "kopyalananlar"], "provider": "clipboard" },
   "tools.terminal": { "icon": "", "iconName": "utilities-terminal", "label": "Windows Terminal", "aliases": ["terminal", "powershell", "cmd", "wt", "shell"], "action": "ravenspot:terminal" },
   "tools.taskmgr": { "icon": "󰍛", "iconName": "utilities-system-monitor", "label": "Task Manager", "aliases": ["taskmgr", "görev yöneticisi", "monitor", "processes"], "action": "taskmgr.exe" },

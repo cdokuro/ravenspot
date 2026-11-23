@@ -20,7 +20,7 @@ import subprocess
 import sys
 import threading
 
-__version__ = "0.3.1"
+__version__ = "0.3.3"
 
 # ── Platform Path & IPC Definitions ───────────────────────────
 IS_WINDOWS = sys.platform == "win32"
@@ -1276,6 +1276,8 @@ class Shell(QObject):
             return f"{sz:.1f} PB"
 
         def _icon_for(name, is_dir):
+            if IS_WINDOWS and wp:
+                return wp.icon_name_for_path(name, is_dir)
             if is_dir:
                 return "folder"
             ext = os.path.splitext(name)[1].lower()
@@ -2908,11 +2910,61 @@ class Shell(QObject):
 
 
 def _fallback_icon_image(sz: QSize) -> QImage:
-    w = max(16, sz.width() if sz.isValid() and sz.width() > 0 else 48)
-    h = max(16, sz.height() if sz.isValid() and sz.height() > 0 else 48)
-    img = QImage(w, h, QImage.Format_ARGB32)
+    w = max(16, sz.width() if sz.isValid() and sz.width() > 0 else 64)
+    h = max(16, sz.height() if sz.isValid() and sz.height() > 0 else 64)
+    img = QImage(w, h, QImage.Format_ARGB32_Premultiplied)
     img.fill(0)
     return img
+
+
+def _render_svg_image(svg_path: str, w: int, h: int) -> QImage:
+    """Render an SVG file crisply at exact HiDPI pixel dimensions using QSvgRenderer."""
+    try:
+        from PySide6.QtSvg import QSvgRenderer
+        from PySide6.QtGui import QPainter
+        from PySide6.QtCore import QRectF
+        renderer = QSvgRenderer(svg_path)
+        if not renderer.isValid():
+            return QImage()
+        img = QImage(w, h, QImage.Format_ARGB32_Premultiplied)
+        img.fill(0)
+        painter = QPainter(img)
+        painter.setRenderHint(QPainter.Antialiasing, True)
+        painter.setRenderHint(QPainter.SmoothPixmapTransform, True)
+        ds = renderer.defaultSize()
+        if ds.isValid() and ds.width() > 0 and ds.height() > 0:
+            scale = min(w / float(ds.width()), h / float(ds.height()))
+            rw = ds.width() * scale
+            rh = ds.height() * scale
+            rect = QRectF((w - rw) / 2.0, (h - rh) / 2.0, rw, rh)
+        else:
+            rect = QRectF(0, 0, w, h)
+        renderer.render(painter, rect)
+        painter.end()
+        return img
+    except Exception:
+        return QImage()
+
+
+def _load_raster_icon(img_path: str, w: int, h: int) -> QImage:
+    """Load a PNG/ICO/BMP file smoothly scaled into a centered transparent w x h QImage."""
+    try:
+        src = QImage(img_path)
+        if src.isNull():
+            return QImage()
+        scaled = src.scaled(w, h, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+        if scaled.width() == w and scaled.height() == h:
+            return scaled
+        out = QImage(w, h, QImage.Format_ARGB32_Premultiplied)
+        out.fill(0)
+        from PySide6.QtGui import QPainter
+        painter = QPainter(out)
+        painter.setRenderHint(QPainter.SmoothPixmapTransform, True)
+        painter.drawImage((w - scaled.width()) // 2, (h - scaled.height()) // 2, scaled)
+        painter.end()
+        return out
+    except Exception:
+        return QImage()
 
 
 class AppIconProvider(QQuickImageProvider):
@@ -2927,43 +2979,68 @@ class AppIconProvider(QQuickImageProvider):
     def requestImage(self, id, size, requestedSize):
         from urllib.parse import unquote
         clean_id = unquote(id.split("?")[0] if "?" in id else id)
-        sz = requestedSize if requestedSize.isValid() and requestedSize.width() > 0 else QSize(48, 48)
+        w = max(requestedSize.width() if requestedSize.isValid() and requestedSize.width() > 0 else 64, 64)
+        h = max(requestedSize.height() if requestedSize.isValid() and requestedSize.height() > 0 else 64, 64)
+        sz = QSize(w, h)
 
+        icon_file = ""
         target_path = clean_id
         app_label = ""
-        if not os.path.exists(target_path):
+        if clean_id and os.path.isfile(clean_id) and clean_id.lower().endswith((".png", ".svg", ".ico", ".jpg", ".webp")):
+            icon_file = clean_id
+        elif not os.path.exists(target_path):
             for app in self._shell._load_apps():
                 if app["id"] == clean_id:
-                    target_path = app.get("desktop") or app.get("icon") or clean_id
+                    cand_icon = app.get("icon") or ""
+                    if cand_icon and os.path.isfile(cand_icon):
+                        icon_file = cand_icon
+                    target_path = app.get("desktop") or cand_icon or clean_id
                     app_label = app.get("label", "")
                     break
 
-        if IS_WINDOWS and target_path and os.path.exists(target_path):
-            try:
-                from PySide6.QtCore import QFileInfo
-                fi_icon = self._file_icon_provider.icon(QFileInfo(target_path))
-                if not fi_icon.isNull():
-                    pm = fi_icon.pixmap(sz)
-                    img = pm.toImage()
-                    if not img.isNull():
-                        size.setWidth(img.width())
-                        size.setHeight(img.height())
-                        return img
-            except Exception:
-                pass
+        # 1. Direct PNG/SVG/ICO file (including real UWP AppxManifest 256px unplated logos!)
+        if icon_file and os.path.isfile(icon_file):
+            img = _render_svg_image(icon_file, w, h) if icon_file.lower().endswith(".svg") else _load_raster_icon(icon_file, w, h)
+            if not img.isNull():
+                size.setWidth(img.width())
+                size.setHeight(img.height())
+                return img
 
-        # Fallback: try active icon theme first, then candy-icons
+        # 2. Native Windows shell icon (prefer resolved .exe over .lnk to avoid shortcut overlay arrows)
+        if IS_WINDOWS and target_path and os.path.exists(target_path):
+            extract_paths = []
+            if target_path.lower().endswith(".lnk") and wp:
+                resolved_exe = wp.resolve_lnk_target(target_path)
+                if resolved_exe and os.path.isfile(resolved_exe) and resolved_exe.lower().endswith(".exe"):
+                    extract_paths.append(resolved_exe)
+            extract_paths.append(target_path)
+            from PySide6.QtCore import QFileInfo
+            for ep in extract_paths:
+                try:
+                    fi_icon = self._file_icon_provider.icon(QFileInfo(ep))
+                    if not fi_icon.isNull():
+                        pm = fi_icon.pixmap(sz)
+                        img = pm.toImage()
+                        if not img.isNull():
+                            size.setWidth(img.width())
+                            size.setHeight(img.height())
+                            return img
+                except Exception:
+                    pass
+
+        # 3. Fallback: active icon theme SVG rendered cleanly with QSvgRenderer
         active_theme = self._shell.currentTheme().get("iconTheme", "candy-icons") if self._shell else "candy-icons"
-        icon = QIcon()
         if self._candy:
             for cand in (clean_id.replace("uwp-", ""), app_label.lower().replace(" ", "-"), "application-x-executable"):
                 svg = self._candy.resolve(cand, theme_name=active_theme)
                 if svg:
-                    icon = QIcon(svg)
-                    if not icon.isNull():
-                        break
-        if icon.isNull():
-            icon = QIcon.fromTheme(clean_id)
+                    img = _render_svg_image(svg, w, h) if svg.lower().endswith(".svg") else _load_raster_icon(svg, w, h)
+                    if not img.isNull():
+                        size.setWidth(img.width())
+                        size.setHeight(img.height())
+                        return img
+
+        icon = QIcon.fromTheme(clean_id)
         if icon.isNull():
             icon = QIcon.fromTheme("application-x-executable")
         pm = icon.pixmap(sz)
@@ -2993,36 +3070,55 @@ class ThemeIconProvider(QQuickImageProvider):
     def requestImage(self, id, size, requestedSize):
         from urllib.parse import unquote
         clean_id = unquote(id.split("?")[0] if "?" in id else id)
-        icon = QIcon()
-        if IS_WINDOWS and clean_id and os.path.exists(clean_id):
-            if clean_id.lower().endswith((".exe", ".lnk", ".ico")):
+        w = max(requestedSize.width() if requestedSize.isValid() and requestedSize.width() > 0 else 64, 64)
+        h = max(requestedSize.height() if requestedSize.isValid() and requestedSize.height() > 0 else 64, 64)
+
+        # 1. Direct file path (e.g. .exe/.lnk/.ico/.svg/.png)
+        if clean_id and os.path.exists(clean_id):
+            low = clean_id.lower()
+            if low.endswith(".svg"):
+                img = _render_svg_image(clean_id, w, h)
+                if not img.isNull():
+                    size.setWidth(img.width()); size.setHeight(img.height())
+                    return img
+            elif low.endswith((".png", ".jpg", ".jpeg", ".webp", ".bmp")):
+                img = _load_raster_icon(clean_id, w, h)
+                if not img.isNull():
+                    size.setWidth(img.width()); size.setHeight(img.height())
+                    return img
+            elif IS_WINDOWS and low.endswith((".exe", ".lnk", ".ico")) and self._file_icon_provider:
                 try:
                     from PySide6.QtCore import QFileInfo
                     icon = self._file_icon_provider.icon(QFileInfo(clean_id))
+                    if not icon.isNull():
+                        img = icon.pixmap(QSize(w, h)).toImage()
+                        if not img.isNull():
+                            size.setWidth(img.width()); size.setHeight(img.height())
+                            return img
                 except Exception:
                     pass
-            if icon.isNull():
-                icon = QIcon(clean_id)
-        elif os.path.exists(clean_id) or os.path.isabs(clean_id):
-            icon = QIcon(clean_id)
 
+        # 2. Active icon theme SVG via CandyIconResolver + crisp QSvgRenderer
         active_theme = self._active_icon_theme()
-        if icon.isNull() and self._candy:
+        if self._candy:
             svg = self._candy.resolve(clean_id, theme_name=active_theme)
+            if not svg:
+                svg = self._candy.resolve("application-x-executable", theme_name=active_theme)
             if svg:
-                icon = QIcon(svg)
-        if icon.isNull() and clean_id in ("folder-download", "folder-downloads", "download"):
+                img = _render_svg_image(svg, w, h) if svg.lower().endswith(".svg") else _load_raster_icon(svg, w, h)
+                if not img.isNull():
+                    size.setWidth(img.width())
+                    size.setHeight(img.height())
+                    return img
+
+        # 3. Qt theme fallback (Linux / non-Windows)
+        icon = QIcon()
+        if clean_id in ("folder-download", "folder-downloads", "download"):
             icon = QIcon.fromTheme("aptdaemon-download")
         if icon.isNull():
             icon = QIcon.fromTheme(clean_id)
-        if icon.isNull() and self._candy:
-            svg = self._candy.resolve("application-x-executable", theme_name=active_theme)
-            if svg:
-                icon = QIcon(svg)
         if icon.isNull():
             icon = QIcon.fromTheme("application-x-executable")
-        w = max(requestedSize.width() if requestedSize.isValid() and requestedSize.width() > 0 else 48, 64)
-        h = max(requestedSize.height() if requestedSize.isValid() and requestedSize.height() > 0 else 48, 64)
         pm = icon.pixmap(QSize(w, h))
         img = pm.toImage() if not pm.isNull() else _fallback_icon_image(QSize(w, h))
         size.setWidth(img.width())

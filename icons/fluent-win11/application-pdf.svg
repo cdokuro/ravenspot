@@ -1,6 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48">
-  <defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#93C5FD"/><stop offset="100%" stop-color="#2563EB"/></linearGradient></defs>
-  <path d="M11 6h18l10 10v24a4 4 0 0 1-4 4H11a4 4 0 0 1-4-4V10a4 4 0 0 1 4-4z" fill="url(#g)"/>
-  <path d="M29 6v10h10" fill="#DBEAFE"/>
-  <path d="M14 24h20M14 31h14" stroke="#fff" stroke-width="2.8" stroke-linecap="round"/>
+  <defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#FB7185"/><stop offset="100%" stop-color="#BE123C"/></linearGradient></defs>
+  <path d="M11 5h17l11 11v25a4 4 0 0 1-4 4H11a4 4 0 0 1-4-4V9a4 4 0 0 1 4-4z" fill="url(#g)"/>
+  <path d="M28 5v11h11" fill="#FECDD3"/>
+  <rect x="11" y="25" width="26" height="12" rx="3" fill="#881337"/>
+  <path d="M15 34v-6h2.4c1.3 0 2.1.7 2.1 1.9s-.8 1.9-2.1 1.9H16.6V34H15zm1.6-3.4h.7c.5 0 .8-.3.8-.7s-.3-.7-.8-.7h-.7v1.4zm4.4 3.4v-6h2.2c1.9 0 3.1 1.1 3.1 3s-1.2 3-3.1 3H21zm1.6-1.3h.6c1 0 1.6-.6 1.6-1.7s-.6-1.7-1.6-1.7h-.6v3.4zm5.4 1.3v-6h4.2v1.3h-2.6v1.2h2.2v1.3h-2.2V34H28z" fill="#FFFFFF"/>
 </svg>

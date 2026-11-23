@@ -873,6 +873,42 @@ def resolve_lnk_target(lnk_path):
     return ""
 
 
+def icon_name_for_path(path, is_dir=False):
+    """Map a Windows file or folder path to a clean freedesktop/Fluent icon name."""
+    if is_dir:
+        return "folder"
+    ext = os.path.splitext(path or "")[1].lower()
+    if ext in (".png", ".jpg", ".jpeg", ".webp", ".svg", ".gif", ".ico", ".bmp", ".heic", ".avif"):
+        return "image-x-generic"
+    if ext in (".mp4", ".mkv", ".mov", ".avi", ".webm", ".flv", ".wmv", ".m4v"):
+        return "video-x-generic"
+    if ext in (".mp3", ".flac", ".wav", ".ogg", ".m4a", ".aac", ".opus", ".wma"):
+        return "audio-x-generic"
+    if ext == ".pdf":
+        return "application-pdf"
+    if ext in (".zip", ".tar", ".gz", ".xz", ".7z", ".rar", ".bz2", ".zst", ".iso"):
+        return "package-x-generic"
+    if ext in (".doc", ".docx", ".odt", ".rtf"):
+        return "application-msword"
+    if ext in (".xls", ".xlsx", ".ods", ".csv"):
+        return "application-vnd.ms-excel"
+    if ext in (".ppt", ".pptx", ".odp"):
+        return "application-vnd.ms-powerpoint"
+    if ext == ".py":
+        return "text-x-python"
+    if ext in (".json", ".jsonc", ".yaml", ".yml", ".toml"):
+        return "application-json"
+    if ext in (".md", ".markdown"):
+        return "text-markdown"
+    if ext in (".ps1", ".bat", ".cmd", ".sh", ".bash"):
+        return "application-x-shellscript"
+    if ext in (".js", ".ts", ".tsx", ".jsx", ".html", ".css", ".cpp", ".c", ".h", ".rs", ".go", ".cs", ".java", ".qml", ".xml"):
+        return "text-x-generic"
+    if ext in (".exe", ".msi", ".msix", ".lnk"):
+        return "application-x-executable"
+    return "text-plain"
+
+
 def list_windows_recent_files(query="", limit=30):
     if not IS_WINDOWS:
         return []
@@ -909,11 +945,13 @@ def list_windows_recent_files(query="", limit=30):
         if ql and ql not in name.lower():
             continue
         seen.add(key)
+        is_d = os.path.isdir(norm)
         dt = datetime.datetime.fromtimestamp(mtime).strftime("%d.%m.%Y %H:%M")
         out.append({
             "path": norm,
             "name": name,
-            "isDir": os.path.isdir(norm),
+            "isDir": is_d,
+            "iconName": icon_name_for_path(norm, is_d),
             "modified": dt,
         })
     return out
@@ -921,16 +959,56 @@ def list_windows_recent_files(query="", limit=30):
 
 # ── 8. UWP / Start Apps Indexing ─────────────────────────────────────────────
 def scan_windows_uwp_apps():
-    """Query Start Apps via PowerShell Get-StartApps to include Store/UWP apps (Calculator, Photos, etc.)."""
+    """Query Start Apps + AppxManifest logos via PowerShell so Store/UWP apps get crisp native Windows 11 icons."""
     if not IS_WINDOWS:
         return []
     apps = []
     try:
-        cmd = "[Console]::OutputEncoding=[System.Text.Encoding]::UTF8; Get-StartApps | ConvertTo-Json -Compress"
+        ps = r"""
+$ErrorActionPreference='SilentlyContinue'
+[Console]::OutputEncoding=[System.Text.Encoding]::UTF8
+$pkgs=@{}
+Get-AppxPackage | ForEach-Object { if($_.PackageFamilyName -and $_.InstallLocation){ $pkgs[$_.PackageFamilyName]=$_.InstallLocation } }
+$res = @()
+Get-StartApps | Where-Object { $_.AppID -like '*!*' } | ForEach-Object {
+  $pfn = ($_.AppID -split '!')[0]
+  $aid = ($_.AppID -split '!')[1]
+  $loc = $pkgs[$pfn]
+  $logo = ''
+  if ($loc -and (Test-Path "$loc\AppxManifest.xml")) {
+    try {
+      [xml]$xml = Get-Content "$loc\AppxManifest.xml" -Raw
+      $appNodes = @($xml.Package.Applications.Application)
+      $node = $appNodes | Where-Object { $_.Id -eq $aid } | Select-Object -First 1
+      if (-not $node) { $node = $appNodes | Select-Object -First 1 }
+      $rel = $node.VisualElements.Square44x44Logo
+      if (-not $rel) { $rel = $node.VisualElements.Square150x150Logo }
+      if (-not $rel) { $rel = $xml.Package.Properties.Logo }
+      if ($rel) {
+        $fullRel = Join-Path $loc $rel
+        $dir = Split-Path $fullRel -Parent
+        $base = [IO.Path]::GetFileNameWithoutExtension($rel)
+        $ext = [IO.Path]::GetExtension($rel)
+        if (Test-Path $dir) {
+          $cands = @(Get-ChildItem $dir -Filter "$base*$ext" -ErrorAction SilentlyContinue | Where-Object { $_.Name -notmatch 'contrast-white|contrast-black|lightunplated' })
+          $unp = @($cands | Where-Object { $_.Name -match 'altform-unplated' } | Sort-Object Length -Descending)
+          if ($unp.Count -gt 0) { $logo = $unp[0].FullName }
+          elseif ($cands.Count -gt 0) { $logo = ($cands | Sort-Object Length -Descending | Select-Object -First 1).FullName }
+        }
+        if (-not $logo -and (Test-Path $fullRel)) { $logo = $fullRel }
+      }
+    } catch {}
+  }
+  $res += [pscustomobject]@{ Name = $_.Name; AppID = $_.AppID; Logo = $logo }
+}
+$res | ConvertTo-Json -Compress
+"""
+        import base64
+        b64 = base64.b64encode(ps.encode("utf-16-le")).decode("ascii")
         p = subprocess.run(
-            ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", cmd],
+            ["powershell.exe", "-NoProfile", "-NonInteractive", "-EncodedCommand", b64],
             capture_output=True, text=True, encoding="utf-8", errors="replace",
-            timeout=6, **_hidden_kwargs()
+            timeout=10, **_hidden_kwargs()
         )
         raw = (p.stdout or "").strip()
         if not raw:
@@ -942,12 +1020,12 @@ def scan_windows_uwp_apps():
         for item in data:
             name = (item.get("Name") or "").strip()
             appid = (item.get("AppID") or "").strip()
+            logo = (item.get("Logo") or "").strip()
             if not name or not appid:
                 continue
             nl = fold_text(name)
             if any(ig in nl for ig in ignore):
                 continue
-            # Only add UWP/Store apps (those with '!' in AppID; Win32 .lnk apps are scanned directly with real icons)
             if "!" not in appid:
                 continue
             slug = re.sub(r"[^\w\s-]", "", nl).strip().replace(" ", "-")
@@ -970,7 +1048,7 @@ def scan_windows_uwp_apps():
             apps.append({
                 "id": f"uwp-{slug or appid[:20]}",
                 "label": name,
-                "icon": "",
+                "icon": logo if (logo and os.path.isfile(logo)) else "",
                 "aliases": aliases,
                 "desktop": f"shell:AppsFolder\\{appid}",
                 "category": cat,
@@ -1056,6 +1134,8 @@ class CandyIconResolver:
             "folder-downloads": "aptdaemon-download",
             "download": "aptdaemon-download",
             "system-software-update": "update-manager",
+            "cachy-update-blue": "system-software-update",
+            "cachy-update_updates-available-blue": "system-software-update",
             "utilities-system-monitor": "ksysguard",
             "window": "preferences-system-windows",
             "terminal": "utilities-terminal",
@@ -1065,12 +1145,72 @@ class CandyIconResolver:
             "system-bios": "cpu",
             "sleep": "system-suspend",
             "process-stop": "system-shutdown",
+            "input-keyboard": "cs-keyboard",
+            "screenshot-region": "gnome-screenshot",
+            "screenshot-fullscreen": "gnome-screenshot",
+            "screenshot-record": "gnome-screenshot",
+            "color-mode-dark": "redshift-status-on",
+            "color-mode-light": "cs-color",
+            # MIME / file-type aliases so active theme stays unified
+            "image-png": "image-x-generic",
+            "image-jpeg": "image-x-generic",
+            "image-jpg": "image-x-generic",
+            "image-gif": "image-x-generic",
+            "image-webp": "image-x-generic",
+            "image-bmp": "image-x-generic",
+            "image-svg+xml": "image-x-generic",
+            "image-x-icon": "image-x-generic",
+            "video-mp4": "video-x-generic",
+            "video-x-matroska": "video-x-generic",
+            "video-webm": "video-x-generic",
+            "video-quicktime": "video-x-generic",
+            "video-x-msvideo": "video-x-generic",
+            "audio-mp3": "audio-x-generic",
+            "audio-mpeg": "audio-x-generic",
+            "audio-flac": "audio-x-generic",
+            "audio-wav": "audio-x-generic",
+            "audio-x-wav": "audio-x-generic",
+            "audio-ogg": "audio-x-generic",
+            "application-zip": "package-x-generic",
+            "application-x-zip-compressed": "package-x-generic",
+            "application-x-tar": "package-x-generic",
+            "application-gzip": "package-x-generic",
+            "application-x-7z-compressed": "package-x-generic",
+            "application-x-rar": "package-x-generic",
+            "application-vnd.rar": "package-x-generic",
+            "application-octet-stream": "text-plain",
+            "application-xml": "text-x-generic",
+            "text-xml": "text-x-generic",
+            "text-csv": "application-vnd.ms-excel",
+            "text-html": "text-x-generic",
+            "text-css": "text-x-generic",
+            "text-javascript": "text-x-generic",
+            "application-javascript": "text-x-generic",
+            "text-x-script.python": "text-x-python",
+            "application-x-msdownload": "application-x-executable",
+            "application-x-msi": "application-x-executable",
+            "application-x-dosexec": "application-x-executable",
+            "application-x-desktop": "application-x-executable",
+            "application-vnd.openxmlformats-officedocument.wordprocessingml.document": "application-msword",
+            "application-rtf": "application-msword",
+            "application-vnd.openxmlformats-officedocument.spreadsheetml.sheet": "application-vnd.ms-excel",
+            "application-vnd.openxmlformats-officedocument.presentationml.presentation": "application-vnd.ms-powerpoint",
         }
         if n in aliases and aliases[n] in idx:
             return idx[aliases[n]]
         for cand in (n.replace("_", "-"), n.replace("-", "")):
             if cand in idx:
                 return idx[cand]
+        # Prefix fallbacks inside the SAME theme before dropping to another theme
+        for prefix, fallback in (
+            ("image-", "image-x-generic"),
+            ("video-", "video-x-generic"),
+            ("audio-", "audio-x-generic"),
+            ("text-", "text-plain"),
+            ("folder-", "folder"),
+        ):
+            if n.startswith(prefix) and fallback in idx:
+                return idx[fallback]
         return ""
 
     def resolve(self, name, theme_name=None):

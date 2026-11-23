@@ -942,10 +942,11 @@ function pcRows(kind, items) {
     } else if (kind === "recent") {
       out.push(pcRow({ itemId: "__recent_" + i + "__", provider: "file-item", value: it.path, filePath: it.path,
                        isDir: !!it.isDir, label: it.name, detail: it.modified + "  •  " + it.path,
-                       path: "Recent", iconName: it.isDir ? "folder" : "document-open-recent", score: -60000 + i }))
+                       path: "Recent", iconName: it.iconName || (it.isDir ? "folder" : "document-open-recent"), score: -60000 + i }))
     } else if (kind === "emoji") {
       out.push(pcRow({ itemId: "__emoji_" + i + "__", provider: "emoji", value: it.glyph,
-                       label: it.glyph + "   " + it.name, detail: "Enter: copy emoji", path: "Emoji",
+                       icon: it.glyph, iconFont: "Segoe UI Emoji",
+                       label: it.name, detail: "Enter: copy emoji", path: "Emoji",
                        score: -80000 + i }))
     }
   }
