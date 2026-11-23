@@ -101,7 +101,8 @@ Window {
     // Yapısal stil (ThemeManager "style"): "edna" düz Material yüzeyler, gölge,
     // sol vurgu çubuklu seçim ve glif yerine ikon teması (kora) kullanır.
     property string uiStyle: "neon"
-    readonly property bool edna: uiStyle === "edna"
+    readonly property bool fluent: uiStyle === "fluent"
+    readonly property bool edna: uiStyle === "edna" || uiStyle === "fluent"
     property color surfaceColor: "#12ffffff"
     property color panelColor: "#18000000"
     property color cardBorderColor: "#ffd700"
@@ -902,7 +903,7 @@ Window {
                             itemId: "__win_" + w.id + "__",
                             kind: "action",
                             icon: "󰖲",
-                            iconName: w.iconName || "window",
+                            iconName: w.iconName ? "" : "window",
                             iconFont: root.iconFont,
                             appIcon: w.iconName || "",
                             appId: "",
@@ -979,7 +980,7 @@ Window {
             var qLower = query.toLowerCase()
             // Güç/oturum eylemleri Power menüsündeki girişlerden gelir (kopya satır yok);
             // yalnızca menüde karşılığı olmayan Restart Plasma burada.
-            var sysActions = [
+            var sysActions = Shell.isWindows ? [] : [
                 {
                     triggers: ["restart plasma", "plasma restart", "kwin restart", "plasma"],
                     label: "Restart KDE Plasma",
@@ -1161,9 +1162,9 @@ Window {
                             detail: "Opens in your default browser",
                             path: "Web",
                             childCount: 0,
-                            action: "xdg-open '" + bg.url + encodeURIComponent(bangQ) + "'",
-                            provider: "",
-                            value: "",
+                            action: "",
+                            provider: "open-folder-path",
+                            value: bg.url + encodeURIComponent(bangQ).replace(/'/g, "%27"),
                             desktop: "",
                             disabled: false,
                             score: -99998,
@@ -1200,9 +1201,9 @@ Window {
                         detail: "Opens in your default browser",
                         path: "Web",
                         childCount: 0,
-                        action: "xdg-open 'https://www.google.com/search?q=" + encodeURIComponent(rawSearch) + "'",
-                        provider: "",
-                        value: "",
+                        action: "",
+                        provider: "open-folder-path",
+                        value: "https://www.google.com/search?q=" + encodeURIComponent(rawSearch).replace(/'/g, "%27"),
                         desktop: "",
                         disabled: false,
                         score: 99998,
@@ -1221,9 +1222,9 @@ Window {
                         detail: "Privacy-focused search",
                         path: "Web",
                         childCount: 0,
-                        action: "xdg-open 'https://duckduckgo.com/?q=" + encodeURIComponent(rawSearch) + "'",
-                        provider: "",
-                        value: "",
+                        action: "",
+                        provider: "open-folder-path",
+                        value: "https://duckduckgo.com/?q=" + encodeURIComponent(rawSearch).replace(/'/g, "%27"),
                         desktop: "",
                         disabled: false,
                         score: 99999,
@@ -1443,6 +1444,7 @@ Window {
             root.opened = false
             if (row.value === "poweroff") Shell.powerOff()
             else if (row.value === "reboot") Shell.rebootSystem()
+            else if (row.value === "reboot_bios") { if (Shell.rebootToBios) Shell.rebootToBios() }
             else if (row.value === "lock") Shell.lockScreen()
             else if (row.value === "sleep") Shell.suspendSystem()
             else if (row.value === "logout") Shell.logoutUser()
@@ -1731,7 +1733,7 @@ Window {
             root.contextPath = payload
             root.renameError = ""
             root.contextMode = "rename"
-            var nm = payload.split("/").pop()
+            var nm = payload.split(/[\\/]/).pop()
             renameInput.text = nm
             var dot = nm.lastIndexOf(".")
             renameInput.select(0, dot > 0 ? dot : nm.length) // uzantı hariç seç
@@ -1905,8 +1907,15 @@ Window {
             closeMenu()
         }
         function onReloadRequested() {
+            root.providersLoaded = ({})
             loadItems()
             rebuildDisplay()
+        }
+        function onPowerProfileChanged(profile) {
+            if (profile) root.currentPowerProfile = profile
+        }
+        function onSleepInhibitedChanged(inhibited) {
+            root.sleepInhibited = !!inhibited
         }
         function onFileSearchFinished(requestId, pattern, json) {
             if (requestId !== root.searchSeq) return // eski sorgu
@@ -2085,8 +2094,8 @@ Window {
                 lastX = mouse.x; lastY = mouse.y
                 Shell.dragBy(dx, dy)
             }
-            onReleased: { if (isDragging) Shell.endDrag(); isDragging = false; cursorShape = undefined }
-            onCanceled: { if (isDragging) Shell.endDrag(); isDragging = false; cursorShape = undefined }
+            onReleased: { if (isDragging) Shell.endDrag(); isDragging = false; cursorShape = Qt.ArrowCursor }
+            onCanceled: { if (isDragging) Shell.endDrag(); isDragging = false; cursorShape = Qt.ArrowCursor }
         }
 
         // Blur ve input bölgesini kartın gerçek yüksekliğine eşitle (her kare;
@@ -3226,8 +3235,8 @@ Window {
                 height: 36
                 radius: 2.5
                 x: 0.5
-                color: thumbDrag.pressed ? "#ffef9a"
-                     : thumbDrag.containsMouse ? "#ffe08a"
+                color: thumbDrag.pressed ? Qt.lighter(root.accentColor, 1.25)
+                     : thumbDrag.containsMouse ? Qt.lighter(root.accentColor, 1.1)
                      : root.bgBorder
                 y: {
                     var travel = scrollTrack.height - thumb.height
@@ -4444,7 +4453,7 @@ Window {
                             width: 90
                             height: 28
                             radius: 6
-                            color: installMouse.containsMouse ? Qt.lighter(root.selFg, 1.15) : root.selFg
+                            color: installMouse.containsMouse ? Qt.lighter(root.accentColor, 1.15) : root.accentColor
 
                             Row {
                                 anchors.centerIn: parent
@@ -4453,14 +4462,14 @@ Window {
                                     text: "󰄬"
                                     font.family: root.iconFont
                                     font.pixelSize: 12
-                                    color: "#ffffff"
+                                    color: "#0b0c10"
                                 }
                                 Text {
                                     text: "Install"
                                     font.family: root.textFont
                                     font.pixelSize: 12
                                     font.weight: Font.DemiBold
-                                    color: "#ffffff"
+                                    color: "#0b0c10"
                                 }
                             }
 

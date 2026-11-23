@@ -1271,6 +1271,10 @@ void ShellBridge::rebootSystem() {
     }
 }
 
+void ShellBridge::rebootToBios() {
+    QProcess::startDetached(QStringLiteral("systemctl"), {QStringLiteral("reboot"), QStringLiteral("--firmware-setup")});
+}
+
 void ShellBridge::lockScreen() {
     auto msg = QDBusMessage::createMethodCall(
         QStringLiteral("org.freedesktop.ScreenSaver"),

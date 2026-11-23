@@ -1,0 +1,11 @@
+[Icon Theme]
+Name=Fluent Win11
+Comment=Windows 11 Fluent 2 Color SVG Icon Pack for RavenSpot
+Inherits=candy-icons,breeze,hicolor
+Directories=.
+
+[.]
+Size=48
+Type=Scalable
+MinSize=16
+MaxSize=256

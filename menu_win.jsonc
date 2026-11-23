@@ -77,6 +77,7 @@
   "system.suspend": { "icon": "󰒲", "iconName": "system-suspend", "label": "Sleep", "description": "Suspend system to RAM", "aliases": ["suspend", "sleep", "uyku", "uyut", "askıya al", "askiya al"], "action": "ravenspot:suspend" },
   "system.logout": { "icon": "󰍃", "iconName": "system-log-out", "label": "Sign Out", "description": "Sign out of Windows cleanly", "aliases": ["logout", "log out", "sign out", "çıkış", "oturumu kapat", "oturum kapat", "cikis"], "action": "ravenspot:logout" },
   "system.reboot": { "icon": "󰜉", "iconName": "system-reboot", "label": "Restart", "description": "Restart Windows", "aliases": ["reboot", "restart", "yeniden başlat", "yeniden baslat"], "action": "ravenspot:reboot" },
+  "system.bios": { "icon": "󰍛", "iconName": "system-bios", "label": "Reboot to BIOS", "description": "Restart into UEFI / BIOS setup", "aliases": ["bios", "uefi", "firmware", "biosa gir", "bios gir", "reboot bios", "yeniden başlat bios"], "action": "ravenspot:reboot-bios" },
   "system.shutdown": { "icon": "󰐥", "iconName": "system-shutdown", "label": "Shut Down", "description": "Power off the computer", "aliases": ["shutdown", "poweroff", "kapat", "power off", "sistemi kapat"], "action": "ravenspot:shutdown" },
 
   // ─── Help ──────────────────────────────────────────────────────

@@ -32,10 +32,202 @@ from ctypes import wintypes
 IS_WINDOWS = sys.platform == "win32"
 
 
+def fold_text(s: str) -> str:
+    """Turkish-aware case folding (prevents U+0130 'İ' -> 'i\\u0307' mismatch)."""
+    if not s:
+        return ""
+    return s.replace("\u0130", "i").replace("I", "i").lower().replace("\u0307", "")
+
+
 def _hidden_kwargs():
     if not IS_WINDOWS:
         return {}
     return {"creationflags": getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)}
+
+
+# ── Explicit Win32 ctypes Signatures (prevents 64-bit HANDLE/HWND & ULONGLONG truncation) ──
+if IS_WINDOWS:
+    _u32 = ctypes.windll.user32
+    _k32 = ctypes.windll.kernel32
+    _s32 = ctypes.windll.shell32
+
+    _u32.GetForegroundWindow.restype = wintypes.HWND
+    _u32.IsIconic.argtypes = [wintypes.HWND]
+    _u32.IsIconic.restype = wintypes.BOOL
+    _u32.ShowWindow.argtypes = [wintypes.HWND, ctypes.c_int]
+    _u32.ShowWindow.restype = wintypes.BOOL
+    _u32.GetWindowThreadProcessId.argtypes = [wintypes.HWND, ctypes.POINTER(wintypes.DWORD)]
+    _u32.GetWindowThreadProcessId.restype = wintypes.DWORD
+    _u32.AttachThreadInput.argtypes = [wintypes.DWORD, wintypes.DWORD, wintypes.BOOL]
+    _u32.AttachThreadInput.restype = wintypes.BOOL
+    _u32.BringWindowToTop.argtypes = [wintypes.HWND]
+    _u32.BringWindowToTop.restype = wintypes.BOOL
+    _u32.SetForegroundWindow.argtypes = [wintypes.HWND]
+    _u32.SetForegroundWindow.restype = wintypes.BOOL
+    _u32.SetActiveWindow.argtypes = [wintypes.HWND]
+    _u32.SetActiveWindow.restype = wintypes.HWND
+    _u32.IsWindowVisible.argtypes = [wintypes.HWND]
+    _u32.IsWindowVisible.restype = wintypes.BOOL
+    _u32.GetWindowLongW.argtypes = [wintypes.HWND, ctypes.c_int]
+    _u32.GetWindowLongW.restype = wintypes.LONG
+    _u32.GetWindowTextLengthW.argtypes = [wintypes.HWND]
+    _u32.GetWindowTextLengthW.restype = ctypes.c_int
+    _u32.GetWindowTextW.argtypes = [wintypes.HWND, wintypes.LPWSTR, ctypes.c_int]
+    _u32.GetWindowTextW.restype = ctypes.c_int
+    _u32.LockWorkStation.argtypes = []
+    _u32.LockWorkStation.restype = wintypes.BOOL
+
+    _k32.GetCurrentThreadId.argtypes = []
+    _k32.GetCurrentThreadId.restype = wintypes.DWORD
+    _k32.GetTickCount64.argtypes = []
+    _k32.GetTickCount64.restype = ctypes.c_uint64
+    _k32.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+    _k32.OpenProcess.restype = wintypes.HANDLE
+    _k32.CloseHandle.argtypes = [wintypes.HANDLE]
+    _k32.CloseHandle.restype = wintypes.BOOL
+    _k32.QueryFullProcessImageNameW.argtypes = [wintypes.HANDLE, wintypes.DWORD, wintypes.LPWSTR, ctypes.POINTER(wintypes.DWORD)]
+    _k32.QueryFullProcessImageNameW.restype = wintypes.BOOL
+    _k32.SetThreadExecutionState.argtypes = [wintypes.DWORD]
+    _k32.SetThreadExecutionState.restype = wintypes.DWORD
+    _k32.CreateMutexW.argtypes = [wintypes.LPVOID, wintypes.BOOL, wintypes.LPCWSTR]
+    _k32.CreateMutexW.restype = wintypes.HANDLE
+    _k32.GetLastError.argtypes = []
+    _k32.GetLastError.restype = wintypes.DWORD
+
+    _s32.ShellExecuteW.argtypes = [wintypes.HWND, wintypes.LPCWSTR, wintypes.LPCWSTR, wintypes.LPCWSTR, wintypes.LPCWSTR, ctypes.c_int]
+    _s32.ShellExecuteW.restype = wintypes.HINSTANCE
+
+    try:
+        _powr = ctypes.windll.powrprof
+        _powr.SetSuspendState.argtypes = [wintypes.BOOL, wintypes.BOOL, wintypes.BOOL]
+        _powr.SetSuspendState.restype = wintypes.BOOL
+    except Exception:
+        _powr = None
+
+
+def acquire_single_instance_mutex(name="Local\\RavenSpotSingleInstanceMutex"):
+    """Return (mutex_handle, already_exists) using Win32 named mutex."""
+    if not IS_WINDOWS:
+        return None, False
+    try:
+        handle = ctypes.windll.kernel32.CreateMutexW(None, False, name)
+        already = ctypes.windll.kernel32.GetLastError() == 183  # ERROR_ALREADY_EXISTS
+        return handle, already
+    except Exception:
+        return None, False
+
+
+def get_uptime_seconds() -> int:
+    if not IS_WINDOWS:
+        return 0
+    try:
+        return int(ctypes.windll.kernel32.GetTickCount64() // 1000)
+    except Exception:
+        return 0
+
+
+def lock_workstation() -> bool:
+    if not IS_WINDOWS:
+        return False
+    try:
+        return bool(ctypes.windll.user32.LockWorkStation())
+    except Exception:
+        return False
+
+
+def suspend_sleep() -> bool:
+    """Put Windows to S3/Modern Standby sleep (Hibernate=False, Force=False, DisableWake=False)."""
+    if not IS_WINDOWS:
+        return False
+    try:
+        return bool(ctypes.windll.powrprof.SetSuspendState(False, False, False))
+    except Exception:
+        return False
+
+
+def reboot_to_bios():
+    """Restart directly into UEFI / BIOS firmware setup. Returns (ok, error_message)."""
+    if not IS_WINDOWS:
+        return False, "Not Windows"
+    try:
+        is_admin = bool(ctypes.windll.shell32.IsUserAnAdmin())
+    except Exception:
+        is_admin = False
+    if is_admin:
+        try:
+            r = subprocess.run(
+                ["shutdown.exe", "/r", "/fw", "/t", "0"],
+                capture_output=True, text=True, encoding="oem", errors="replace",
+                timeout=5, **_hidden_kwargs()
+            )
+            if r.returncode == 0:
+                return True, ""
+            return False, (r.stderr or r.stdout or f"shutdown /r /fw failed ({r.returncode})").strip()
+        except Exception as e:
+            return False, str(e)
+    try:
+        ret = ctypes.windll.shell32.ShellExecuteW(None, "runas", "shutdown.exe", "/r /fw /t 0", None, 0)
+        if int(ret or 0) > 32:
+            return True, ""
+        return False, "UAC elevation cancelled or denied."
+    except Exception as e:
+        return False, str(e)
+
+
+def _attach_kill_on_close_job(pid: int):
+    """Attach a child process PID to a Win32 Job Object with KILL_ON_JOB_CLOSE so it never orphans."""
+    if not IS_WINDOWS or not pid:
+        return None
+    try:
+        k32 = ctypes.windll.kernel32
+        k32.CreateJobObjectW.argtypes = [wintypes.LPVOID, wintypes.LPCWSTR]
+        k32.CreateJobObjectW.restype = wintypes.HANDLE
+        k32.AssignProcessToJobObject.argtypes = [wintypes.HANDLE, wintypes.HANDLE]
+        k32.AssignProcessToJobObject.restype = wintypes.BOOL
+        k32.SetInformationJobObject.argtypes = [wintypes.HANDLE, ctypes.c_int, wintypes.LPVOID, wintypes.DWORD]
+        k32.SetInformationJobObject.restype = wintypes.BOOL
+
+        class IO_COUNTERS(ctypes.Structure):
+            _fields_ = [(n, ctypes.c_uint64) for n in ("ReadOperationCount","WriteOperationCount","OtherOperationCount","ReadTransferCount","WriteTransferCount","OtherTransferCount")]
+
+        class JOBOBJECT_BASIC_LIMIT_INFORMATION(ctypes.Structure):
+            _fields_ = [
+                ("PerProcessUserTimeLimit", ctypes.c_int64),
+                ("PerJobUserTimeLimit", ctypes.c_int64),
+                ("LimitFlags", wintypes.DWORD),
+                ("MinimumWorkingSetSize", ctypes.c_size_t),
+                ("MaximumWorkingSetSize", ctypes.c_size_t),
+                ("ActiveProcessLimit", wintypes.DWORD),
+                ("Affinity", ctypes.c_size_t),
+                ("PriorityClass", wintypes.DWORD),
+                ("SchedulingClass", wintypes.DWORD),
+            ]
+
+        class JOBOBJECT_EXTENDED_LIMIT_INFORMATION(ctypes.Structure):
+            _fields_ = [
+                ("BasicLimitInformation", JOBOBJECT_BASIC_LIMIT_INFORMATION),
+                ("IoInfo", IO_COUNTERS),
+                ("ProcessMemoryLimit", ctypes.c_size_t),
+                ("JobMemoryLimit", ctypes.c_size_t),
+                ("PeakProcessMemoryUsed", ctypes.c_size_t),
+                ("PeakJobMemoryUsed", ctypes.c_size_t),
+            ]
+
+        job = k32.CreateJobObjectW(None, None)
+        if not job:
+            return None
+        info = JOBOBJECT_EXTENDED_LIMIT_INFORMATION()
+        info.BasicLimitInformation.LimitFlags = 0x2000  # JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
+        k32.SetInformationJobObject(job, 9, ctypes.byref(info), ctypes.sizeof(info))
+        PROCESS_SET_QUOTA = 0x0100
+        PROCESS_TERMINATE = 0x0001
+        hproc = k32.OpenProcess(PROCESS_SET_QUOTA | PROCESS_TERMINATE, False, pid)
+        if hproc:
+            k32.AssignProcessToJobObject(job, hproc)
+            k32.CloseHandle(hproc)
+        return job
+    except Exception:
+        return None
 
 
 # ── 1. Win32 Window Focus, Enumeration & Activation ──────────────────────────
@@ -217,10 +409,10 @@ def get_windows_power_profile() -> str:
             return key
     for g, name in schemes:
         if g == active_guid:
-            nl = name.lower()
+            nl = fold_text(name)
             if "sav" in nl or "tasarruf" in nl:
                 return "power-saver"
-            if "high" in nl or "ultimate" in nl or "yüksek" in nl or "nihai" in nl or "perf" in nl:
+            if any(k in nl for k in ("high", "ultimate", "yuksek", "yüksek", "nihai", "perf")):
                 return "performance"
     return "balanced"
 
@@ -254,8 +446,8 @@ def set_windows_power_profile(profile: str) -> bool:
     if guid.lower() not in known:
         # Match by friendly name
         for g, name in schemes:
-            nl = name.lower()
-            if profile == "performance" and any(k in nl for k in ("high", "ultimate", "yüksek", "nihai", "perf")):
+            nl = fold_text(name)
+            if profile == "performance" and any(k in nl for k in ("high", "ultimate", "yuksek", "yüksek", "nihai", "perf")):
                 guid = g
                 break
             if profile == "power-saver" and any(k in nl for k in ("sav", "tasarruf")):
@@ -265,7 +457,11 @@ def set_windows_power_profile(profile: str) -> bool:
                 guid = g
                 break
     try:
-        r = subprocess.run(["powercfg", "/setactive", guid], capture_output=True, text=True, timeout=3, **_hidden_kwargs())
+        r = subprocess.run(
+            ["powercfg", "/setactive", guid],
+            capture_output=True, text=True, encoding="oem", errors="replace",
+            timeout=3, **_hidden_kwargs()
+        )
         return r.returncode == 0
     except Exception:
         return False
@@ -350,13 +546,26 @@ class WinAudioController:
             except Exception:
                 self._pycaw_ok = False
 
+    def _with_com(self, fn):
+        import comtypes
+        co_inited = False
+        try:
+            comtypes.CoInitialize()
+            co_inited = True
+        except Exception:
+            co_inited = False
+        try:
+            return fn()
+        finally:
+            if co_inited:
+                try:
+                    comtypes.CoUninitialize()
+                except Exception:
+                    pass
+
     def _get_endpoint(self):
         import comtypes
         from pycaw.pycaw import AudioUtilities, IAudioEndpointVolume
-        try:
-            comtypes.CoInitialize()
-        except Exception:
-            pass
         speakers = AudioUtilities.GetSpeakers()
         if hasattr(speakers, "EndpointVolume"):
             return speakers.EndpointVolume
@@ -366,10 +575,12 @@ class WinAudioController:
     def get_volume_info(self):
         if self._pycaw_ok:
             try:
-                ep = self._get_endpoint()
-                vol = int(round(ep.GetMasterVolumeLevelScalar() * 100))
-                muted = bool(ep.GetMute())
-                return max(0, min(100, vol)), muted
+                def _read():
+                    ep = self._get_endpoint()
+                    vol = int(round(ep.GetMasterVolumeLevelScalar() * 100))
+                    muted = bool(ep.GetMute())
+                    return max(0, min(100, vol)), muted
+                return self._with_com(_read)
             except Exception:
                 pass
         return 50, False
@@ -378,11 +589,13 @@ class WinAudioController:
         v = max(0, min(100, int(vol_pct))) / 100.0
         if self._pycaw_ok:
             try:
-                ep = self._get_endpoint()
-                ep.SetMasterVolumeLevelScalar(v, None)
-                if v > 0 and ep.GetMute():
-                    ep.SetMute(0, None)
-                return True
+                def _write():
+                    ep = self._get_endpoint()
+                    ep.SetMasterVolumeLevelScalar(v, None)
+                    if v > 0 and ep.GetMute():
+                        ep.SetMute(0, None)
+                    return True
+                return self._with_com(_write)
             except Exception:
                 pass
         return False
@@ -390,10 +603,12 @@ class WinAudioController:
     def toggle_mute(self):
         if self._pycaw_ok:
             try:
-                ep = self._get_endpoint()
-                cur = bool(ep.GetMute())
-                ep.SetMute(0 if cur else 1, None)
-                return not cur
+                def _toggle():
+                    ep = self._get_endpoint()
+                    cur = bool(ep.GetMute())
+                    ep.SetMute(0 if cur else 1, None)
+                    return not cur
+                return self._with_com(_toggle)
             except Exception:
                 pass
         # Fallback: send VK_VOLUME_MUTE key
@@ -409,43 +624,39 @@ class WinAudioController:
         if not self._pycaw_ok:
             return []
         try:
-            import comtypes
-            from pycaw.pycaw import AudioUtilities, EDataFlow, DEVICE_STATE
-            try:
-                comtypes.CoInitialize()
-            except Exception:
-                pass
-            flow = EDataFlow.eRender.value if kind == "output" else EDataFlow.eCapture.value
-            default_id = ""
-            try:
-                enum = AudioUtilities.GetDeviceEnumerator()
-                def_dev = enum.GetDefaultAudioEndpoint(flow, 1)  # eMultimedia
-                default_id = def_dev.GetId()
-            except Exception:
-                pass
-            all_devs = AudioUtilities.GetAllDevices()
-            out = []
-            for d in all_devs:
+            def _list():
+                from pycaw.pycaw import AudioUtilities, EDataFlow
+                flow = EDataFlow.eRender.value if kind == "output" else EDataFlow.eCapture.value
+                default_id = ""
                 try:
-                    st_val = getattr(d.state, "value", d.state)
-                    if st_val != 1:  # AudioDeviceState.Active == 1
-                        continue
-                    # Filter by flow using device id prefix ({0.0.0. -> render, {0.0.1. -> capture)
-                    did = d.id or ""
-                    if kind == "output" and not did.startswith("{0.0.0."):
-                        continue
-                    if kind == "input" and not did.startswith("{0.0.1."):
-                        continue
-                    name = d.FriendlyName or did
-                    out.append({
-                        "id": did,
-                        "name": name,
-                        "isDefault": did == default_id,
-                    })
+                    enum = AudioUtilities.GetDeviceEnumerator()
+                    def_dev = enum.GetDefaultAudioEndpoint(flow, 1)  # eMultimedia
+                    default_id = def_dev.GetId()
                 except Exception:
-                    continue
-            out.sort(key=lambda x: (0 if x["isDefault"] else 1, x["name"].lower()))
-            return out
+                    pass
+                all_devs = AudioUtilities.GetAllDevices()
+                out = []
+                for d in all_devs:
+                    try:
+                        st_val = getattr(d.state, "value", d.state)
+                        if st_val != 1:  # AudioDeviceState.Active == 1
+                            continue
+                        did = d.id or ""
+                        if kind == "output" and not did.startswith("{0.0.0."):
+                            continue
+                        if kind == "input" and not did.startswith("{0.0.1."):
+                            continue
+                        name = d.FriendlyName or did
+                        out.append({
+                            "id": did,
+                            "name": name,
+                            "isDefault": did == default_id,
+                        })
+                    except Exception:
+                        continue
+                out.sort(key=lambda x: (0 if x["isDefault"] else 1, fold_text(x["name"])))
+                return out
+            return self._with_com(_list)
         except Exception:
             return []
 
@@ -453,35 +664,33 @@ class WinAudioController:
         if not IS_WINDOWS or not dev_id:
             return False
         try:
-            import comtypes
-            from comtypes import GUID, COMMETHOD, IUnknown
-            try:
-                comtypes.CoInitialize()
-            except Exception:
-                pass
+            def _apply():
+                import comtypes
+                from comtypes import GUID, COMMETHOD, IUnknown
 
-            class IPolicyConfig(IUnknown):
-                _iid_ = GUID("{f8679f50-850a-41cf-9c72-430f290290c8}")
-                _methods_ = [
-                    COMMETHOD([], ctypes.HRESULT, "GetMixFormat", (["in"], ctypes.c_wchar_p, "pwstrDeviceId"), (["out"], ctypes.POINTER(ctypes.c_void_p), "ppFormat")),
-                    COMMETHOD([], ctypes.HRESULT, "GetDeviceFormat", (["in"], ctypes.c_wchar_p, "pwstrDeviceId"), (["in"], ctypes.c_int, "bDefault"), (["out"], ctypes.POINTER(ctypes.c_void_p), "ppFormat")),
-                    COMMETHOD([], ctypes.HRESULT, "ResetDeviceFormat", (["in"], ctypes.c_wchar_p, "pwstrDeviceId")),
-                    COMMETHOD([], ctypes.HRESULT, "SetDeviceFormat", (["in"], ctypes.c_wchar_p, "pwstrDeviceId"), (["in"], ctypes.c_void_p, "pEndpointFormat"), (["in"], ctypes.c_void_p, "pMixFormat")),
-                    COMMETHOD([], ctypes.HRESULT, "GetProcessingPeriod", (["in"], ctypes.c_wchar_p, "pwstrDeviceId"), (["in"], ctypes.c_int, "bDefault"), (["out"], ctypes.c_void_p, "pmftDefaultPeriod"), (["out"], ctypes.c_void_p, "pmftMinimumPeriod")),
-                    COMMETHOD([], ctypes.HRESULT, "SetProcessingPeriod", (["in"], ctypes.c_wchar_p, "pwstrDeviceId"), (["in"], ctypes.c_void_p, "pmftPeriod")),
-                    COMMETHOD([], ctypes.HRESULT, "GetShareMode", (["in"], ctypes.c_wchar_p, "pwstrDeviceId"), (["out"], ctypes.c_void_p, "pMode")),
-                    COMMETHOD([], ctypes.HRESULT, "SetShareMode", (["in"], ctypes.c_wchar_p, "pwstrDeviceId"), (["in"], ctypes.c_void_p, "pMode")),
-                    COMMETHOD([], ctypes.HRESULT, "GetPropertyValue", (["in"], ctypes.c_wchar_p, "pwstrDeviceId"), (["in"], ctypes.c_void_p, "key"), (["out"], ctypes.c_void_p, "pv")),
-                    COMMETHOD([], ctypes.HRESULT, "SetPropertyValue", (["in"], ctypes.c_wchar_p, "pwstrDeviceId"), (["in"], ctypes.c_void_p, "key"), (["in"], ctypes.c_void_p, "pv")),
-                    COMMETHOD([], ctypes.HRESULT, "SetDefaultEndpoint", (["in"], ctypes.c_wchar_p, "pwstrDeviceId"), (["in"], ctypes.c_int, "role")),
-                    COMMETHOD([], ctypes.HRESULT, "SetEndpointVisibility", (["in"], ctypes.c_wchar_p, "pwstrDeviceId"), (["in"], ctypes.c_int, "bVisible")),
-                ]
+                class IPolicyConfig(IUnknown):
+                    _iid_ = GUID("{f8679f50-850a-41cf-9c72-430f290290c8}")
+                    _methods_ = [
+                        COMMETHOD([], ctypes.HRESULT, "GetMixFormat", (["in"], ctypes.c_wchar_p, "pwstrDeviceId"), (["out"], ctypes.POINTER(ctypes.c_void_p), "ppFormat")),
+                        COMMETHOD([], ctypes.HRESULT, "GetDeviceFormat", (["in"], ctypes.c_wchar_p, "pwstrDeviceId"), (["in"], ctypes.c_int, "bDefault"), (["out"], ctypes.POINTER(ctypes.c_void_p), "ppFormat")),
+                        COMMETHOD([], ctypes.HRESULT, "ResetDeviceFormat", (["in"], ctypes.c_wchar_p, "pwstrDeviceId")),
+                        COMMETHOD([], ctypes.HRESULT, "SetDeviceFormat", (["in"], ctypes.c_wchar_p, "pwstrDeviceId"), (["in"], ctypes.c_void_p, "pEndpointFormat"), (["in"], ctypes.c_void_p, "pMixFormat")),
+                        COMMETHOD([], ctypes.HRESULT, "GetProcessingPeriod", (["in"], ctypes.c_wchar_p, "pwstrDeviceId"), (["in"], ctypes.c_int, "bDefault"), (["out"], ctypes.c_void_p, "pmftDefaultPeriod"), (["out"], ctypes.c_void_p, "pmftMinimumPeriod")),
+                        COMMETHOD([], ctypes.HRESULT, "SetProcessingPeriod", (["in"], ctypes.c_wchar_p, "pwstrDeviceId"), (["in"], ctypes.c_void_p, "pmftPeriod")),
+                        COMMETHOD([], ctypes.HRESULT, "GetShareMode", (["in"], ctypes.c_wchar_p, "pwstrDeviceId"), (["out"], ctypes.c_void_p, "pMode")),
+                        COMMETHOD([], ctypes.HRESULT, "SetShareMode", (["in"], ctypes.c_wchar_p, "pwstrDeviceId"), (["in"], ctypes.c_void_p, "pMode")),
+                        COMMETHOD([], ctypes.HRESULT, "GetPropertyValue", (["in"], ctypes.c_wchar_p, "pwstrDeviceId"), (["in"], ctypes.c_void_p, "key"), (["out"], ctypes.c_void_p, "pv")),
+                        COMMETHOD([], ctypes.HRESULT, "SetPropertyValue", (["in"], ctypes.c_wchar_p, "pwstrDeviceId"), (["in"], ctypes.c_void_p, "key"), (["in"], ctypes.c_void_p, "pv")),
+                        COMMETHOD([], ctypes.HRESULT, "SetDefaultEndpoint", (["in"], ctypes.c_wchar_p, "pwstrDeviceId"), (["in"], ctypes.c_int, "role")),
+                        COMMETHOD([], ctypes.HRESULT, "SetEndpointVisibility", (["in"], ctypes.c_wchar_p, "pwstrDeviceId"), (["in"], ctypes.c_int, "bVisible")),
+                    ]
 
-            CLSID_CPolicyConfigClient = GUID("{870af99c-171d-4f9e-af0d-e63df40c2bc9}")
-            pc = comtypes.CoCreateInstance(CLSID_CPolicyConfigClient, interface=IPolicyConfig)
-            for role in (0, 1, 2):  # Console, Multimedia, Communications
-                pc.SetDefaultEndpoint(dev_id, role)
-            return True
+                CLSID_CPolicyConfigClient = GUID("{870af99c-171d-4f9e-af0d-e63df40c2bc9}")
+                pc = comtypes.CoCreateInstance(CLSID_CPolicyConfigClient, interface=IPolicyConfig)
+                for role in (0, 1, 2):  # Console, Multimedia, Communications
+                    pc.SetDefaultEndpoint(dev_id, role)
+                return True
+            return self._with_com(_apply)
         except Exception:
             return False
 
@@ -492,6 +701,7 @@ class WinLhmMiniPoller:
 
     SCRIPT_TMPL = r"""
 $ErrorActionPreference='SilentlyContinue'
+try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}
 Add-Type -Path '__DLL__'
 $c = New-Object LibreHardwareMonitor.Hardware.Computer
 $c.IsCpuEnabled = $true
@@ -532,6 +742,7 @@ while ($true) {
         }
     }
     if ($null -ne $bestGpu) {
+        $out['gpu_name'] = $bestGpu.Name
         $gl = Pick $bestGpu.Sensors 'Load' @('GPU Core','D3D 3D')
         if ($null -ne $gl) { $out['gpu_load'] = [int][math]::Round($gl) }
         $gt = Pick $bestGpu.Sensors 'Temperature' @('GPU Core','GPU Hot Spot')
@@ -546,6 +757,7 @@ while ($true) {
     def __init__(self, app_dir=""):
         self.data = {}
         self._proc = None
+        self._job = None
         self._stop = False
         self.dll_path = self._find_dll(app_dir)
         self.available = bool(IS_WINDOWS and self.dll_path)
@@ -577,6 +789,7 @@ while ($true) {
                     stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True,
                     encoding="utf-8", errors="replace", **_hidden_kwargs()
                 )
+                self._job = _attach_kill_on_close_job(self._proc.pid)
                 for line in self._proc.stdout:
                     if self._stop:
                         break
@@ -598,8 +811,18 @@ while ($true) {
         try:
             if self._proc:
                 self._proc.terminate()
+                try:
+                    self._proc.wait(timeout=2)
+                except Exception:
+                    self._proc.kill()
         except Exception:
             pass
+        if self._job:
+            try:
+                ctypes.windll.kernel32.CloseHandle(self._job)
+            except Exception:
+                pass
+            self._job = None
 
 
 # ── 7. Windows .lnk Target Resolution & Recent Files ─────────────────────────
@@ -629,9 +852,12 @@ def resolve_lnk_target(lnk_path):
                     u_off = struct.unpack_from("<I", data, pos + 28)[0]
                     if u_off and pos + u_off < len(data):
                         raw = data[pos + u_off : pos + info_sz]
-                        end = raw.find(b"\x00\x00")
-                        if end != -1:
-                            end = end + (end % 2)
+                        end = len(raw)
+                        for idx in range(0, len(raw) - 1, 2):
+                            if raw[idx] == 0 and raw[idx + 1] == 0:
+                                end = idx
+                                break
+                        if end > 0:
                             s = raw[:end].decode("utf-16-le", errors="ignore").rstrip("\x00")
                             if s and os.path.exists(s):
                                 return s
@@ -700,7 +926,7 @@ def scan_windows_uwp_apps():
         return []
     apps = []
     try:
-        cmd = "Get-StartApps | ConvertTo-Json -Compress"
+        cmd = "[Console]::OutputEncoding=[System.Text.Encoding]::UTF8; Get-StartApps | ConvertTo-Json -Compress"
         p = subprocess.run(
             ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", cmd],
             capture_output=True, text=True, encoding="utf-8", errors="replace",
@@ -712,20 +938,20 @@ def scan_windows_uwp_apps():
         data = json.loads(raw)
         if isinstance(data, dict):
             data = [data]
-        ignore = {"uninstall", "kaldır", "setup", "help", "readme"}
+        ignore = {"uninstall", "kaldır", "kaldir", "readme"}
         for item in data:
             name = (item.get("Name") or "").strip()
             appid = (item.get("AppID") or "").strip()
             if not name or not appid:
                 continue
-            if any(ig in name.lower() for ig in ignore):
+            nl = fold_text(name)
+            if any(ig in nl for ig in ignore):
                 continue
             # Only add UWP/Store apps (those with '!' in AppID; Win32 .lnk apps are scanned directly with real icons)
             if "!" not in appid:
                 continue
-            slug = re.sub(r"[^\w\s-]", "", name.lower()).strip().replace(" ", "-")
-            aliases = [w.lower() for w in re.split(r"[\s_-]+", name) if len(w) > 1]
-            nl = name.lower()
+            slug = re.sub(r"[^\w\s-]", "", nl).strip().replace(" ", "-")
+            aliases = [w for w in re.split(r"[\s_-]+", nl) if len(w) > 1]
             cat = "other"
             if any(k in nl for k in ("xbox", "game", "solitaire", "oyun")):
                 cat = "games"
@@ -754,15 +980,20 @@ def scan_windows_uwp_apps():
     return apps
 
 
-# ── 9. Candy Icons Symlink-Safe Index (Windows ZIP/git symlinks are text files) ──
+# ── 9. Multi-Theme SVG Icon Resolver (Fluent Win11 + Candy Icons) ────────────
 class CandyIconResolver:
-    """Indexes icons/candy-icons and transparently resolves Linux symlink text files on Windows."""
+    """Indexes icons/<theme>/ (fluent-win11, candy-icons, etc.) and resolves Linux symlink text files on Windows."""
 
     def __init__(self, icons_root):
-        self._index = {}  # lower_stem -> real_svg_path
-        self._theme_dir = os.path.join(icons_root, "candy-icons") if icons_root else ""
-        if self._theme_dir and os.path.isdir(self._theme_dir):
-            self._build_index()
+        self._icons_root = icons_root or ""
+        self._themes = {}  # theme_name -> { lower_stem: real_svg_path }
+        self._index = {}   # default candy-icons index (backward compatible)
+        if self._icons_root and os.path.isdir(self._icons_root):
+            for theme_name in ("fluent-win11", "candy-icons"):
+                tdir = os.path.join(self._icons_root, theme_name)
+                if os.path.isdir(tdir):
+                    self._themes[theme_name] = self._build_theme_index(tdir)
+            self._index = self._themes.get("candy-icons", {})
 
     def _resolve_symlink_text(self, path, depth=0):
         if depth > 6 or not os.path.isfile(path):
@@ -782,17 +1013,17 @@ class CandyIconResolver:
             pass
         return path
 
-    def _build_index(self):
-        # Prefer larger/scalable icons over 16px monochrome
+    def _build_theme_index(self, theme_dir):
+        idx = {}
         prio_dirs = [
-            os.path.join(self._theme_dir, "apps", "scalable"),
-            os.path.join(self._theme_dir, "places", "48"),
-            os.path.join(self._theme_dir, "devices", "scalable"),
-            os.path.join(self._theme_dir, "preferences", "scalable"),
-            os.path.join(self._theme_dir, "mimetypes", "scalable"),
-            os.path.join(self._theme_dir, "actions", "scalable"),
-            os.path.join(self._theme_dir, "status", "scalable"),
-            self._theme_dir,
+            os.path.join(theme_dir, "apps", "scalable"),
+            os.path.join(theme_dir, "places", "48"),
+            os.path.join(theme_dir, "devices", "scalable"),
+            os.path.join(theme_dir, "preferences", "scalable"),
+            os.path.join(theme_dir, "mimetypes", "scalable"),
+            os.path.join(theme_dir, "actions", "scalable"),
+            os.path.join(theme_dir, "status", "scalable"),
+            theme_dir,
         ]
         for base in prio_dirs:
             if not os.path.isdir(base):
@@ -802,20 +1033,24 @@ class CandyIconResolver:
                     if not f.lower().endswith((".svg", ".png")):
                         continue
                     stem = os.path.splitext(f)[0].lower()
-                    if stem in self._index:
+                    if stem in idx:
                         continue
                     full = os.path.join(root, f)
                     real = self._resolve_symlink_text(full)
                     if os.path.isfile(real) and os.path.getsize(real) >= 60:
-                        self._index[stem] = real
+                        idx[stem] = real
+        return idx
 
-    def resolve(self, name):
-        if not name:
+    def _lookup(self, idx, n):
+        if not idx:
             return ""
-        n = name.strip().lower()
-        if n in self._index:
-            return self._index[n]
-        # Common aliases
+        if n in idx:
+            return idx[n]
+        if n.endswith("-symbolic"):
+            base = n[:-9]
+            if base in idx:
+                return idx[base]
+            n = base
         aliases = {
             "folder-download": "aptdaemon-download",
             "folder-downloads": "aptdaemon-download",
@@ -827,13 +1062,33 @@ class CandyIconResolver:
             "color-picker": "kcolorchooser",
             "document-open-recent": "document-open-recent",
             "org.kde.plasma.clipboard": "klipper",
+            "system-bios": "cpu",
+            "sleep": "system-suspend",
+            "process-stop": "system-shutdown",
         }
-        if n in aliases and aliases[n] in self._index:
-            return self._index[aliases[n]]
-        # Strip suffixes progressively (e.g. gnome-settings-background -> settings)
+        if n in aliases and aliases[n] in idx:
+            return idx[aliases[n]]
         for cand in (n.replace("_", "-"), n.replace("-", "")):
-            if cand in self._index:
-                return self._index[cand]
+            if cand in idx:
+                return idx[cand]
+        return ""
+
+    def resolve(self, name, theme_name=None):
+        if not name:
+            return ""
+        n = name.strip().lower()
+        # 1. Check requested theme first (e.g. fluent-win11)
+        if theme_name and theme_name in self._themes:
+            hit = self._lookup(self._themes[theme_name], n)
+            if hit:
+                return hit
+        # 2. Fallback to candy-icons, then fluent-win11
+        for fb in ("candy-icons", "fluent-win11"):
+            if fb == theme_name or fb not in self._themes:
+                continue
+            hit = self._lookup(self._themes[fb], n)
+            if hit:
+                return hit
         return ""
 
 
@@ -940,18 +1195,88 @@ def extract_archive_here(raw_path):
     os.makedirs(dest, exist_ok=True)
     def _worker():
         try:
+            dest_real = os.path.realpath(dest)
             if p.lower().endswith(".zip"):
                 with zipfile.ZipFile(p, "r") as zf:
-                    zf.extractall(dest)
+                    for member in zf.infolist():
+                        target = os.path.realpath(os.path.join(dest_real, member.filename))
+                        if not (target == dest_real or target.startswith(dest_real + os.sep)):
+                            continue  # Skip Zip-Slip traversal entries
+                        zf.extract(member, dest_real)
             elif shutil.which("7z") or os.path.isfile(r"C:\Program Files\7-Zip\7z.exe"):
                 exe = shutil.which("7z") or r"C:\Program Files\7-Zip\7z.exe"
-                subprocess.run([exe, "x", p, f"-o{dest}", "-y"], **_hidden_kwargs())
+                subprocess.run([exe, "x", p, f"-o{dest_real}", "-y"], **_hidden_kwargs())
             else:
-                # Windows 11 built-in bsdtar supports .zip, .tar, .gz, .xz, .7z, .rar!
-                subprocess.run(["tar.exe", "-xf", p, "-C", dest], **_hidden_kwargs())
+                subprocess.run(["tar.exe", "-xf", p, "-C", dest_real], **_hidden_kwargs())
         except Exception:
             pass
     threading.Thread(target=_worker, daemon=True).start()
+
+
+def list_windows_steam_games():
+    """Scan Steam libraryfolders.vdf + appmanifest_*.acf for installed Steam games on Windows."""
+    if not IS_WINDOWS:
+        return []
+    import winreg
+    steam_path = ""
+    for root_key, sub in (
+        (winreg.HKEY_CURRENT_USER, r"Software\Valve\Steam"),
+        (winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\WOW6432Node\Valve\Steam"),
+    ):
+        try:
+            with winreg.OpenKey(root_key, sub) as k:
+                val, _ = winreg.QueryValueEx(k, "SteamPath")
+                if val and os.path.isdir(val):
+                    steam_path = val
+                    break
+        except Exception:
+            continue
+    if not steam_path:
+        return []
+    libs = [os.path.normpath(steam_path)]
+    vdf = os.path.join(steam_path, "steamapps", "libraryfolders.vdf")
+    if os.path.isfile(vdf):
+        try:
+            with open(vdf, "r", encoding="utf-8", errors="replace") as f:
+                for m in re.finditer(r'"path"\s+"([^"]+)"', f.read()):
+                    p = os.path.normpath(m.group(1).replace("\\\\", "\\"))
+                    if os.path.isdir(p) and p not in libs:
+                        libs.append(p)
+        except Exception:
+            pass
+    games = []
+    seen = set()
+    for lib in libs:
+        sa = os.path.join(lib, "steamapps")
+        if not os.path.isdir(sa):
+            continue
+        try:
+            for fn in os.listdir(sa):
+                if not (fn.startswith("appmanifest_") and fn.endswith(".acf")):
+                    continue
+                full = os.path.join(sa, fn)
+                with open(full, "r", encoding="utf-8", errors="replace") as f:
+                    txt = f.read()
+                m_id = re.search(r'"appid"\s+"(\d+)"', txt)
+                m_nm = re.search(r'"name"\s+"([^"]+)"', txt)
+                if not m_id or not m_nm:
+                    continue
+                aid, name = m_id.group(1), m_nm.group(1).strip()
+                if aid in seen or any(skip in name.lower() for skip in ("steamworks", "proton", "steam linux runtime")):
+                    continue
+                seen.add(aid)
+                games.append({
+                    "name": name,
+                    "path": f"steam://rungameid/{aid}",
+                    "is_dir": False,
+                    "mtime": os.path.getmtime(full),
+                    "desc": f"Steam App {aid}",
+                    "iconName": "steam",
+                })
+        except Exception:
+            continue
+    games.sort(key=lambda x: fold_text(x["name"]))
+    return games
 
 
 def compress_to_zip(raw_path):
@@ -1011,36 +1336,36 @@ def open_path_with(raw_path, app_exe):
 
 
 # ── 11. Native Qt Screen Color Picker Overlay ────────────────────────────────
-def launch_color_picker(on_picked):
+def launch_color_picker(on_picked, on_closed=None):
     """Show a frameless fullscreen Qt eyedropper across all monitors; calls on_picked('#RRGGBB')."""
     from PySide6.QtCore import Qt, QRect, QPoint
-    from PySide6.QtGui import QGuiApplication, QPainter, QColor, QPen, QFont
+    from PySide6.QtGui import QGuiApplication, QPainter, QColor, QPen, QFont, QPixmap
     from PySide6.QtWidgets import QWidget
 
     screens = QGuiApplication.screens()
     if not screens:
         return None
 
-    # Compute virtual desktop rect and grab composite screenshot
     vrect = QRect()
     for s in screens:
         vrect = vrect.united(s.geometry())
 
-    # Grab primary + all screens onto one QImage
-    from PySide6.QtGui import QPixmap
+    # Composite all screens cleanly in logical virtual-screen coordinates (DPI-safe)
     full_pm = QPixmap(vrect.size())
+    full_pm.setDevicePixelRatio(1.0)
     full_pm.fill(Qt.black)
     p = QPainter(full_pm)
     for s in screens:
         g = s.geometry()
         pm = s.grabWindow(0)
-        p.drawPixmap(g.x() - vrect.x(), g.y() - vrect.y(), g.width(), g.height(), pm)
+        p.drawPixmap(QRect(g.x() - vrect.x(), g.y() - vrect.y(), g.width(), g.height()), pm)
     p.end()
     full_img = full_pm.toImage()
 
     class ColorPickerOverlay(QWidget):
         def __init__(self):
             super().__init__(None, Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.Tool)
+            self.setAttribute(Qt.WA_DeleteOnClose, True)
             self.setGeometry(vrect)
             self.setMouseTracking(True)
             self.setCursor(Qt.CrossCursor)
@@ -1048,6 +1373,11 @@ def launch_color_picker(on_picked):
             self._img = full_img
             self._pos = QPoint(vrect.width() // 2, vrect.height() // 2)
             self._hex = "#000000"
+
+        def closeEvent(self, ev):
+            super().closeEvent(ev)
+            if on_closed:
+                on_closed()
 
         def _sample(self, pt):
             x = max(0, min(self._img.width() - 1, pt.x()))

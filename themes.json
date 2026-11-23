@@ -100,6 +100,26 @@
       "accent": "#10a6d4",
       "cpuColor": "#f5a623",
       "gpuColor": "#4dd0e1"
+    },
+    "win11_fluent": {
+      "name": "Windows 11 Mica",
+      "desc": "Fluent 2 dark mica & sky accent",
+      "font": "Segoe UI",
+      "iconTheme": "fluent-win11",
+      "style": "fluent",
+      "bgColor": "#f21d2129",
+      "cardBorder": "#28ffffff",
+      "surface": "#282e39",
+      "panel": "#171a21",
+      "bgBorder": "#60cdff",
+      "glowColor": "#000000",
+      "selBg": "#2960cdff",
+      "selFg": "#ffffff",
+      "fgColor": "#f5f7fa",
+      "fgDim": "#9aa5b5",
+      "accent": "#60cdff",
+      "cpuColor": "#60cdff",
+      "gpuColor": "#7ee081"
     }
   }
 }

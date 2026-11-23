@@ -30,6 +30,8 @@ class ShellBridge : public QObject {
 
     // QML Root Properties
     Q_PROPERTY(bool startHidden READ startHidden CONSTANT)
+    Q_PROPERTY(bool isWindows READ isWindows CONSTANT)
+    Q_PROPERTY(QString iconFontName READ iconFontName CONSTANT)
     Q_PROPERTY(QString version READ version CONSTANT)
     // Satır içi komut çalıştırıcı (QML çıktı paneli buna bağlanır)
     Q_PROPERTY(QObject *runner READ runner CONSTANT)
@@ -44,6 +46,8 @@ public:
     void setAppIndexer(AppIndexer *indexer);
 
     [[nodiscard]] bool startHidden() const noexcept { return m_startHidden; }
+    [[nodiscard]] bool isWindows() const noexcept { return false; }
+    [[nodiscard]] QString iconFontName() const noexcept { return QString(); }
     [[nodiscard]] QString version() const;
 
 signals:
@@ -179,6 +183,7 @@ public slots:
     // ── 6. Power & System Actions ──────────────────────────────
     Q_INVOKABLE void powerOff();
     Q_INVOKABLE void rebootSystem();
+    Q_INVOKABLE void rebootToBios();
     Q_INVOKABLE void lockScreen();
     Q_INVOKABLE void suspendSystem();
     Q_INVOKABLE void logoutUser();
