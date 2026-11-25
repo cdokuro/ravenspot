@@ -20,14 +20,7 @@ import subprocess
 import sys
 import threading
 
-__version__ = "0.3.4"
-GITHUB_REPO = "cdokuro/ravenspot"
-
-
-def _parse_semver(tag: str):
-    """Parse version strings like 'v0.3.4' or '0.3.4' into a comparable int tuple."""
-    nums = re.findall(r"\d+", str(tag or ""))
-    return tuple(int(n) for n in nums[:4]) if nums else (0,)
+__version__ = "0.3.1"
 
 # ── Platform Path & IPC Definitions ───────────────────────────
 IS_WINDOWS = sys.platform == "win32"
@@ -396,16 +389,13 @@ class Shell(QObject):
     showRequested = Signal()
     hideRequested = Signal()
     reloadRequested = Signal()
+    appsChanged = Signal()
     audioConfigChanged = Signal(int, bool)
     powerProfileChanged = Signal(str)
     sleepInhibitedChanged = Signal(bool)
     telemetryUpdated = Signal("QVariantMap")
     fileSearchFinished = Signal(int, str, str)
     windowSearchFinished = Signal(int, str, str)
-    appUpdateChanged = Signal()
-    _updateCheckDone = Signal("QVariantMap", bool)
-    _updateInstallError = Signal(str)
-    _requestAppQuit = Signal()
 
     def __init__(self, start_hidden=False):
         super().__init__()
@@ -422,36 +412,60 @@ class Shell(QObject):
         self._file_search_seq = 0
         self._color_picker_win = None
         self._tray = None
-        self._tray_update_action = None
-        self._notified_update_tag = ""
-        self._app_update_info = {
-            "has_updates": False,
-            "checking": False,
-            "updating": False,
-            "count": 0,
-            "current": f"v{__version__}",
-            "latest": f"v{__version__}",
-            "download_url": "",
-            "release_url": f"https://github.com/{GITHUB_REPO}/releases/latest",
-            "notes": "",
-            "icon_path": "image://themeicon/system-software-update",
-            "tooltip": f"RavenSpot v{__version__} — Click to Check for Updates",
-        }
-        self._updateCheckDone.connect(self._apply_update_check_result)
-        self._updateInstallError.connect(self._on_update_install_error)
-        self._requestAppQuit.connect(lambda: QTimer.singleShot(250, QApplication.quit))
         self._win_audio = wp.WinAudioController() if (IS_WINDOWS and wp) else None
         self._win_lhm = wp.WinLhmMiniPoller(APP_DIR) if (IS_WINDOWS and wp) else None
         self._init_extra()
-        if IS_WINDOWS and os.environ.get("RAVENSPOT_TESTING") != "1":
-            QTimer.singleShot(4000, lambda: self.checkAppUpdates(False))
-            self._update_timer = QTimer(self)
-            self._update_timer.setInterval(30 * 60 * 1000)  # every 30 minutes
-            self._update_timer.timeout.connect(lambda: self.checkAppUpdates(False))
-            self._update_timer.start()
         self._menu_path = MENU_PATH
         self._user_menu_path = USER_MENU_PATH
         self._apps_cache = None  # [ {id,label,icon,aliases,keywords,desktop} ]
+        self._win_uwp_cache = None
+        self._apps_lock = threading.Lock()
+        self._app_watcher = None
+        self._linux_fs_watcher = None
+        self._linux_app_debounce = None
+        self._start_app_watcher()
+
+    def _start_app_watcher(self):
+        """Yeni kurulan/kaldırılan uygulamaları sıfır CPU maliyetiyle OS çekirdeğinden anlık izler."""
+        if IS_WINDOWS and wp and hasattr(wp, "WinAppIndexWatcher"):
+            try:
+                self._app_watcher = wp.WinAppIndexWatcher(self._on_apps_fs_changed, debounce_sec=1.5)
+                self._app_watcher.start()
+            except Exception:
+                self._app_watcher = None
+            return
+        if not IS_WINDOWS:
+            try:
+                from PySide6.QtCore import QFileSystemWatcher
+                dirs = [d for d in _xdg_data_dirs() if os.path.isdir(d)]
+                if dirs:
+                    self._linux_app_debounce = QTimer(self)
+                    self._linux_app_debounce.setSingleShot(True)
+                    self._linux_app_debounce.setInterval(1500)
+                    self._linux_app_debounce.timeout.connect(
+                        lambda: threading.Thread(
+                            target=self._on_apps_fs_changed, args=(False,), daemon=True
+                        ).start()
+                    )
+                    self._linux_fs_watcher = QFileSystemWatcher(dirs, self)
+                    self._linux_fs_watcher.directoryChanged.connect(lambda _p: self._linux_app_debounce.start())
+            except Exception:
+                pass
+
+    def _on_apps_fs_changed(self, include_uwp=False):
+        """Arka plan iş parçacığında uygulama listesini yeniler; gerçekten değiştiyse QML'i günceller."""
+        try:
+            new_apps = self._scan_apps(force_uwp=bool(include_uwp))
+            with self._apps_lock:
+                old = self._apps_cache or []
+                old_sig = [(a.get("id"), a.get("label"), a.get("desktop")) for a in old]
+                new_sig = [(a.get("id"), a.get("label"), a.get("desktop")) for a in new_apps]
+                if old_sig == new_sig:
+                    return
+                self._apps_cache = new_apps
+            self.appsChanged.emit()
+        except Exception:
+            pass
 
     def _on_runner_finished(self, exit_code, crashed):
         if self._win is not None and not self._win.isVisible():
@@ -674,12 +688,6 @@ class Shell(QObject):
                     "Alt+Space / Win+Space: Toggle • >: Shell • *: Files • :emoji • clip • kill",
                 )
                 return
-            if cmd == "ravenspot:check-updates":
-                if self._app_update_info.get("has_updates"):
-                    self.installAppUpdate()
-                else:
-                    self.checkAppUpdates(True)
-                return
             expanded = os.path.expandvars(cmd)
             if expanded.lower() == "ms-screenclip:":
                 # Wait for closeTimer (90ms) so RavenSpot hides before Snipping overlay freezes screen
@@ -773,10 +781,7 @@ class Shell(QObject):
             return "system"
         return "utilities"
 
-    def _load_apps(self):
-        if self._apps_cache is not None:
-            return self._apps_cache
-
+    def _scan_apps(self, force_uwp=False):
         if IS_WINDOWS:
             apps = []
             seen = set()
@@ -791,13 +796,14 @@ class Shell(QObject):
                         seen.add(k)
                         apps.append(app)
             if wp:
-                for app in wp.scan_windows_uwp_apps():
+                if force_uwp or self._win_uwp_cache is None:
+                    self._win_uwp_cache = wp.scan_windows_uwp_apps()
+                for app in (self._win_uwp_cache or []):
                     k = app["label"].lower()
                     if k not in seen:
                         seen.add(k)
                         apps.append(app)
             apps.sort(key=lambda a: a["label"].lower())
-            self._apps_cache = apps
             return apps
 
         import configparser
@@ -877,7 +883,15 @@ class Shell(QObject):
             })
 
         apps.sort(key=lambda a: a["label"].lower())
-        self._apps_cache = apps
+        return apps
+
+    def _load_apps(self):
+        with self._apps_lock:
+            if self._apps_cache is not None:
+                return self._apps_cache
+        apps = self._scan_apps(force_uwp=True)
+        with self._apps_lock:
+            self._apps_cache = apps
         return apps
 
     @Slot(result=str)
@@ -1317,8 +1331,6 @@ class Shell(QObject):
             return f"{sz:.1f} PB"
 
         def _icon_for(name, is_dir):
-            if IS_WINDOWS and wp:
-                return wp.icon_name_for_path(name, is_dir)
             if is_dir:
                 return "folder"
             ext = os.path.splitext(name)[1].lower()
@@ -2011,180 +2023,15 @@ class Shell(QObject):
             "uptime": up_text or "--"
         }
 
-    @Slot(bool)
-    def checkAppUpdates(self, manual=True):
-        """GitHub Releases (cdokuro/ravenspot) üzerinden yeni sürüm kontrolü yap (arka planda)."""
-        if self._app_update_info.get("checking") or self._app_update_info.get("updating"):
-            return
-        self._app_update_info["checking"] = True
-        self.appUpdateChanged.emit()
-
-        def _worker():
-            import urllib.request
-            res = dict(self._app_update_info)
-            res["checking"] = False
-            res["error"] = ""
-            try:
-                api_url = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
-                req = urllib.request.Request(
-                    api_url,
-                    headers={
-                        "Accept": "application/vnd.github+json",
-                        "User-Agent": f"RavenSpot/{__version__}",
-                    },
-                )
-                with urllib.request.urlopen(req, timeout=10) as resp:
-                    data = json.loads(resp.read().decode("utf-8", errors="replace"))
-                tag = str(data.get("tag_name") or "").strip()
-                release_url = str(data.get("html_url") or f"https://github.com/{GITHUB_REPO}/releases/latest")
-                notes = str(data.get("body") or "").strip()
-                dl_zip = ""
-                dl_exe = ""
-                allowed_prefix = f"https://github.com/{GITHUB_REPO}/releases/download/"
-                for asset in data.get("assets") or []:
-                    aname = str(asset.get("name") or "")
-                    aurl = str(asset.get("browser_download_url") or "")
-                    if not aurl.startswith(allowed_prefix):
-                        continue
-                    if aname.lower() == "ravenspot-windows-x64.zip":
-                        dl_zip = aurl
-                    elif aname.lower() == "ravenspot.exe":
-                        dl_exe = aurl
-                has_new = bool(tag) and (_parse_semver(tag) > _parse_semver(__version__))
-                res["has_updates"] = has_new
-                res["count"] = 1 if has_new else 0
-                res["latest"] = tag or f"v{__version__}"
-                res["current"] = f"v{__version__}"
-                res["download_url"] = dl_zip or dl_exe
-                res["release_url"] = release_url
-                res["notes"] = notes[:400]
-                res["tooltip"] = (
-                    f"RavenSpot {res['latest']} available — Click to Update"
-                    if has_new else f"RavenSpot v{__version__} is up to date"
-                )
-            except Exception as exc:
-                res["error"] = str(exc)
-            self._updateCheckDone.emit(res, bool(manual))
-
-        threading.Thread(target=_worker, daemon=True).start()
-
-    @Slot("QVariantMap", bool)
-    def _apply_update_check_result(self, info, manual):
-        err = info.pop("error", "")
-        self._app_update_info.update(info)
-        self.appUpdateChanged.emit()
-        has_new = bool(self._app_update_info.get("has_updates"))
-        latest = str(self._app_update_info.get("latest") or "")
-        if self._tray_update_action is not None:
-            try:
-                if has_new:
-                    self._tray_update_action.setText(f"Update Available: {latest}")
-                else:
-                    self._tray_update_action.setText(f"Check for Updates (v{__version__})")
-            except Exception:
-                pass
-        if has_new and (manual or latest != self._notified_update_tag):
-            self._notified_update_tag = latest
-            self.notify(
-                "RavenSpot Güncellemesi Hazır",
-                f"Yeni sürüm {latest} yayınlandı! Üstteki Update butonuna tıklayarak tek tıkla güncelleyebilirsin.",
-            )
-        elif manual:
-            if err:
-                self.notify("RavenSpot Güncelleme", "GitHub kontrol edilemedi (internet bağlantını kontrol et).")
-            else:
-                self.notify("RavenSpot Güncel", f"En son sürümü kullanıyorsun (v{__version__}).")
-
-    @Slot(str)
-    def _on_update_install_error(self, msg):
-        self._app_update_info["updating"] = False
-        self.appUpdateChanged.emit()
-        self.notify("RavenSpot Güncelleme Hatası", msg or "İndirme başarısız, GitHub sayfası açılıyor.")
-        rel_url = self._app_update_info.get("release_url") or f"https://github.com/{GITHUB_REPO}/releases/latest"
-        self.openPath(rel_url)
-
-    @Slot()
-    def installAppUpdate(self):
-        """Yeni GitHub sürümünü indirip Windows'ta kendini otomatik güncelle ve yeniden başlat."""
-        if not self._app_update_info.get("has_updates"):
-            self.checkAppUpdates(True)
-            return
-        if self._app_update_info.get("updating"):
-            return
-        dl_url = str(self._app_update_info.get("download_url") or "")
-        rel_url = str(self._app_update_info.get("release_url") or f"https://github.com/{GITHUB_REPO}/releases/latest")
-        latest = str(self._app_update_info.get("latest") or "latest")
-        allowed_prefix = f"https://github.com/{GITHUB_REPO}/releases/download/"
-
-        if (not IS_WINDOWS) or (not getattr(sys, "frozen", False)) or (not dl_url.startswith(allowed_prefix)):
-            self.openPath(rel_url)
-            return
-
-        self._app_update_info["updating"] = True
-        self.appUpdateChanged.emit()
-        self.notify("RavenSpot Güncelleniyor", f"{latest} indiriliyor, bitince otomatik yeniden başlayacak...")
-
-        def _dl_and_apply():
-            import tempfile, urllib.request, zipfile
-            try:
-                tmp_dir = tempfile.gettempdir()
-                is_zip = dl_url.lower().endswith(".zip")
-                ext = ".zip" if is_zip else ".exe"
-                safe_tag = re.sub(r"[^a-zA-Z0-9._-]", "", latest) or "latest"
-                dl_path = os.path.join(tmp_dir, f"RavenSpot-update-{safe_tag}{ext}")
-                req = urllib.request.Request(dl_url, headers={"User-Agent": f"RavenSpot/{__version__}"})
-                with urllib.request.urlopen(req, timeout=120) as resp, open(dl_path, "wb") as out_f:
-                    shutil.copyfileobj(resp, out_f, length=256 * 1024)
-
-                if is_zip:
-                    with zipfile.ZipFile(dl_path, "r") as zf:
-                        names = [n.lower() for n in zf.namelist()]
-                        if not any(n.endswith("ravenspot.exe") for n in names):
-                            raise RuntimeError("Zip paketi içinde RavenSpot.exe bulunamadı.")
-
-                ps_path = os.path.join(tmp_dir, f"ravenspot_apply_update_{os.getpid()}.ps1")
-                exe_dir_escaped = EXE_DIR.replace("'", "''")
-                dl_escaped = dl_path.replace("'", "''")
-                ps_escaped = ps_path.replace("'", "''")
-                cur_pid = os.getpid()
-
-                if is_zip:
-                    apply_body = f"Expand-Archive -Path '{dl_escaped}' -DestinationPath '{exe_dir_escaped}' -Force"
-                else:
-                    apply_body = f"Copy-Item -Path '{dl_escaped}' -Destination (Join-Path '{exe_dir_escaped}' 'RavenSpot.exe') -Force"
-
-                ps_script = f"""$ErrorActionPreference = 'SilentlyContinue'
-for ($i = 0; $i -lt 40; $i++) {{
-  $alive = @(Get-Process -Name 'RavenSpot' -ErrorAction SilentlyContinue)
-  if ($alive.Count -eq 0) {{ break }}
-  Start-Sleep -Milliseconds 500
-}}
-Start-Sleep -Milliseconds 600
-{apply_body}
-Start-Process -FilePath (Join-Path '{exe_dir_escaped}' 'RavenSpot.exe') -WorkingDirectory '{exe_dir_escaped}'
-Remove-Item -Path '{dl_escaped}' -Force -ErrorAction SilentlyContinue
-Remove-Item -Path '{ps_escaped}' -Force -ErrorAction SilentlyContinue
-"""
-                with open(ps_path, "w", encoding="utf-8") as f:
-                    f.write(ps_script)
-
-                flags = 0x08000000 | 0x00000200 | 0x00000008  # CREATE_NO_WINDOW | CREATE_NEW_PROCESS_GROUP | DETACHED_PROCESS
-                subprocess.Popen(
-                    ["powershell.exe", "-NoProfile", "-NonInteractive", "-WindowStyle", "Hidden",
-                     "-ExecutionPolicy", "Bypass", "-File", ps_path],
-                    creationflags=flags,
-                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, stdin=subprocess.DEVNULL,
-                )
-                self._requestAppQuit.emit()
-            except Exception as exc:
-                self._updateInstallError.emit(f"Güncelleme indirilemedi: {exc}")
-
-        threading.Thread(target=_dl_and_apply, daemon=True).start()
-
     @Slot(result="QVariantMap")
     def getUpdateInfo(self):
         if IS_WINDOWS:
-            return dict(self._app_update_info)
+            return {
+                "has_updates": False,
+                "count": 0,
+                "icon_path": "image://themeicon/system-software-update",
+                "tooltip": "Windows Update — Click to Check"
+            }
         """
         CachyOS / Arch güncelleme durumunu döndürür.
         Photo 2: cachy-update_updates-available-blue.svg (Kırmızı ok + güncelleme adedi)
@@ -2251,10 +2098,7 @@ Remove-Item -Path '{ps_escaped}' -Force -ErrorAction SilentlyContinue
     def launchUpdate(self):
         """Güncelleme aracını ayrık (detached) çalıştır."""
         if IS_WINDOWS:
-            if self._app_update_info.get("has_updates"):
-                self.installAppUpdate()
-            else:
-                self.checkAppUpdates(True)
+            self.runDetached("ms-settings:windowsupdate")
             return
         for term in ["konsole", "alacritty", "kitty", "xterm"]:
             if shutil.which(term):
@@ -2340,6 +2184,8 @@ Remove-Item -Path '{ps_escaped}' -Force -ErrorAction SilentlyContinue
 
     def cleanup(self):
         """Uygulama sonlanırken engellemeleri serbest bırak."""
+        if self._app_watcher is not None:
+            self._app_watcher.stop()
         if self._win_lhm is not None:
             self._win_lhm.stop()
         if self._runner is not None:
@@ -3119,61 +2965,11 @@ Remove-Item -Path '{ps_escaped}' -Force -ErrorAction SilentlyContinue
 
 
 def _fallback_icon_image(sz: QSize) -> QImage:
-    w = max(16, sz.width() if sz.isValid() and sz.width() > 0 else 64)
-    h = max(16, sz.height() if sz.isValid() and sz.height() > 0 else 64)
-    img = QImage(w, h, QImage.Format_ARGB32_Premultiplied)
+    w = max(16, sz.width() if sz.isValid() and sz.width() > 0 else 48)
+    h = max(16, sz.height() if sz.isValid() and sz.height() > 0 else 48)
+    img = QImage(w, h, QImage.Format_ARGB32)
     img.fill(0)
     return img
-
-
-def _render_svg_image(svg_path: str, w: int, h: int) -> QImage:
-    """Render an SVG file crisply at exact HiDPI pixel dimensions using QSvgRenderer."""
-    try:
-        from PySide6.QtSvg import QSvgRenderer
-        from PySide6.QtGui import QPainter
-        from PySide6.QtCore import QRectF
-        renderer = QSvgRenderer(svg_path)
-        if not renderer.isValid():
-            return QImage()
-        img = QImage(w, h, QImage.Format_ARGB32_Premultiplied)
-        img.fill(0)
-        painter = QPainter(img)
-        painter.setRenderHint(QPainter.Antialiasing, True)
-        painter.setRenderHint(QPainter.SmoothPixmapTransform, True)
-        ds = renderer.defaultSize()
-        if ds.isValid() and ds.width() > 0 and ds.height() > 0:
-            scale = min(w / float(ds.width()), h / float(ds.height()))
-            rw = ds.width() * scale
-            rh = ds.height() * scale
-            rect = QRectF((w - rw) / 2.0, (h - rh) / 2.0, rw, rh)
-        else:
-            rect = QRectF(0, 0, w, h)
-        renderer.render(painter, rect)
-        painter.end()
-        return img
-    except Exception:
-        return QImage()
-
-
-def _load_raster_icon(img_path: str, w: int, h: int) -> QImage:
-    """Load a PNG/ICO/BMP file smoothly scaled into a centered transparent w x h QImage."""
-    try:
-        src = QImage(img_path)
-        if src.isNull():
-            return QImage()
-        scaled = src.scaled(w, h, Qt.KeepAspectRatio, Qt.SmoothTransformation)
-        if scaled.width() == w and scaled.height() == h:
-            return scaled
-        out = QImage(w, h, QImage.Format_ARGB32_Premultiplied)
-        out.fill(0)
-        from PySide6.QtGui import QPainter
-        painter = QPainter(out)
-        painter.setRenderHint(QPainter.SmoothPixmapTransform, True)
-        painter.drawImage((w - scaled.width()) // 2, (h - scaled.height()) // 2, scaled)
-        painter.end()
-        return out
-    except Exception:
-        return QImage()
 
 
 class AppIconProvider(QQuickImageProvider):
@@ -3188,68 +2984,43 @@ class AppIconProvider(QQuickImageProvider):
     def requestImage(self, id, size, requestedSize):
         from urllib.parse import unquote
         clean_id = unquote(id.split("?")[0] if "?" in id else id)
-        w = max(requestedSize.width() if requestedSize.isValid() and requestedSize.width() > 0 else 64, 64)
-        h = max(requestedSize.height() if requestedSize.isValid() and requestedSize.height() > 0 else 64, 64)
-        sz = QSize(w, h)
+        sz = requestedSize if requestedSize.isValid() and requestedSize.width() > 0 else QSize(48, 48)
 
-        icon_file = ""
         target_path = clean_id
         app_label = ""
-        if clean_id and os.path.isfile(clean_id) and clean_id.lower().endswith((".png", ".svg", ".ico", ".jpg", ".webp")):
-            icon_file = clean_id
-        elif not os.path.exists(target_path):
+        if not os.path.exists(target_path):
             for app in self._shell._load_apps():
                 if app["id"] == clean_id:
-                    cand_icon = app.get("icon") or ""
-                    if cand_icon and os.path.isfile(cand_icon):
-                        icon_file = cand_icon
-                    target_path = app.get("desktop") or cand_icon or clean_id
+                    target_path = app.get("desktop") or app.get("icon") or clean_id
                     app_label = app.get("label", "")
                     break
 
-        # 1. Direct PNG/SVG/ICO file (including real UWP AppxManifest 256px unplated logos!)
-        if icon_file and os.path.isfile(icon_file):
-            img = _render_svg_image(icon_file, w, h) if icon_file.lower().endswith(".svg") else _load_raster_icon(icon_file, w, h)
-            if not img.isNull():
-                size.setWidth(img.width())
-                size.setHeight(img.height())
-                return img
-
-        # 2. Native Windows shell icon (prefer resolved .exe over .lnk to avoid shortcut overlay arrows)
         if IS_WINDOWS and target_path and os.path.exists(target_path):
-            extract_paths = []
-            if target_path.lower().endswith(".lnk") and wp:
-                resolved_exe = wp.resolve_lnk_target(target_path)
-                if resolved_exe and os.path.isfile(resolved_exe) and resolved_exe.lower().endswith(".exe"):
-                    extract_paths.append(resolved_exe)
-            extract_paths.append(target_path)
-            from PySide6.QtCore import QFileInfo
-            for ep in extract_paths:
-                try:
-                    fi_icon = self._file_icon_provider.icon(QFileInfo(ep))
-                    if not fi_icon.isNull():
-                        pm = fi_icon.pixmap(sz)
-                        img = pm.toImage()
-                        if not img.isNull():
-                            size.setWidth(img.width())
-                            size.setHeight(img.height())
-                            return img
-                except Exception:
-                    pass
-
-        # 3. Fallback: active icon theme SVG rendered cleanly with QSvgRenderer
-        active_theme = self._shell.currentTheme().get("iconTheme", "candy-icons") if self._shell else "candy-icons"
-        if self._candy:
-            for cand in (clean_id.replace("uwp-", ""), app_label.lower().replace(" ", "-"), "application-x-executable"):
-                svg = self._candy.resolve(cand, theme_name=active_theme)
-                if svg:
-                    img = _render_svg_image(svg, w, h) if svg.lower().endswith(".svg") else _load_raster_icon(svg, w, h)
+            try:
+                from PySide6.QtCore import QFileInfo
+                fi_icon = self._file_icon_provider.icon(QFileInfo(target_path))
+                if not fi_icon.isNull():
+                    pm = fi_icon.pixmap(sz)
+                    img = pm.toImage()
                     if not img.isNull():
                         size.setWidth(img.width())
                         size.setHeight(img.height())
                         return img
+            except Exception:
+                pass
 
-        icon = QIcon.fromTheme(clean_id)
+        # Fallback: try active icon theme first, then candy-icons
+        active_theme = self._shell.currentTheme().get("iconTheme", "candy-icons") if self._shell else "candy-icons"
+        icon = QIcon()
+        if self._candy:
+            for cand in (clean_id.replace("uwp-", ""), app_label.lower().replace(" ", "-"), "application-x-executable"):
+                svg = self._candy.resolve(cand, theme_name=active_theme)
+                if svg:
+                    icon = QIcon(svg)
+                    if not icon.isNull():
+                        break
+        if icon.isNull():
+            icon = QIcon.fromTheme(clean_id)
         if icon.isNull():
             icon = QIcon.fromTheme("application-x-executable")
         pm = icon.pixmap(sz)
@@ -3279,55 +3050,36 @@ class ThemeIconProvider(QQuickImageProvider):
     def requestImage(self, id, size, requestedSize):
         from urllib.parse import unquote
         clean_id = unquote(id.split("?")[0] if "?" in id else id)
-        w = max(requestedSize.width() if requestedSize.isValid() and requestedSize.width() > 0 else 64, 64)
-        h = max(requestedSize.height() if requestedSize.isValid() and requestedSize.height() > 0 else 64, 64)
-
-        # 1. Direct file path (e.g. .exe/.lnk/.ico/.svg/.png)
-        if clean_id and os.path.exists(clean_id):
-            low = clean_id.lower()
-            if low.endswith(".svg"):
-                img = _render_svg_image(clean_id, w, h)
-                if not img.isNull():
-                    size.setWidth(img.width()); size.setHeight(img.height())
-                    return img
-            elif low.endswith((".png", ".jpg", ".jpeg", ".webp", ".bmp")):
-                img = _load_raster_icon(clean_id, w, h)
-                if not img.isNull():
-                    size.setWidth(img.width()); size.setHeight(img.height())
-                    return img
-            elif IS_WINDOWS and low.endswith((".exe", ".lnk", ".ico")) and self._file_icon_provider:
+        icon = QIcon()
+        if IS_WINDOWS and clean_id and os.path.exists(clean_id):
+            if clean_id.lower().endswith((".exe", ".lnk", ".ico")):
                 try:
                     from PySide6.QtCore import QFileInfo
                     icon = self._file_icon_provider.icon(QFileInfo(clean_id))
-                    if not icon.isNull():
-                        img = icon.pixmap(QSize(w, h)).toImage()
-                        if not img.isNull():
-                            size.setWidth(img.width()); size.setHeight(img.height())
-                            return img
                 except Exception:
                     pass
+            if icon.isNull():
+                icon = QIcon(clean_id)
+        elif os.path.exists(clean_id) or os.path.isabs(clean_id):
+            icon = QIcon(clean_id)
 
-        # 2. Active icon theme SVG via CandyIconResolver + crisp QSvgRenderer
         active_theme = self._active_icon_theme()
-        if self._candy:
+        if icon.isNull() and self._candy:
             svg = self._candy.resolve(clean_id, theme_name=active_theme)
-            if not svg:
-                svg = self._candy.resolve("application-x-executable", theme_name=active_theme)
             if svg:
-                img = _render_svg_image(svg, w, h) if svg.lower().endswith(".svg") else _load_raster_icon(svg, w, h)
-                if not img.isNull():
-                    size.setWidth(img.width())
-                    size.setHeight(img.height())
-                    return img
-
-        # 3. Qt theme fallback (Linux / non-Windows)
-        icon = QIcon()
-        if clean_id in ("folder-download", "folder-downloads", "download"):
+                icon = QIcon(svg)
+        if icon.isNull() and clean_id in ("folder-download", "folder-downloads", "download"):
             icon = QIcon.fromTheme("aptdaemon-download")
         if icon.isNull():
             icon = QIcon.fromTheme(clean_id)
+        if icon.isNull() and self._candy:
+            svg = self._candy.resolve("application-x-executable", theme_name=active_theme)
+            if svg:
+                icon = QIcon(svg)
         if icon.isNull():
             icon = QIcon.fromTheme("application-x-executable")
+        w = max(requestedSize.width() if requestedSize.isValid() and requestedSize.width() > 0 else 48, 64)
+        h = max(requestedSize.height() if requestedSize.isValid() and requestedSize.height() > 0 else 48, 64)
         pm = icon.pixmap(QSize(w, h))
         img = pm.toImage() if not pm.isNull() else _fallback_icon_image(QSize(w, h))
         size.setWidth(img.width())
@@ -3404,6 +3156,7 @@ def main():
                                 shell.hideRequested.emit()
                             elif cmd_line == "reload":
                                 shell._apps_cache = None
+                                shell._win_uwp_cache = None
                                 shell.reloadRequested.emit()
                             elif cmd_line == "quit":
                                 QApplication.quit()
@@ -3439,16 +3192,13 @@ def main():
         act_reload = QAction("Reload Menu & Apps", tray_menu)
         def _do_reload():
             shell._apps_cache = None
+            shell._win_uwp_cache = None
             shell.reloadRequested.emit()
         act_reload.triggered.connect(_do_reload)
-        act_update = QAction(f"Check for Updates (v{__version__})", tray_menu)
-        act_update.triggered.connect(shell.launchUpdate)
-        shell._tray_update_action = act_update
         act_quit = QAction("Quit RavenSpot", tray_menu)
         act_quit.triggered.connect(app.quit)
         tray_menu.addAction(act_open)
         tray_menu.addAction(act_reload)
-        tray_menu.addAction(act_update)
         tray_menu.addSeparator()
         tray_menu.addAction(act_quit)
         tray.setContextMenu(tray_menu)
