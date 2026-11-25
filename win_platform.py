@@ -873,42 +873,6 @@ def resolve_lnk_target(lnk_path):
     return ""
 
 
-def icon_name_for_path(path, is_dir=False):
-    """Map a Windows file or folder path to a clean freedesktop/Fluent icon name."""
-    if is_dir:
-        return "folder"
-    ext = os.path.splitext(path or "")[1].lower()
-    if ext in (".png", ".jpg", ".jpeg", ".webp", ".svg", ".gif", ".ico", ".bmp", ".heic", ".avif"):
-        return "image-x-generic"
-    if ext in (".mp4", ".mkv", ".mov", ".avi", ".webm", ".flv", ".wmv", ".m4v"):
-        return "video-x-generic"
-    if ext in (".mp3", ".flac", ".wav", ".ogg", ".m4a", ".aac", ".opus", ".wma"):
-        return "audio-x-generic"
-    if ext == ".pdf":
-        return "application-pdf"
-    if ext in (".zip", ".tar", ".gz", ".xz", ".7z", ".rar", ".bz2", ".zst", ".iso"):
-        return "package-x-generic"
-    if ext in (".doc", ".docx", ".odt", ".rtf"):
-        return "application-msword"
-    if ext in (".xls", ".xlsx", ".ods", ".csv"):
-        return "application-vnd.ms-excel"
-    if ext in (".ppt", ".pptx", ".odp"):
-        return "application-vnd.ms-powerpoint"
-    if ext == ".py":
-        return "text-x-python"
-    if ext in (".json", ".jsonc", ".yaml", ".yml", ".toml"):
-        return "application-json"
-    if ext in (".md", ".markdown"):
-        return "text-markdown"
-    if ext in (".ps1", ".bat", ".cmd", ".sh", ".bash"):
-        return "application-x-shellscript"
-    if ext in (".js", ".ts", ".tsx", ".jsx", ".html", ".css", ".cpp", ".c", ".h", ".rs", ".go", ".cs", ".java", ".qml", ".xml"):
-        return "text-x-generic"
-    if ext in (".exe", ".msi", ".msix", ".lnk"):
-        return "application-x-executable"
-    return "text-plain"
-
-
 def list_windows_recent_files(query="", limit=30):
     if not IS_WINDOWS:
         return []
@@ -945,13 +909,11 @@ def list_windows_recent_files(query="", limit=30):
         if ql and ql not in name.lower():
             continue
         seen.add(key)
-        is_d = os.path.isdir(norm)
         dt = datetime.datetime.fromtimestamp(mtime).strftime("%d.%m.%Y %H:%M")
         out.append({
             "path": norm,
             "name": name,
-            "isDir": is_d,
-            "iconName": icon_name_for_path(norm, is_d),
+            "isDir": os.path.isdir(norm),
             "modified": dt,
         })
     return out
@@ -959,56 +921,16 @@ def list_windows_recent_files(query="", limit=30):
 
 # ── 8. UWP / Start Apps Indexing ─────────────────────────────────────────────
 def scan_windows_uwp_apps():
-    """Query Start Apps + AppxManifest logos via PowerShell so Store/UWP apps get crisp native Windows 11 icons."""
+    """Query Start Apps via PowerShell Get-StartApps to include Store/UWP apps (Calculator, Photos, etc.)."""
     if not IS_WINDOWS:
         return []
     apps = []
     try:
-        ps = r"""
-$ErrorActionPreference='SilentlyContinue'
-[Console]::OutputEncoding=[System.Text.Encoding]::UTF8
-$pkgs=@{}
-Get-AppxPackage | ForEach-Object { if($_.PackageFamilyName -and $_.InstallLocation){ $pkgs[$_.PackageFamilyName]=$_.InstallLocation } }
-$res = @()
-Get-StartApps | Where-Object { $_.AppID -like '*!*' } | ForEach-Object {
-  $pfn = ($_.AppID -split '!')[0]
-  $aid = ($_.AppID -split '!')[1]
-  $loc = $pkgs[$pfn]
-  $logo = ''
-  if ($loc -and (Test-Path "$loc\AppxManifest.xml")) {
-    try {
-      [xml]$xml = Get-Content "$loc\AppxManifest.xml" -Raw
-      $appNodes = @($xml.Package.Applications.Application)
-      $node = $appNodes | Where-Object { $_.Id -eq $aid } | Select-Object -First 1
-      if (-not $node) { $node = $appNodes | Select-Object -First 1 }
-      $rel = $node.VisualElements.Square44x44Logo
-      if (-not $rel) { $rel = $node.VisualElements.Square150x150Logo }
-      if (-not $rel) { $rel = $xml.Package.Properties.Logo }
-      if ($rel) {
-        $fullRel = Join-Path $loc $rel
-        $dir = Split-Path $fullRel -Parent
-        $base = [IO.Path]::GetFileNameWithoutExtension($rel)
-        $ext = [IO.Path]::GetExtension($rel)
-        if (Test-Path $dir) {
-          $cands = @(Get-ChildItem $dir -Filter "$base*$ext" -ErrorAction SilentlyContinue | Where-Object { $_.Name -notmatch 'contrast-white|contrast-black|lightunplated' })
-          $unp = @($cands | Where-Object { $_.Name -match 'altform-unplated' } | Sort-Object Length -Descending)
-          if ($unp.Count -gt 0) { $logo = $unp[0].FullName }
-          elseif ($cands.Count -gt 0) { $logo = ($cands | Sort-Object Length -Descending | Select-Object -First 1).FullName }
-        }
-        if (-not $logo -and (Test-Path $fullRel)) { $logo = $fullRel }
-      }
-    } catch {}
-  }
-  $res += [pscustomobject]@{ Name = $_.Name; AppID = $_.AppID; Logo = $logo }
-}
-$res | ConvertTo-Json -Compress
-"""
-        import base64
-        b64 = base64.b64encode(ps.encode("utf-16-le")).decode("ascii")
+        cmd = "[Console]::OutputEncoding=[System.Text.Encoding]::UTF8; Get-StartApps | ConvertTo-Json -Compress"
         p = subprocess.run(
-            ["powershell.exe", "-NoProfile", "-NonInteractive", "-EncodedCommand", b64],
+            ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", cmd],
             capture_output=True, text=True, encoding="utf-8", errors="replace",
-            timeout=10, **_hidden_kwargs()
+            timeout=6, **_hidden_kwargs()
         )
         raw = (p.stdout or "").strip()
         if not raw:
@@ -1020,12 +942,12 @@ $res | ConvertTo-Json -Compress
         for item in data:
             name = (item.get("Name") or "").strip()
             appid = (item.get("AppID") or "").strip()
-            logo = (item.get("Logo") or "").strip()
             if not name or not appid:
                 continue
             nl = fold_text(name)
             if any(ig in nl for ig in ignore):
                 continue
+            # Only add UWP/Store apps (those with '!' in AppID; Win32 .lnk apps are scanned directly with real icons)
             if "!" not in appid:
                 continue
             slug = re.sub(r"[^\w\s-]", "", nl).strip().replace(" ", "-")
@@ -1048,7 +970,7 @@ $res | ConvertTo-Json -Compress
             apps.append({
                 "id": f"uwp-{slug or appid[:20]}",
                 "label": name,
-                "icon": logo if (logo and os.path.isfile(logo)) else "",
+                "icon": "",
                 "aliases": aliases,
                 "desktop": f"shell:AppsFolder\\{appid}",
                 "category": cat,
@@ -1056,6 +978,135 @@ $res | ConvertTo-Json -Compress
     except Exception:
         pass
     return apps
+
+
+class WinAppIndexWatcher:
+    """Zero-CPU Windows kernel directory watcher for Start Menu (.lnk) & Store/UWP packages.
+
+    Blocks inside WaitForMultipleObjects until Windows notifies a file/folder add, rename, or
+    delete inside Start Menu Programs (recursive) or %LOCALAPPDATA%\\Packages (top-level only).
+    Debounces installer bursts and invokes on_change(include_uwp: bool) on its worker thread.
+    """
+
+    _FILE_NOTIFY_FILTER = 0x00000013  # FILE_NAME | DIR_NAME | LAST_WRITE
+    _INVALID_HANDLE = ctypes.c_void_p(-1).value
+    _WAIT_TIMEOUT = 0x00000102
+    _WAIT_FAILED = 0xFFFFFFFF
+
+    def __init__(self, on_change, debounce_sec=1.5):
+        self._on_change = on_change
+        self._debounce = float(debounce_sec)
+        self._stop_event = None
+        self._thread = None
+        self._stopping = False
+
+    @staticmethod
+    def _watch_specs():
+        specs = []
+        for raw, subtree, is_uwp in (
+            (os.path.expandvars(r"%ProgramData%\Microsoft\Windows\Start Menu\Programs"), True, False),
+            (os.path.expandvars(r"%APPDATA%\Microsoft\Windows\Start Menu\Programs"), True, False),
+            (os.path.expandvars(r"%LOCALAPPDATA%\Packages"), False, True),
+        ):
+            if raw and os.path.isdir(raw):
+                specs.append((raw, subtree, is_uwp))
+        return specs
+
+    def start(self):
+        if not IS_WINDOWS or self._thread is not None:
+            return False
+        k32 = ctypes.windll.kernel32
+        k32.CreateEventW.argtypes = [ctypes.c_void_p, ctypes.c_int, ctypes.c_int, ctypes.c_wchar_p]
+        k32.CreateEventW.restype = ctypes.c_void_p
+        k32.SetEvent.argtypes = [ctypes.c_void_p]
+        k32.CloseHandle.argtypes = [ctypes.c_void_p]
+        k32.FindFirstChangeNotificationW.argtypes = [ctypes.c_wchar_p, ctypes.c_int, ctypes.c_uint32]
+        k32.FindFirstChangeNotificationW.restype = ctypes.c_void_p
+        k32.FindNextChangeNotification.argtypes = [ctypes.c_void_p]
+        k32.FindCloseChangeNotification.argtypes = [ctypes.c_void_p]
+        k32.WaitForMultipleObjects.argtypes = [ctypes.c_uint32, ctypes.c_void_p, ctypes.c_int, ctypes.c_uint32]
+        k32.WaitForMultipleObjects.restype = ctypes.c_uint32
+
+        self._stop_event = k32.CreateEventW(None, 1, 0, None)
+        if not self._stop_event:
+            return False
+        self._stopping = False
+        self._thread = threading.Thread(target=self._run, name="RavenSpotAppWatcher", daemon=True)
+        self._thread.start()
+        return True
+
+    def stop(self):
+        self._stopping = True
+        if IS_WINDOWS and self._stop_event:
+            try:
+                ctypes.windll.kernel32.SetEvent(self._stop_event)
+            except Exception:
+                pass
+        if self._thread is not None:
+            self._thread.join(timeout=2.0)
+            self._thread = None
+        if IS_WINDOWS and self._stop_event:
+            try:
+                ctypes.windll.kernel32.CloseHandle(self._stop_event)
+            except Exception:
+                pass
+            self._stop_event = None
+
+    def _run(self):
+        k32 = ctypes.windll.kernel32
+        handles = [self._stop_event]
+        meta = [None]  # index 0 = stop event
+        for path, subtree, is_uwp in self._watch_specs():
+            h = k32.FindFirstChangeNotificationW(path, 1 if subtree else 0, self._FILE_NOTIFY_FILTER)
+            if h and h != self._INVALID_HANDLE:
+                handles.append(h)
+                meta.append(is_uwp)
+        if len(handles) <= 1:
+            return
+
+        arr_t = ctypes.c_void_p * len(handles)
+        h_arr = arr_t(*handles)
+        n_handles = len(handles)
+        pending = False
+        pending_uwp = False
+        deadline = 0.0
+
+        try:
+            while not self._stopping:
+                if pending:
+                    rem_ms = max(50, int((deadline - time.monotonic()) * 1000))
+                    timeout = rem_ms
+                else:
+                    timeout = 0xFFFFFFFF  # INFINITE — 0% CPU while idle
+                res = k32.WaitForMultipleObjects(n_handles, h_arr, 0, timeout)
+                if res == 0 or self._stopping:
+                    break
+                if res == self._WAIT_TIMEOUT:
+                    if pending:
+                        inc_uwp = pending_uwp
+                        pending = False
+                        pending_uwp = False
+                        try:
+                            self._on_change(inc_uwp)
+                        except Exception:
+                            pass
+                    continue
+                if res == self._WAIT_FAILED:
+                    time.sleep(2.0)
+                    continue
+                idx = res
+                if 1 <= idx < n_handles:
+                    if meta[idx]:
+                        pending_uwp = True
+                    pending = True
+                    deadline = time.monotonic() + self._debounce
+                    k32.FindNextChangeNotification(handles[idx])
+        finally:
+            for h in handles[1:]:
+                try:
+                    k32.FindCloseChangeNotification(h)
+                except Exception:
+                    pass
 
 
 # ── 9. Multi-Theme SVG Icon Resolver (Fluent Win11 + Candy Icons) ────────────
@@ -1134,8 +1185,6 @@ class CandyIconResolver:
             "folder-downloads": "aptdaemon-download",
             "download": "aptdaemon-download",
             "system-software-update": "update-manager",
-            "cachy-update-blue": "system-software-update",
-            "cachy-update_updates-available-blue": "system-software-update",
             "utilities-system-monitor": "ksysguard",
             "window": "preferences-system-windows",
             "terminal": "utilities-terminal",
@@ -1145,72 +1194,12 @@ class CandyIconResolver:
             "system-bios": "cpu",
             "sleep": "system-suspend",
             "process-stop": "system-shutdown",
-            "input-keyboard": "cs-keyboard",
-            "screenshot-region": "gnome-screenshot",
-            "screenshot-fullscreen": "gnome-screenshot",
-            "screenshot-record": "gnome-screenshot",
-            "color-mode-dark": "redshift-status-on",
-            "color-mode-light": "cs-color",
-            # MIME / file-type aliases so active theme stays unified
-            "image-png": "image-x-generic",
-            "image-jpeg": "image-x-generic",
-            "image-jpg": "image-x-generic",
-            "image-gif": "image-x-generic",
-            "image-webp": "image-x-generic",
-            "image-bmp": "image-x-generic",
-            "image-svg+xml": "image-x-generic",
-            "image-x-icon": "image-x-generic",
-            "video-mp4": "video-x-generic",
-            "video-x-matroska": "video-x-generic",
-            "video-webm": "video-x-generic",
-            "video-quicktime": "video-x-generic",
-            "video-x-msvideo": "video-x-generic",
-            "audio-mp3": "audio-x-generic",
-            "audio-mpeg": "audio-x-generic",
-            "audio-flac": "audio-x-generic",
-            "audio-wav": "audio-x-generic",
-            "audio-x-wav": "audio-x-generic",
-            "audio-ogg": "audio-x-generic",
-            "application-zip": "package-x-generic",
-            "application-x-zip-compressed": "package-x-generic",
-            "application-x-tar": "package-x-generic",
-            "application-gzip": "package-x-generic",
-            "application-x-7z-compressed": "package-x-generic",
-            "application-x-rar": "package-x-generic",
-            "application-vnd.rar": "package-x-generic",
-            "application-octet-stream": "text-plain",
-            "application-xml": "text-x-generic",
-            "text-xml": "text-x-generic",
-            "text-csv": "application-vnd.ms-excel",
-            "text-html": "text-x-generic",
-            "text-css": "text-x-generic",
-            "text-javascript": "text-x-generic",
-            "application-javascript": "text-x-generic",
-            "text-x-script.python": "text-x-python",
-            "application-x-msdownload": "application-x-executable",
-            "application-x-msi": "application-x-executable",
-            "application-x-dosexec": "application-x-executable",
-            "application-x-desktop": "application-x-executable",
-            "application-vnd.openxmlformats-officedocument.wordprocessingml.document": "application-msword",
-            "application-rtf": "application-msword",
-            "application-vnd.openxmlformats-officedocument.spreadsheetml.sheet": "application-vnd.ms-excel",
-            "application-vnd.openxmlformats-officedocument.presentationml.presentation": "application-vnd.ms-powerpoint",
         }
         if n in aliases and aliases[n] in idx:
             return idx[aliases[n]]
         for cand in (n.replace("_", "-"), n.replace("-", "")):
             if cand in idx:
                 return idx[cand]
-        # Prefix fallbacks inside the SAME theme before dropping to another theme
-        for prefix, fallback in (
-            ("image-", "image-x-generic"),
-            ("video-", "video-x-generic"),
-            ("audio-", "audio-x-generic"),
-            ("text-", "text-plain"),
-            ("folder-", "folder"),
-        ):
-            if n.startswith(prefix) and fallback in idx:
-                return idx[fallback]
         return ""
 
     def resolve(self, name, theme_name=None):
