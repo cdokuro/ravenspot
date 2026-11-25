@@ -1942,6 +1942,9 @@ Window {
             root.winResultsQuery = query
             rebuildPreservingSelection()
         }
+        function onAppUpdateAvailable(ver, url) {
+            root.sysUpdateInfo = Shell.getUpdateInfo()
+        }
         function onStatsUpdated(cpu, gpu, vol, muted) {
             root.cpuPercent = cpu
             root.gpuPercent = gpu
@@ -2647,7 +2650,9 @@ Window {
                     }
 
                     Text {
-                        text: (root.sysUpdateInfo && root.sysUpdateInfo.has_updates) ? (root.sysUpdateInfo.count > 0 ? root.sysUpdateInfo.count + " Updates" : "Update") : "Up to date"
+                        text: (root.sysUpdateInfo && root.sysUpdateInfo.label)
+                              ? root.sysUpdateInfo.label
+                              : ((root.sysUpdateInfo && root.sysUpdateInfo.has_updates) ? (root.sysUpdateInfo.count > 0 ? root.sysUpdateInfo.count + " Updates" : "Update") : "Up to date")
                         color: (root.sysUpdateInfo && root.sysUpdateInfo.has_updates) ? "#ff5252" : root.fgDim
                         font.pixelSize: 10
                         font.family: root.textFont
