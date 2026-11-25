@@ -1886,7 +1886,7 @@ Window {
     }
     Timer {
         id: closeTimer
-        interval: 90
+        interval: 55
         running: false
         repeat: false
         onTriggered: {
@@ -1918,6 +1918,10 @@ Window {
         }
         function onAppsChanged() {
             refreshAppsOnly(false)
+        }
+        function onAudioConfigChanged(vol, muted) {
+            root.sysVolume = vol
+            root.sysMuted = muted
         }
         function onPowerProfileChanged(profile) {
             if (profile) root.currentPowerProfile = profile
@@ -1970,8 +1974,8 @@ Window {
     SequentialAnimation {
         id: reopenAnim
         ParallelAnimation {
-            NumberAnimation { target: card; property: "opacity"; to: 0.15; duration: 90; easing.type: Easing.InCubic }
-            NumberAnimation { target: card; property: "scale"; to: 0.97; duration: 90; easing.type: Easing.InCubic }
+            NumberAnimation { target: card; property: "opacity"; to: 0.15; duration: 55; easing.type: Easing.InCubic }
+            NumberAnimation { target: card; property: "scale"; to: 0.97; duration: 55; easing.type: Easing.InCubic }
         }
         ScriptAction {
             script: {
@@ -1979,8 +1983,8 @@ Window {
             }
         }
         ParallelAnimation {
-            NumberAnimation { target: card; property: "opacity"; to: 1.0; duration: 180; easing.type: Easing.OutQuint }
-            NumberAnimation { target: card; property: "scale"; to: 1.0; duration: 180; easing.type: Easing.OutQuint }
+            NumberAnimation { target: card; property: "opacity"; to: 1.0; duration: 95; easing.type: Easing.OutQuint }
+            NumberAnimation { target: card; property: "scale"; to: 1.0; duration: 95; easing.type: Easing.OutQuint }
         }
     }
 
@@ -2057,7 +2061,7 @@ Window {
         Behavior on opacity { id: cardOpacityB; enabled: !reopenAnim.running; OpenCloseAnimation { behavior: cardOpacityB; threshold: 0.5 } }
         // Yumuşak, hedefi aşmayan açılış (OutBack zıplatıyordu); kapanış hızlı ve sakin
         Behavior on scale { id: cardScaleB; enabled: !reopenAnim.running; OpenCloseAnimation { behavior: cardScaleB; threshold: 0.985 } }
-        Behavior on height { NumberAnimation { duration: 130; easing.type: Easing.OutQuint } }
+        Behavior on height { NumberAnimation { duration: 90; easing.type: Easing.OutQuint } }
 
         // Kartı sürükle: KWin'deki pencere taşıma tuşu (Alt, ya da Meta) basılıyken
         // kartın her yerinden tut-sürükle. Layer-shell yüzeyini KWin taşıyamadığı
