@@ -209,6 +209,13 @@ Window {
         root.itemOrder = merged.itemOrder
         root.loaded = true
 
+        refreshAppsOnly(true)
+        evaluateGuards()
+        rebuildDisplay()
+    }
+
+    function refreshAppsOnly(skipRebuild) {
+        if (!root.loaded) return
         try {
             var counts = JSON.parse(Shell.getAppCategoryCounts() || "{}")
             var catMap = {
@@ -238,9 +245,7 @@ Window {
             loadAppsCategory("apps.all", "all", true)
             root.providersLoaded["apps.all"] = true
         }
-
-        evaluateGuards()
-        rebuildDisplay()
+        if (!skipRebuild) rebuildDisplay()
     }
 
     function evaluateGuards() {
@@ -380,7 +385,7 @@ Window {
             var f = arr[j]
             rows.push({
                 id: id + ".recent-" + j, parent: id, kind: "action",
-                icon: f.isDir ? "󰉋" : "󰈔", iconFont: "", iconName: f.iconName || (f.isDir ? "folder" : "document-open-recent"),
+                icon: f.isDir ? "󰉋" : "󰈔", iconFont: "", iconName: f.isDir ? "folder" : "document-open-recent",
                 label: f.name, title: "", target: "", description: (f.modified ? f.modified + "  •  " : "") + f.path,
                 action: "", provider: "file-item", aliases: [f.name], searchTerms: [f.name],
                 when: "", checked: "", disabled: "", filePath: f.path, isDir: !!f.isDir, order: j
@@ -512,12 +517,9 @@ Window {
                 detailStr = "★ Favorite"
             }
 
-            var cVal = String(c.value || "").toLowerCase()
-            var cIconName = (cVal.indexOf("light") >= 0) ? "color-mode-light"
-                          : ((cVal.indexOf("dark") >= 0) ? "color-mode-dark" : "cs-color")
             rows.push({
                 id: rowId, parent: id, kind: "action",
-                icon: iconStr, iconFont: "", iconName: cIconName,
+                icon: iconStr, iconFont: "",
                 label: c.label, title: "", target: "", description: detailStr,
                 action: "", provider: "colorscheme", aliases: [], searchTerms: [],
                 when: "", checked: "", disabled: "", value: c.value, order: j,
@@ -542,10 +544,10 @@ Window {
             taken[rowId] = true
             rows.push({
                 id: rowId, parent: id, kind: "action",
-                icon: p.current ? "✓" : "󰂖", iconFont: "", iconName: "power-profile-" + (p.value || "balanced"),
-                label: p.label, title: "", target: "", description: p.current ? "✓ Active" : "",
+                icon: p.current ? "✓" : "󰂖", iconFont: "",
+                label: p.label, title: "", target: "", description: "",
                 action: "", provider: "power-profile", aliases: [], searchTerms: [],
-                when: "", checked: "", disabled: "", value: p.value, isCurrent: !!p.current, order: j
+                when: "", checked: "", disabled: "", value: p.value, order: 0
             })
         }
         var merged = MenuModel.swapProviderRows(root.items, root.itemOrder, id, rows)
@@ -1136,13 +1138,13 @@ Window {
 
             // 6. Raycast / KRunner Web Bangs
             var bangs = [
-                { prefix: "g ", name: "Google", icon: "󰖟", iconName: "web-browser", url: "https://www.google.com/search?q=" },
-                { prefix: "yt ", name: "YouTube", icon: "󰗃", iconName: "applications-multimedia", url: "https://www.youtube.com/results?search_query=" },
-                { prefix: "gh ", name: "GitHub", icon: "󰊤", iconName: "applications-development", url: "https://github.com/search?q=" },
-                { prefix: "w ", name: "Wikipedia", icon: "󰖬", iconName: "help-browser", url: "https://tr.wikipedia.org/w/index.php?search=" },
-                { prefix: "tr ", name: "Google Translate", icon: "󰗊", iconName: "preferences-desktop-locale", url: "https://translate.google.com/?sl=auto&tl=tr&text=" },
-                { prefix: "map ", name: "Maps", icon: "󰍎", iconName: "find-location", url: "https://www.google.com/maps/search/" },
-                { prefix: "ddg ", name: "DuckDuckGo", icon: "󰇧", iconName: "system-search", url: "https://duckduckgo.com/?q=" }
+                { prefix: "g ", name: "Google", icon: "󰖟", url: "https://www.google.com/search?q=" },
+                { prefix: "yt ", name: "YouTube", icon: "󰗃", url: "https://www.youtube.com/results?search_query=" },
+                { prefix: "gh ", name: "GitHub", icon: "󰊤", url: "https://github.com/search?q=" },
+                { prefix: "w ", name: "Wikipedia", icon: "󰖬", url: "https://tr.wikipedia.org/w/index.php?search=" },
+                { prefix: "tr ", name: "Google Translate", icon: "󰗊", url: "https://translate.google.com/?sl=auto&tl=tr&text=" },
+                { prefix: "map ", name: "Maps", icon: "󰍎", url: "https://www.google.com/maps/search/" },
+                { prefix: "ddg ", name: "DuckDuckGo", icon: "󰇧", url: "https://duckduckgo.com/?q=" }
             ]
 
             var hasBang = false
@@ -1156,7 +1158,7 @@ Window {
                             itemId: "__bang_" + bg.name + "__",
                             kind: "action",
                             icon: bg.icon,
-                            iconName: bg.iconName || "web-browser",
+                            iconName: "web-browser",
                             iconFont: "",
                             appIcon: "",
                             appId: "",
@@ -1582,10 +1584,9 @@ Window {
     property var contextMainEntries: []
     property string renameError: ""
 
-    // Edna / Fluent: bağlam menüsü eylemlerinin ikon teması karşılıkları
+    // Edna: bağlam menüsü eylemlerinin ikon teması (kora) karşılıkları
     function contextIconName(actionType) {
         var m = {
-            contextBack: "go-previous", openWithApp: "system-run", copyText: "edit-copy",
             launchApp: "system-run", runAction: "system-run", activateCurrent: "system-run",
             toggleAutostart: "preferences-system", openLocation: "folder-open", openPath: "document-open",
             runInTerminal: "utilities-terminal", openInTerminal: "utilities-terminal",
@@ -1915,6 +1916,9 @@ Window {
             loadItems()
             rebuildDisplay()
         }
+        function onAppsChanged() {
+            refreshAppsOnly(false)
+        }
         function onPowerProfileChanged(profile) {
             if (profile) root.currentPowerProfile = profile
         }
@@ -1948,9 +1952,6 @@ Window {
         function onAppAudioChanged(vol, muted) {
             root.appSoundVolume = vol
             root.appSoundMuted = muted
-        }
-        function onAppUpdateChanged() {
-            root.sysUpdateInfo = Shell.getUpdateInfo()
         }
     }
 
@@ -2326,10 +2327,10 @@ Window {
                         }
 
                         Text {
-                            text: root.powerFlyoutOpen ? "▴" : "▾"
+                            text: root.powerFlyoutOpen ? "󰅃" : "󰅀"
                             color: root.fgDim
                             font.pixelSize: 10
-                            font.family: root.textFont
+                            font.family: root.iconFont
                             anchors.verticalCenter: parent.verticalCenter
                         }
                     }
@@ -2558,10 +2559,9 @@ Window {
 
                         Text {
                             anchors.centerIn: parent
-                            text: "✕"
-                            font.family: root.textFont
-                            font.pixelSize: 11
-                            font.weight: Font.DemiBold
+                            text: "󰅖"
+                            font.family: root.iconFont
+                            font.pixelSize: 12
                             color: root.fgColor
                         }
 
@@ -2614,20 +2614,15 @@ Window {
             spacing: 10
             height: 22
 
-            // Canlı Güncelleme Butonu (Windows: GitHub Release otomatik kontrol + 1-tık güncelleme)
+            // CachyOS Canlı Güncelleme Butonu
             Rectangle {
                 id: cachyUpdateBadge
                 height: 22
                 width: updateContentRow.width + 12
                 radius: root.edna ? 11 : 5
-                readonly property bool isUpdating: !!(root.sysUpdateInfo && root.sysUpdateInfo.updating)
-                readonly property bool isChecking: !!(root.sysUpdateInfo && root.sysUpdateInfo.checking)
-                readonly property bool hasUpdates: !!(root.sysUpdateInfo && root.sysUpdateInfo.has_updates)
-                color: hasUpdates
-                     ? (updateBadgeMouse.containsMouse ? Qt.rgba(96/255, 205/255, 255/255, 0.28) : Qt.rgba(96/255, 205/255, 255/255, 0.16))
-                     : (root.edna ? (updateBadgeMouse.containsMouse ? Qt.lighter(root.surfaceColor, 1.25) : root.surfaceColor)
-                                  : (updateBadgeMouse.containsMouse ? Qt.rgba(1, 1, 1, 0.12) : Qt.rgba(1, 1, 1, 0.06)))
-                border.color: hasUpdates ? (Shell.isWindows ? "#60cdff" : "#ff5252") : (root.edna ? "transparent" : Qt.rgba(root.bgBorder.r, root.bgBorder.g, root.bgBorder.b, 0.25))
+                color: root.edna ? (updateBadgeMouse.containsMouse ? Qt.lighter(root.surfaceColor, 1.25) : root.surfaceColor)
+                     : (updateBadgeMouse.containsMouse ? Qt.rgba(1, 1, 1, 0.12) : Qt.rgba(1, 1, 1, 0.06))
+                border.color: (root.sysUpdateInfo && root.sysUpdateInfo.has_updates) ? "#ff5252" : (root.edna ? "transparent" : Qt.rgba(root.bgBorder.r, root.bgBorder.g, root.bgBorder.b, 0.25))
                 border.width: 1
 
                 Row {
@@ -2638,26 +2633,18 @@ Window {
                     Image {
                         width: 14
                         height: 14
-                        sourceSize.width: 32
-                        sourceSize.height: 32
+                        sourceSize.width: 14
+                        sourceSize.height: 14
                         source: root.edna ? ("image://themeicon/system-software-update?v=" + root.themeVersion)
                               : ((root.sysUpdateInfo && root.sysUpdateInfo.icon_path)
                                  ? (root.sysUpdateInfo.icon_path.indexOf("image://") === 0 ? root.sysUpdateInfo.icon_path : "file://" + root.sysUpdateInfo.icon_path)
                                  : "image://themeicon/system-software-update")
                         anchors.verticalCenter: parent.verticalCenter
-                        smooth: true
-                        mipmap: true
-                        fillMode: Image.PreserveAspectFit
                     }
 
                     Text {
-                        text: cachyUpdateBadge.isUpdating ? "Updating…"
-                            : (cachyUpdateBadge.isChecking ? "Checking…"
-                            : (cachyUpdateBadge.hasUpdates
-                                ? (Shell.isWindows && root.sysUpdateInfo.latest ? ("Update " + root.sysUpdateInfo.latest) : (root.sysUpdateInfo.count > 0 ? root.sysUpdateInfo.count + " Updates" : "Update"))
-                                : (Shell.isWindows && root.sysUpdateInfo && root.sysUpdateInfo.current ? (root.sysUpdateInfo.current + " · Up to date") : "Up to date")))
-                        color: cachyUpdateBadge.isUpdating ? "#fbbf24"
-                             : (cachyUpdateBadge.hasUpdates ? (Shell.isWindows ? "#60cdff" : "#ff5252") : root.fgDim)
+                        text: (root.sysUpdateInfo && root.sysUpdateInfo.has_updates) ? (root.sysUpdateInfo.count > 0 ? root.sysUpdateInfo.count + " Updates" : "Update") : "Up to date"
+                        color: (root.sysUpdateInfo && root.sysUpdateInfo.has_updates) ? "#ff5252" : root.fgDim
                         font.pixelSize: 10
                         font.family: root.textFont
                         font.weight: Font.DemiBold
@@ -2673,10 +2660,6 @@ Window {
                     onEntered: Shell.playThock()
                     onClicked: {
                         Shell.playCreamy()
-                        if (Shell.isWindows && !cachyUpdateBadge.hasUpdates) {
-                            Shell.checkAppUpdates(true)
-                            return
-                        }
                         root.opened = false
                         Shell.launchUpdate()
                         Qt.callLater(closeMenu)
@@ -2702,13 +2685,11 @@ Window {
                     Image {
                         width: 14
                         height: 14
-                        sourceSize.width: 32
-                        sourceSize.height: 32
+                        sourceSize.width: 16
+                        sourceSize.height: 16
                         source: "image://themeicon/system-reboot?v=" + root.themeVersion
                         anchors.verticalCenter: parent.verticalCenter
                         smooth: true
-                        mipmap: true
-                        fillMode: Image.PreserveAspectFit
                     }
 
                     Text {
@@ -2754,13 +2735,11 @@ Window {
                     Image {
                         width: 14
                         height: 14
-                        sourceSize.width: 32
-                        sourceSize.height: 32
+                        sourceSize.width: 16
+                        sourceSize.height: 16
                         source: "image://themeicon/system-shutdown?v=" + root.themeVersion
                         anchors.verticalCenter: parent.verticalCenter
                         smooth: true
-                        mipmap: true
-                        fillMode: Image.PreserveAspectFit
                     }
 
                     Text {
@@ -2895,8 +2874,8 @@ Window {
                     anchors.verticalCenter: parent.verticalCenter
                     horizontalAlignment: Text.AlignHCenter
                     text: model.iconName ? "" : model.icon
-                    font.family: (model.iconFont && model.iconFont.length > 0) ? model.iconFont : root.iconFont
-                    font.pixelSize: model.provider === "emoji" ? 21 : 18
+                    font.family: root.iconFont
+                    font.pixelSize: 18
                     color: (index === resultList.currentIndex && !model.disabled) ? root.selFg : root.fgColor
                 }
 
@@ -2919,10 +2898,10 @@ Window {
                     height: root.iconSize
                     radius: root.iconSize / 2
                     anchors.left: glyph.left
-                    anchors.leftMargin: root.edna ? 6 : 7
+                    anchors.leftMargin: root.edna ? 8 : 9
                     anchors.verticalCenter: parent.verticalCenter
                     color: model.swatchBg || "#000000"
-                    border.color: Qt.rgba(1, 1, 1, 0.22)
+                    border.color: Qt.rgba(1, 1, 1, 0.18)
                     border.width: 1
                     Rectangle {
                         anchors.centerIn: parent
@@ -2933,19 +2912,18 @@ Window {
                     }
                 }
 
-                // Tema ikonu (menü girdileri için yüksek çözünürlüklü tema ikonu)
+                // Tema ikonu (menü girdileri için renkli candy-icons ikonu)
                 Image {
                     id: themeIconImg
                     width: root.iconSize
                     height: root.iconSize
                     anchors.left: glyph.left
-                    anchors.leftMargin: root.edna ? 6 : 7
+                    anchors.leftMargin: root.edna ? 8 : 9
                     anchors.verticalCenter: parent.verticalCenter
                     source: model.iconName ? ("image://themeicon/" + model.iconName + "?v=" + root.themeVersion) : ""
-                    sourceSize: Qt.size(64, 64)
+                    sourceSize: Qt.size(root.iconSize * 2, root.iconSize * 2)
                     visible: !!model.iconName
                     smooth: true
-                    mipmap: true
                     fillMode: Image.PreserveAspectFit
                 }
 
@@ -2965,13 +2943,12 @@ Window {
                     width: root.iconSize
                     height: root.iconSize
                     anchors.left: glyph.left
-                    anchors.leftMargin: root.edna ? 6 : 7
+                    anchors.leftMargin: root.edna ? 8 : 9
                     anchors.verticalCenter: parent.verticalCenter
                     source: model.appIcon ? ("image://appicon/" + model.appIcon + "?v=" + root.themeVersion) : ""
-                    sourceSize: Qt.size(64, 64)
+                    sourceSize: Qt.size(root.iconSize * 2, root.iconSize * 2)
                     visible: !!model.appIcon
                     smooth: true
-                    mipmap: true
                     fillMode: Image.PreserveAspectFit
                 }
 
@@ -3141,11 +3118,10 @@ Window {
                                 anchors.centerIn: parent
                                 width: 26
                                 height: 26
-                                sourceSize.width: 64
-                                sourceSize.height: 64
+                                sourceSize.width: 32
+                                sourceSize.height: 32
                                 source: (model.iconName && model.iconName.length) ? ("image://themeicon/" + model.iconName + "?v=" + root.themeVersion) : ""
                                 smooth: true
-                                mipmap: true
                                 fillMode: Image.PreserveAspectFit
                                 visible: (model.iconName && model.iconName.length) && (status === Image.Ready)
                             }
@@ -3159,7 +3135,6 @@ Window {
                                 color: (index === root.selectedIndex) ? root.selFg : (
                                     model.itemId === "system.shutdown" ? "#ff5252" :
                                     model.itemId === "system.reboot" ? "#ffa726" :
-                                    model.itemId === "system.bios" ? "#60cdff" :
                                     model.itemId === "system.lock" ? "#42a5f5" :
                                     model.itemId === "system.logout" ? "#ab47bc" :
                                     model.itemId === "system.save_session" ? "#66bb6a" :
@@ -3993,8 +3968,8 @@ Window {
             width: Math.min(390, card.width - 24)
             height: powerFlyoutCol.height + 26
             radius: 12
-            color: root.edna ? Qt.rgba(root.bgColor.r, root.bgColor.g, root.bgColor.b, 1.0) : Qt.rgba(24/255, 27/255, 34/255, 0.98)
-            border.color: root.edna ? root.cardBorderColor : Qt.rgba(255, 255, 255, 0.20)
+            color: Qt.rgba(24/255, 27/255, 34/255, 0.98)
+            border.color: Qt.rgba(255, 255, 255, 0.20)
             border.width: 1
 
             // MultiEffect gölge
@@ -4033,13 +4008,10 @@ Window {
                         anchors.verticalCenter: parent.verticalCenter
                         spacing: 6
 
-                        ThemeGlyph {
-                            useIcon: root.edna
-                            version: root.themeVersion
-                            iconName: "preferences-system-power-management"
-                            glyph: "󰂄"
-                            glyphFont: root.iconFont
-                            size: 15
+                        Text {
+                            text: "󰂄"
+                            font.family: root.iconFont
+                            font.pixelSize: 14
                             color: root.selFg
                             anchors.verticalCenter: parent.verticalCenter
                         }
@@ -4065,10 +4037,9 @@ Window {
 
                         Text {
                             anchors.centerIn: parent
-                            text: "✕"
-                            font.family: root.textFont
+                            text: "󰅖"
+                            font.family: root.iconFont
                             font.pixelSize: 11
-                            font.weight: Font.DemiBold
                             color: root.fgDim
                         }
 
@@ -4148,14 +4119,11 @@ Window {
                             Row {
                                 anchors.centerIn: parent
                                 spacing: 4
-                                ThemeGlyph {
-                                    useIcon: root.edna
-                                    version: root.themeVersion
-                                    iconName: "power-profile-power-saver"
-                                    glyph: "󰌪"
+                                Text {
+                                    text: "󰌪"
                                     color: root.currentPowerProfile === "power-saver" ? "#22c55e" : root.fgDim
-                                    size: 13
-                                    glyphFont: root.iconFont
+                                    font.pixelSize: 11
+                                    font.family: root.iconFont
                                     anchors.verticalCenter: parent.verticalCenter
                                 }
                                 Text {
@@ -4184,20 +4152,17 @@ Window {
                             anchors.horizontalCenter: parent.horizontalCenter
                             anchors.top: profileTrack.bottom
                             anchors.topMargin: 12
-                            width: 78
+                            width: 70
                             height: 20
 
                             Row {
                                 anchors.centerIn: parent
                                 spacing: 4
-                                ThemeGlyph {
-                                    useIcon: root.edna
-                                    version: root.themeVersion
-                                    iconName: "power-profile-balanced"
-                                    glyph: "󰾆"
+                                Text {
+                                    text: "󰾆"
                                     color: root.currentPowerProfile === "balanced" ? root.selFg : root.fgDim
-                                    size: 13
-                                    glyphFont: root.iconFont
+                                    font.pixelSize: 11
+                                    font.family: root.iconFont
                                     anchors.verticalCenter: parent.verticalCenter
                                 }
                                 Text {
@@ -4226,20 +4191,17 @@ Window {
                             anchors.horizontalCenter: parent.right
                             anchors.top: profileTrack.bottom
                             anchors.topMargin: 12
-                            width: 88
+                            width: 80
                             height: 20
 
                             Row {
                                 anchors.centerIn: parent
                                 spacing: 4
-                                ThemeGlyph {
-                                    useIcon: root.edna
-                                    version: root.themeVersion
-                                    iconName: "power-profile-performance"
-                                    glyph: "󰓅"
+                                Text {
+                                    text: "󰓅"
                                     color: root.currentPowerProfile === "performance" ? "#f97316" : root.fgDim
-                                    size: 13
-                                    glyphFont: root.iconFont
+                                    font.pixelSize: 11
+                                    font.family: root.iconFont
                                     anchors.verticalCenter: parent.verticalCenter
                                 }
                                 Text {
@@ -4302,17 +4264,15 @@ Window {
                         anchors.rightMargin: 8
                         spacing: 12
 
-                        // Theme Sleep İkonu
+                        // Candy Sleep İkonu
                         Image {
                             id: sleepIconImg
                             width: 22
                             height: 22
-                            sourceSize.width: 48
-                            sourceSize.height: 48
+                            sourceSize.width: 24
+                            sourceSize.height: 24
                             source: "image://themeicon/sleep?v=" + root.themeVersion
                             smooth: true
-                            mipmap: true
-                            fillMode: Image.PreserveAspectFit
                             anchors.verticalCenter: parent.verticalCenter
                         }
 
@@ -4430,13 +4390,10 @@ Window {
                         spacing: 8
                         width: parent.width
 
-                        ThemeGlyph {
-                            useIcon: root.edna
-                            version: root.themeVersion
-                            iconName: "package-x-generic"
-                            glyph: "󰏔"
-                            glyphFont: root.iconFont
-                            size: 18
+                        Text {
+                            text: "󰏔"
+                            font.family: root.iconFont
+                            font.pixelSize: 18
                             color: root.selFg
                             anchors.verticalCenter: parent.verticalCenter
                         }
@@ -4510,10 +4467,9 @@ Window {
                                 anchors.centerIn: parent
                                 spacing: 5
                                 Text {
-                                    text: "✓"
-                                    font.family: root.textFont
+                                    text: "󰄬"
+                                    font.family: root.iconFont
                                     font.pixelSize: 12
-                                    font.weight: Font.Bold
                                     color: "#0b0c10"
                                 }
                                 Text {
