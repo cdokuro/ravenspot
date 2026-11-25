@@ -117,6 +117,132 @@ def acquire_single_instance_mutex(name="Local\\RavenSpotSingleInstanceMutex"):
         return None, False
 
 
+def trim_working_set():
+    """Ask Windows to trim unused pages from this process working set when idle/hidden."""
+    if not IS_WINDOWS:
+        return False
+    try:
+        k32 = ctypes.windll.kernel32
+        k32.GetCurrentProcess.restype = ctypes.c_void_p
+        k32.SetProcessWorkingSetSize.argtypes = [ctypes.c_void_p, ctypes.c_size_t, ctypes.c_size_t]
+        k32.SetProcessWorkingSetSize.restype = wintypes.BOOL
+        hproc = k32.GetCurrentProcess()
+        neg1 = ctypes.c_size_t(-1).value
+        return bool(k32.SetProcessWorkingSetSize(hproc, neg1, neg1))
+    except Exception:
+        return False
+
+
+# ── Synthetic Hotkey Input Helpers (Solo Win -> RavenSpot, Alt+Space -> Start Menu) ──
+RAVENSPOT_SYNTHETIC_TAG = 0x52535054  # 'RSPT' marker ignored by our WH_KEYBOARD_LL hook
+
+if IS_WINDOWS:
+    class _KEYBDINPUT(ctypes.Structure):
+        _fields_ = [
+            ("wVk", wintypes.WORD),
+            ("wScan", wintypes.WORD),
+            ("dwFlags", wintypes.DWORD),
+            ("time", wintypes.DWORD),
+            ("dwExtraInfo", ctypes.c_size_t),
+        ]
+
+    class _MOUSEINPUT(ctypes.Structure):
+        _fields_ = [
+            ("dx", wintypes.LONG),
+            ("dy", wintypes.LONG),
+            ("mouseData", wintypes.DWORD),
+            ("dwFlags", wintypes.DWORD),
+            ("time", wintypes.DWORD),
+            ("dwExtraInfo", ctypes.c_size_t),
+        ]
+
+    class _HARDWAREINPUT(ctypes.Structure):
+        _fields_ = [
+            ("uMsg", wintypes.DWORD),
+            ("wParamL", wintypes.WORD),
+            ("wParamH", wintypes.WORD),
+        ]
+
+    class _INPUT_UNION(ctypes.Union):
+        _fields_ = [
+            ("mi", _MOUSEINPUT),
+            ("ki", _KEYBDINPUT),
+            ("hi", _HARDWAREINPUT),
+        ]
+
+    class _INPUT(ctypes.Structure):
+        _fields_ = [
+            ("type", wintypes.DWORD),
+            ("union", _INPUT_UNION),
+        ]
+
+    _u32.SendInput.argtypes = [wintypes.UINT, ctypes.POINTER(_INPUT), ctypes.c_int]
+    _u32.SendInput.restype = wintypes.UINT
+    _u32.GetAsyncKeyState.argtypes = [ctypes.c_int]
+    _u32.GetAsyncKeyState.restype = ctypes.c_short
+
+
+def _send_vk_events(events):
+    """Send a sequence of (vk, flags) keyboard events tagged with RAVENSPOT_SYNTHETIC_TAG."""
+    if not IS_WINDOWS or not events:
+        return False
+    try:
+        INPUT_KEYBOARD = 1
+        arr = (_INPUT * len(events))()
+        for i, (vk, flg) in enumerate(events):
+            arr[i].type = INPUT_KEYBOARD
+            arr[i].union.ki.wVk = int(vk)
+            arr[i].union.ki.wScan = 0
+            arr[i].union.ki.dwFlags = int(flg)
+            arr[i].union.ki.time = 0
+            arr[i].union.ki.dwExtraInfo = RAVENSPOT_SYNTHETIC_TAG
+        sent = ctypes.windll.user32.SendInput(len(events), arr, ctypes.sizeof(_INPUT))
+        return sent == len(events)
+    except Exception:
+        return False
+
+
+def inject_win_chord_mask():
+    """Inject unassigned VK 0xE8 down+up before Win key-up so Explorer suppresses Start Menu cleanly."""
+    KEYEVENTF_KEYUP = 0x0002
+    VK_MASK = 0xE8
+    return _send_vk_events([(VK_MASK, 0), (VK_MASK, KEYEVENTF_KEYUP)])
+
+
+def trigger_windows_start_menu():
+    """Open Windows' classic Start Menu cleanly (invoked when user presses Alt+Space)."""
+    if not IS_WINDOWS:
+        return False
+    KEYEVENTF_KEYUP = 0x0002
+    VK_LMENU = 0xA4
+    VK_RMENU = 0xA5
+    VK_MENU = 0x12
+    VK_LWIN = 0x5B
+
+    def _dispatch():
+        try:
+            u32 = ctypes.windll.user32
+            # Wait briefly for user to release Alt (up to 180ms), or release it synthetically
+            deadline = time.monotonic() + 0.18
+            while time.monotonic() < deadline:
+                if not (u32.GetAsyncKeyState(VK_MENU) & 0x8000):
+                    break
+                time.sleep(0.01)
+            events = []
+            if u32.GetAsyncKeyState(VK_LMENU) & 0x8000:
+                events.append((VK_LMENU, KEYEVENTF_KEYUP))
+            if u32.GetAsyncKeyState(VK_RMENU) & 0x8000:
+                events.append((VK_RMENU, KEYEVENTF_KEYUP))
+            events.append((VK_LWIN, 0))
+            events.append((VK_LWIN, KEYEVENTF_KEYUP))
+            _send_vk_events(events)
+        except Exception:
+            pass
+
+    threading.Thread(target=_dispatch, name="RavenSpotStartMenuTrigger", daemon=True).start()
+    return True
+
+
 def get_uptime_seconds() -> int:
     if not IS_WINDOWS:
         return 0
@@ -402,7 +528,52 @@ def _scan_power_schemes():
     return active_guid, schemes
 
 
+def _get_active_power_guid_fast() -> str:
+    """Read active Windows power scheme GUID directly via PowrProf (~0.05ms, zero subprocesses)."""
+    if not IS_WINDOWS:
+        return ""
+    try:
+        class _GUID(ctypes.Structure):
+            _fields_ = [
+                ("Data1", wintypes.DWORD),
+                ("Data2", wintypes.WORD),
+                ("Data3", wintypes.WORD),
+                ("Data4", ctypes.c_ubyte * 8),
+            ]
+        powr = ctypes.windll.powrprof
+        k32 = ctypes.windll.kernel32
+        powr.PowerGetActiveScheme.argtypes = [ctypes.c_void_p, ctypes.POINTER(ctypes.POINTER(_GUID))]
+        powr.PowerGetActiveScheme.restype = wintypes.DWORD
+        k32.LocalFree.argtypes = [ctypes.c_void_p]
+        k32.LocalFree.restype = ctypes.c_void_p
+        p_guid = ctypes.POINTER(_GUID)()
+        if powr.PowerGetActiveScheme(None, ctypes.byref(p_guid)) == 0 and p_guid:
+            try:
+                g = p_guid.contents
+                d4 = bytes(g.Data4)
+                return (
+                    f"{g.Data1:08x}-{g.Data2:04x}-{g.Data3:04x}-"
+                    f"{d4[0]:02x}{d4[1]:02x}-"
+                    f"{d4[2]:02x}{d4[3]:02x}{d4[4]:02x}{d4[5]:02x}{d4[6]:02x}{d4[7]:02x}"
+                )
+            finally:
+                k32.LocalFree(p_guid)
+    except Exception:
+        pass
+    return ""
+
+
+_POWER_GUID_NAME_CACHE = {}
+
+
 def get_windows_power_profile() -> str:
+    active_guid = _get_active_power_guid_fast()
+    if active_guid:
+        for key, g in WIN_POWER_GUIDS.items():
+            if active_guid == g:
+                return key
+        if active_guid in _POWER_GUID_NAME_CACHE:
+            return _POWER_GUID_NAME_CACHE[active_guid]
     active_guid, schemes = _scan_power_schemes()
     for key, g in WIN_POWER_GUIDS.items():
         if active_guid == g:
@@ -410,10 +581,13 @@ def get_windows_power_profile() -> str:
     for g, name in schemes:
         if g == active_guid:
             nl = fold_text(name)
+            res = "balanced"
             if "sav" in nl or "tasarruf" in nl:
-                return "power-saver"
-            if any(k in nl for k in ("high", "ultimate", "yuksek", "yüksek", "nihai", "perf")):
-                return "performance"
+                res = "power-saver"
+            elif any(k in nl for k in ("high", "ultimate", "yuksek", "yüksek", "nihai", "perf")):
+                res = "performance"
+            _POWER_GUID_NAME_CACHE[active_guid] = res
+            return res
     return "balanced"
 
 
@@ -754,15 +928,46 @@ while ($true) {
 }
 """
 
-    def __init__(self, app_dir=""):
+    def __init__(self, app_dir="", idle_timeout_sec=45.0):
         self.data = {}
         self._proc = None
         self._job = None
         self._stop = False
+        self._active = False
+        self._idle_timeout = float(idle_timeout_sec)
+        self._idle_timer = None
+        self._lock = threading.Lock()
+        self._thread = None
         self.dll_path = self._find_dll(app_dir)
         self.available = bool(IS_WINDOWS and self.dll_path)
-        if self.available:
-            threading.Thread(target=self._run, daemon=True).start()
+
+    def set_active(self, active: bool):
+        """Lazy on-demand activation: run LHM only while visible; stop after idle_timeout_sec when hidden."""
+        if not self.available:
+            return
+        with self._lock:
+            if self._idle_timer is not None:
+                self._idle_timer.cancel()
+                self._idle_timer = None
+            if active:
+                self._active = True
+                self._stop = False
+                if self._thread is None or not self._thread.is_alive():
+                    self._thread = threading.Thread(target=self._run, name="RavenSpotLhmPoller", daemon=True)
+                    self._thread.start()
+            else:
+                self._active = False
+                t = threading.Timer(self._idle_timeout, self._pause_if_idle)
+                t.daemon = True
+                t.start()
+                self._idle_timer = t
+
+    def _pause_if_idle(self):
+        with self._lock:
+            if self._active:
+                return
+            self._stop = True
+        self._terminate_proc()
 
     @staticmethod
     def _find_dll(app_dir):
@@ -777,20 +982,41 @@ while ($true) {
                 return p
         return ""
 
+    def _terminate_proc(self):
+        proc = self._proc
+        self._proc = None
+        try:
+            if proc:
+                proc.terminate()
+                try:
+                    proc.wait(timeout=1.5)
+                except Exception:
+                    proc.kill()
+        except Exception:
+            pass
+        job = self._job
+        self._job = None
+        if job:
+            try:
+                ctypes.windll.kernel32.CloseHandle(job)
+            except Exception:
+                pass
+
     def _run(self):
         import base64
         script = self.SCRIPT_TMPL.replace("__DLL__", self.dll_path.replace("'", "''"))
         b64 = base64.b64encode(script.encode("utf-16-le")).decode("ascii")
         while not self._stop:
             try:
-                self._proc = subprocess.Popen(
+                proc = subprocess.Popen(
                     ["powershell.exe", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
                      "-EncodedCommand", b64],
                     stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True,
                     encoding="utf-8", errors="replace", **_hidden_kwargs()
                 )
-                self._job = _attach_kill_on_close_job(self._proc.pid)
-                for line in self._proc.stdout:
+                self._proc = proc
+                self._job = _attach_kill_on_close_job(proc.pid)
+                for line in proc.stdout:
                     if self._stop:
                         break
                     line = line.strip()
@@ -805,24 +1031,16 @@ while ($true) {
                 pass
             if not self._stop:
                 time.sleep(5.0)
+        self._terminate_proc()
 
     def stop(self):
-        self._stop = True
-        try:
-            if self._proc:
-                self._proc.terminate()
-                try:
-                    self._proc.wait(timeout=2)
-                except Exception:
-                    self._proc.kill()
-        except Exception:
-            pass
-        if self._job:
-            try:
-                ctypes.windll.kernel32.CloseHandle(self._job)
-            except Exception:
-                pass
-            self._job = None
+        with self._lock:
+            self._active = False
+            self._stop = True
+            if self._idle_timer is not None:
+                self._idle_timer.cancel()
+                self._idle_timer = None
+        self._terminate_proc()
 
 
 # ── 7. Windows .lnk Target Resolution & Recent Files ─────────────────────────
