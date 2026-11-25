@@ -20,7 +20,7 @@ import subprocess
 import sys
 import threading
 
-__version__ = "0.3.1"
+__version__ = "0.4.0"
 
 # ── Platform Path & IPC Definitions ───────────────────────────
 IS_WINDOWS = sys.platform == "win32"
@@ -495,6 +495,7 @@ class Shell(QObject):
     hideRequested = Signal()
     reloadRequested = Signal()
     appsChanged = Signal()
+    appUpdateAvailable = Signal(str, str)
     audioConfigChanged = Signal(int, bool)
     powerProfileChanged = Signal(str)
     sleepInhibitedChanged = Signal(bool)
@@ -529,6 +530,8 @@ class Shell(QObject):
         self._cached_power_profile = "balanced"
         self._cached_audio = (50, False)
         self._audio_refresh_busy = False
+        self._app_update = {"available": False, "version": "", "url": "https://github.com/cdokuro/ravenspot/releases", "checked": False}
+        self._app_update_notified = ""
         self._icon_providers = []
         self._app_watcher = None
         self._linux_fs_watcher = None
@@ -540,6 +543,12 @@ class Shell(QObject):
             self._trim_timer.timeout.connect(wp.trim_working_set)
         self._start_app_watcher()
         self._refresh_async_status()
+        if os.environ.get("RAVENSPOT_TESTING") != "1":
+            QTimer.singleShot(8000, self.checkAppUpdate)
+            self._update_check_timer = QTimer(self)
+            self._update_check_timer.setInterval(2 * 60 * 60 * 1000)
+            self._update_check_timer.timeout.connect(self.checkAppUpdate)
+            self._update_check_timer.start()
 
     def _start_app_watcher(self):
         """Yeni kurulan/kaldırılan uygulamaları sıfır CPU maliyetiyle OS çekirdeğinden anlık izler."""
@@ -2198,14 +2207,81 @@ class Shell(QObject):
             "uptime": up_text or "--"
         }
 
+    @staticmethod
+    def _parse_semver(ver_str):
+        m = re.search(r"(\d+)\.(\d+)\.(\d+)", str(ver_str or ""))
+        return tuple(int(m.group(i)) for i in (1, 2, 3)) if m else None
+
+    @Slot()
+    @Slot(bool)
+    def checkAppUpdate(self, manual=False):
+        """Check cdokuro/ravenspot on GitHub asynchronously for a newer version (Linux + Windows)."""
+        def _worker():
+            import urllib.request
+            headers = {"User-Agent": f"RavenSpot/{__version__}", "Accept": "application/vnd.github+json"}
+            remote_ver = ""
+            release_url = "https://github.com/cdokuro/ravenspot"
+            cur_t = self._parse_semver(__version__) or (0, 0, 0)
+            try:
+                req = urllib.request.Request("https://api.github.com/repos/cdokuro/ravenspot/releases/latest", headers=headers)
+                with urllib.request.urlopen(req, timeout=8) as resp:
+                    rel = json.loads(resp.read().decode("utf-8", errors="replace"))
+                    tag = str(rel.get("tag_name") or "").lstrip("vV").strip()
+                    if self._parse_semver(tag):
+                        remote_ver = tag
+                        release_url = rel.get("html_url") or release_url
+            except Exception:
+                pass
+            try:
+                req2 = urllib.request.Request("https://raw.githubusercontent.com/cdokuro/ravenspot/main/bridge.py", headers={"User-Agent": f"RavenSpot/{__version__}"})
+                with urllib.request.urlopen(req2, timeout=8) as resp:
+                    head = resp.read(2048).decode("utf-8", errors="replace")
+                    m = re.search(r'^__version__\s*=\s*["\']([^"\']+)["\']', head, re.M)
+                    if m and self._parse_semver(m.group(1)):
+                        cand = m.group(1).strip()
+                        if not remote_ver or (self._parse_semver(cand) > self._parse_semver(remote_ver)):
+                            remote_ver = cand
+                            release_url = "https://github.com/cdokuro/ravenspot"
+            except Exception:
+                pass
+            rem_t = self._parse_semver(remote_ver)
+            is_newer = bool(rem_t and rem_t > cur_t)
+            self._app_update = {
+                "available": is_newer,
+                "version": remote_ver if is_newer else "",
+                "url": release_url,
+                "checked": True,
+            }
+            if is_newer and (manual or self._app_update_notified != remote_ver):
+                self._app_update_notified = remote_ver
+                self.appUpdateAvailable.emit(remote_ver, release_url)
+            elif manual and not is_newer:
+                self.notify("RavenSpot Güncel", f"Mevcut sürüm v{__version__} en güncel sürüm.")
+
+        threading.Thread(target=_worker, name="RavenSpotUpdateCheck", daemon=True).start()
+
     @Slot(result="QVariantMap")
     def getUpdateInfo(self):
+        app_upd = getattr(self, "_app_update", None) or {}
+        if app_upd.get("available") and app_upd.get("version"):
+            ver = app_upd["version"]
+            return {
+                "has_updates": True,
+                "count": 1,
+                "label": f"v{ver} Yeni",
+                "app_update": True,
+                "url": app_upd.get("url", "https://github.com/cdokuro/ravenspot"),
+                "icon_path": "image://themeicon/system-software-update",
+                "tooltip": f"RavenSpot v{ver} mevcut (mevcut: v{__version__}) — GitHub'da aç",
+            }
         if IS_WINDOWS:
             return {
                 "has_updates": False,
                 "count": 0,
+                "label": f"v{__version__}",
+                "app_update": False,
                 "icon_path": "image://themeicon/system-software-update",
-                "tooltip": "Windows Update — Click to Check"
+                "tooltip": f"RavenSpot v{__version__} güncel — Windows Update için tıkla",
             }
         """
         CachyOS / Arch güncelleme durumunu döndürür.
@@ -2271,7 +2347,11 @@ class Shell(QObject):
 
     @Slot()
     def launchUpdate(self):
-        """Güncelleme aracını ayrık (detached) çalıştır."""
+        """Yeni RavenSpot sürümü varsa GitHub'ı aç, yoksa sistem güncelleme aracını çalıştır."""
+        app_upd = getattr(self, "_app_update", None) or {}
+        if app_upd.get("available") and app_upd.get("url"):
+            self.openPath(app_upd["url"])
+            return
         if IS_WINDOWS:
             self.runDetached("ms-settings:windowsupdate")
             return
@@ -3415,16 +3495,30 @@ def main():
             shell.clearIconCaches()
             shell.reloadRequested.emit()
         act_reload.triggered.connect(_do_reload)
+        act_update = QAction("Check for Updates (GitHub)", tray_menu)
+        act_update.triggered.connect(lambda: shell.checkAppUpdate(True))
         act_quit = QAction("Quit RavenSpot", tray_menu)
         act_quit.triggered.connect(app.quit)
         tray_menu.addAction(act_open)
         tray_menu.addAction(act_reload)
+        tray_menu.addAction(act_update)
         tray_menu.addSeparator()
         tray_menu.addAction(act_quit)
         tray.setContextMenu(tray_menu)
         tray.activated.connect(lambda reason: shell.toggleMenu() if reason == QSystemTrayIcon.Trigger else None)
         tray.show()
         shell.attachTray(tray)
+
+        def _on_app_update(ver, url):
+            act_update.setText(f"🔔 Update Available: v{ver}")
+            try:
+                act_update.triggered.disconnect()
+            except Exception:
+                pass
+            act_update.triggered.connect(lambda u=url: shell.openPath(u))
+            shell.notify(f"RavenSpot v{ver} Mevcut!", f"GitHub'da yeni sürüm yayınlandı (mevcut: v{__version__}).")
+
+        shell.appUpdateAvailable.connect(_on_app_update)
 
     app.aboutToQuit.connect(shell.cleanup)
 
