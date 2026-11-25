@@ -10,6 +10,6 @@ NumberAnimation {
     property real threshold: 0.5
     readonly property bool opening: behavior.targetValue > threshold
 
-    duration: opening ? 180 : 120
+    duration: opening ? 95 : 65
     easing.type: opening ? Easing.OutQuint : Easing.InCubic
 }
