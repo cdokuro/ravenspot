@@ -237,8 +237,54 @@ if not IS_WINDOWS:
     if not os.path.exists(USER_MENU_PATH) and os.path.exists(os.path.join(LEGACY_CONFIG_DIR, "menu.jsonc")):
         USER_MENU_PATH = os.path.join(LEGACY_CONFIG_DIR, "menu.jsonc")
 
+class SoloWinKeyState:
+    """Minimal state machine detecting a solo Windows-key tap without inspecting other keys.
+
+    Tracks ONLY whether VK_LWIN/VK_RWIN is currently held and a boolean indicating whether any
+    other physical key was pressed during that hold (Win+E, Win+D, Win+L, Win+Shift+S, etc.).
+    """
+
+    VK_LWIN = 0x5B
+    VK_RWIN = 0x5C
+
+    def __init__(self, stale_timeout_sec=4.0):
+        self._win_down_vk = 0
+        self._chord_used = False
+        self._down_ts = 0.0
+        self._stale_timeout = float(stale_timeout_sec)
+
+    def reset(self):
+        self._win_down_vk = 0
+        self._chord_used = False
+        self._down_ts = 0.0
+
+    def on_key_event(self, vk: int, is_keydown: bool, is_injected: bool, now: float) -> bool:
+        """Process a low-level keyboard event. Returns True iff a solo Win-key tap just completed."""
+        if is_injected:
+            return False
+        if vk in (self.VK_LWIN, self.VK_RWIN):
+            if is_keydown:
+                if self._win_down_vk == 0 or (now - self._down_ts) > self._stale_timeout:
+                    self._win_down_vk = vk
+                    self._chord_used = False
+                    self._down_ts = now
+                return False
+            # keyup
+            if self._win_down_vk == vk:
+                solo = not self._chord_used
+                self.reset()
+                return solo
+            if self._win_down_vk and (now - self._down_ts) > self._stale_timeout:
+                self.reset()
+            return False
+        # Non-Win key: if Win is held, mark chord so OS handles Win+<key> natively
+        if is_keydown and self._win_down_vk:
+            self._chord_used = True
+        return False
+
+
 class Win32HotkeyThread(QThread):
-    """Windows global hotkey listener thread (Alt+Space and Win+Space)."""
+    """Windows global hotkey listener: solo Win tap -> RavenSpot, Alt+Space -> Windows Start Menu."""
     hotkeyTriggered = Signal()
     hotkeyWarning = Signal(str)
 
@@ -261,11 +307,40 @@ class Win32HotkeyThread(QThread):
             return
 
         MOD_ALT = 0x0001
-        MOD_WIN = 0x0008
         MOD_NOREPEAT = 0x4000
         VK_SPACE = 0x20
         WM_HOTKEY = 0x0312
         PM_NOREMOVE = 0x0000
+        WH_KEYBOARD_LL = 13
+        WM_KEYDOWN = 0x0100
+        WM_KEYUP = 0x0101
+        WM_SYSKEYDOWN = 0x0104
+        WM_SYSKEYUP = 0x0105
+        LLKHF_INJECTED = 0x00000010
+        SYNTH_TAG = getattr(wp, "RAVENSPOT_SYNTHETIC_TAG", 0x52535054) if wp else 0x52535054
+
+        class KBDLLHOOKSTRUCT(ctypes.Structure):
+            _fields_ = [
+                ("vkCode", wintypes.DWORD),
+                ("scanCode", wintypes.DWORD),
+                ("flags", wintypes.DWORD),
+                ("time", wintypes.DWORD),
+                ("dwExtraInfo", ctypes.c_size_t),
+            ]
+
+        LRESULT = ctypes.c_ssize_t
+        HOOKPROC = ctypes.WINFUNCTYPE(LRESULT, ctypes.c_int, wintypes.WPARAM, wintypes.LPARAM)
+
+        user32.SetWindowsHookExW.argtypes = [ctypes.c_int, HOOKPROC, ctypes.c_void_p, wintypes.DWORD]
+        user32.SetWindowsHookExW.restype = ctypes.c_void_p
+        user32.CallNextHookEx.argtypes = [ctypes.c_void_p, ctypes.c_int, wintypes.WPARAM, wintypes.LPARAM]
+        user32.CallNextHookEx.restype = LRESULT
+        user32.UnhookWindowsHookEx.argtypes = [ctypes.c_void_p]
+        user32.UnhookWindowsHookEx.restype = wintypes.BOOL
+        user32.RegisterHotKey.argtypes = [wintypes.HWND, ctypes.c_int, wintypes.UINT, wintypes.UINT]
+        user32.RegisterHotKey.restype = wintypes.BOOL
+        user32.UnregisterHotKey.argtypes = [wintypes.HWND, ctypes.c_int]
+        user32.UnregisterHotKey.restype = wintypes.BOOL
 
         self._running = True
         try:
@@ -280,35 +355,65 @@ class Win32HotkeyThread(QThread):
         except Exception:
             pass
 
-        # id 1: Alt + Space, id 2: Win + Space
-        ok1 = False
-        ok2 = False
+        win_state = SoloWinKeyState()
+        hook_handle = None
+
+        def _ll_keyboard_proc(nCode, wParam, lParam):
+            if nCode >= 0 and lParam:
+                try:
+                    kb = ctypes.cast(lParam, ctypes.POINTER(KBDLLHOOKSTRUCT)).contents
+                    is_inj = bool(kb.flags & LLKHF_INJECTED) or (kb.dwExtraInfo == SYNTH_TAG)
+                    if wParam in (WM_KEYDOWN, WM_SYSKEYDOWN):
+                        win_state.on_key_event(int(kb.vkCode), True, is_inj, time.monotonic())
+                    elif wParam in (WM_KEYUP, WM_SYSKEYUP):
+                        if win_state.on_key_event(int(kb.vkCode), False, is_inj, time.monotonic()):
+                            # Mask solo Win release so Windows Start Menu stays closed, then open RavenSpot
+                            if wp and hasattr(wp, "inject_win_chord_mask"):
+                                wp.inject_win_chord_mask()
+                            self.hotkeyTriggered.emit()
+                except Exception:
+                    pass
+            return user32.CallNextHookEx(hook_handle, nCode, wParam, lParam)
+
+        # Keep strong reference to ctypes callback for lifetime of hook
+        hook_cb = HOOKPROC(_ll_keyboard_proc)
         try:
-            ok1 = bool(user32.RegisterHotKey(None, 1, MOD_ALT | MOD_NOREPEAT, VK_SPACE))
-            ok2 = bool(user32.RegisterHotKey(None, 2, MOD_WIN | MOD_NOREPEAT, VK_SPACE))
+            hook_handle = user32.SetWindowsHookExW(WH_KEYBOARD_LL, hook_cb, None, 0)
+        except Exception:
+            hook_handle = None
+
+        # id 1: Alt + Space -> open Windows classic Start Menu (swapped with Win key)
+        ok_alt_space = False
+        try:
+            ok_alt_space = bool(user32.RegisterHotKey(None, 1, MOD_ALT | MOD_NOREPEAT, VK_SPACE))
         except Exception:
             pass
+
         self._ready.set()
-        if not ok1 and not ok2:
-            self.hotkeyWarning.emit("Could not register Alt+Space or Win+Space (already in use by another app).")
+        if not hook_handle:
+            self.hotkeyWarning.emit("Could not bind Windows key hook; falling back to tray click.")
 
         try:
             while self._running:
                 ret = user32.GetMessageW(ctypes.byref(msg), None, 0, 0)
                 if ret <= 0:
                     break
-                if msg.message == WM_HOTKEY:
-                    self.hotkeyTriggered.emit()
+                if msg.message == WM_HOTKEY and msg.wParam == 1:
+                    if wp and hasattr(wp, "trigger_windows_start_menu"):
+                        wp.trigger_windows_start_menu()
                 user32.TranslateMessage(ctypes.byref(msg))
                 user32.DispatchMessageW(ctypes.byref(msg))
         except Exception:
             pass
         finally:
             try:
-                if ok1:
+                if hook_handle:
+                    user32.UnhookWindowsHookEx(hook_handle)
+            except Exception:
+                pass
+            try:
+                if ok_alt_space:
                     user32.UnregisterHotKey(None, 1)
-                if ok2:
-                    user32.UnregisterHotKey(None, 2)
             except Exception:
                 pass
 
@@ -418,12 +523,23 @@ class Shell(QObject):
         self._menu_path = MENU_PATH
         self._user_menu_path = USER_MENU_PATH
         self._apps_cache = None  # [ {id,label,icon,aliases,keywords,desktop} ]
+        self._apps_by_id = {}
         self._win_uwp_cache = None
         self._apps_lock = threading.Lock()
+        self._cached_power_profile = "balanced"
+        self._cached_audio = (50, False)
+        self._audio_refresh_busy = False
+        self._icon_providers = []
         self._app_watcher = None
         self._linux_fs_watcher = None
         self._linux_app_debounce = None
+        self._trim_timer = QTimer(self)
+        self._trim_timer.setSingleShot(True)
+        self._trim_timer.setInterval(250)
+        if IS_WINDOWS and wp and hasattr(wp, "trim_working_set"):
+            self._trim_timer.timeout.connect(wp.trim_working_set)
         self._start_app_watcher()
+        self._refresh_async_status()
 
     def _start_app_watcher(self):
         """Yeni kurulan/kaldırılan uygulamaları sıfır CPU maliyetiyle OS çekirdeğinden anlık izler."""
@@ -463,6 +579,7 @@ class Shell(QObject):
                 if old_sig == new_sig:
                     return
                 self._apps_cache = new_apps
+                self._apps_by_id = {a.get("id", ""): a for a in new_apps if a.get("id")}
             self.appsChanged.emit()
         except Exception:
             pass
@@ -544,21 +661,80 @@ class Shell(QObject):
         except Exception:
             pass
 
+    def _refresh_async_status(self):
+        """Refresh power profile & system audio asynchronously so openMenu() never blocks UI."""
+        if self._audio_refresh_busy:
+            return
+        self._audio_refresh_busy = True
+
+        def _worker():
+            try:
+                if IS_WINDOWS and wp:
+                    prof = wp.get_windows_power_profile()
+                    if prof and prof != self._cached_power_profile:
+                        self._cached_power_profile = prof
+                        self.powerProfileChanged.emit(prof)
+                    if self._win_audio:
+                        vol, muted = self._win_audio.get_volume_info()
+                        if (vol, muted) != self._cached_audio:
+                            self._cached_audio = (vol, muted)
+                            self.audioConfigChanged.emit(vol, muted)
+                else:
+                    try:
+                        res = subprocess.run(["powerprofilesctl", "get"], capture_output=True, text=True, timeout=2)
+                        prof = res.stdout.strip()
+                        if prof and prof != self._cached_power_profile:
+                            self._cached_power_profile = prof
+                            self.powerProfileChanged.emit(prof)
+                    except Exception:
+                        pass
+                    try:
+                        out = subprocess.check_output(["wpctl", "get-volume", "@DEFAULT_AUDIO_SINK@"], timeout=1).decode().strip()
+                        muted = "[MUTED]" in out
+                        vol = self._cached_audio[0]
+                        for part in out.split():
+                            try:
+                                vol = int(float(part) * 100)
+                                break
+                            except ValueError:
+                                pass
+                        if (vol, muted) != self._cached_audio:
+                            self._cached_audio = (vol, muted)
+                            self.audioConfigChanged.emit(vol, muted)
+                    except Exception:
+                        pass
+            finally:
+                self._audio_refresh_busy = False
+
+        threading.Thread(target=_worker, name="RavenSpotStatusRefresh", daemon=True).start()
+
     @Slot(bool)
     def onMenuVisibilityChanged(self, visible):
         if visible:
-            self._update_telemetry()
-            if hasattr(self, "_telemetry_timer") and not self._telemetry_timer.isActive():
-                self._telemetry_timer.start(1000)
+            self._trim_timer.stop()
             if IS_WINDOWS and wp and self._win is not None:
                 try:
                     hwnd = int(self._win.winId())
-                    QTimer.singleShot(25, lambda: wp.force_foreground_window(hwnd))
+                    wp.force_foreground_window(hwnd)
+                    QTimer.singleShot(20, lambda h=hwnd: (
+                        wp.force_foreground_window(h)
+                        if ctypes.windll.user32.GetForegroundWindow() != h else None
+                    ))
                 except Exception:
                     pass
+            if self._win_lhm is not None:
+                self._win_lhm.set_active(True)
+            self._refresh_async_status()
+            self._update_telemetry()
+            if hasattr(self, "_telemetry_timer") and not self._telemetry_timer.isActive():
+                self._telemetry_timer.start(1500)
         else:
             if hasattr(self, "_telemetry_timer") and self._telemetry_timer.isActive():
                 self._telemetry_timer.stop()
+            if self._win_lhm is not None:
+                self._win_lhm.set_active(False)
+            if IS_WINDOWS:
+                self._trim_timer.start()
 
     @Slot()
     def toggleMenu(self):
@@ -685,7 +861,7 @@ class Shell(QObject):
             if cmd == "ravenspot:shortcuts-help":
                 self.notify(
                     "RavenSpot Shortcuts",
-                    "Alt+Space / Win+Space: Toggle • >: Shell • *: Files • :emoji • clip • kill",
+                    "Win: Toggle RavenSpot • Alt+Space: Windows Start Menu • >: Shell • *: Files • :emoji • clip • kill",
                 )
                 return
             expanded = os.path.expandvars(cmd)
@@ -892,7 +1068,17 @@ class Shell(QObject):
         apps = self._scan_apps(force_uwp=True)
         with self._apps_lock:
             self._apps_cache = apps
+            self._apps_by_id = {a.get("id", ""): a for a in apps if a.get("id")}
         return apps
+
+    def _lookup_app_by_id(self, app_id):
+        with self._apps_lock:
+            hit = self._apps_by_id.get(app_id)
+            if hit is not None:
+                return hit
+        self._load_apps()
+        with self._apps_lock:
+            return self._apps_by_id.get(app_id)
 
     @Slot(result=str)
     def listApps(self):
@@ -1909,23 +2095,12 @@ class Shell(QObject):
             except Exception:
                 pass
 
-        # Audio volume & mute
-        vol_pct = 50
-        is_muted = False
+        # Audio volume & mute (non-blocking: use cached value and refresh async in background)
+        vol_pct, is_muted = self._cached_audio
         if IS_WINDOWS and self._win_audio:
-            vol_pct, is_muted = self._win_audio.get_volume_info()
+            self._refresh_async_status()
         elif not IS_WINDOWS:
-            try:
-                out = subprocess.check_output(["wpctl", "get-volume", "@DEFAULT_AUDIO_SINK@"], timeout=1).decode().strip()
-                is_muted = "[MUTED]" in out
-                for part in out.split():
-                    try:
-                        vol_pct = int(float(part) * 100)
-                        break
-                    except ValueError:
-                        pass
-            except Exception:
-                pass
+            self._refresh_async_status()
 
         self.statsUpdated.emit(cpu_pct, gpu_pct, vol_pct, is_muted)
 
@@ -2111,14 +2286,14 @@ class Shell(QObject):
 
     @Slot(result=str)
     def getPowerProfile(self):
-        """KDE / Linux veya Windows aktif güç profilini döndürür."""
+        """KDE / Linux veya Windows aktif güç profilini anında (bloklamadan) döndürür."""
         if IS_WINDOWS and wp:
-            return wp.get_windows_power_profile()
-        try:
-            res = subprocess.run(["powerprofilesctl", "get"], capture_output=True, text=True, check=True, timeout=2)
-            return res.stdout.strip()
-        except Exception:
-            return "balanced"
+            prof = wp.get_windows_power_profile()
+            if prof:
+                self._cached_power_profile = prof
+            return self._cached_power_profile
+        self._refresh_async_status()
+        return self._cached_power_profile
 
     @Slot(str, result=bool)
     def setPowerProfile(self, profile: str):
@@ -2126,7 +2301,9 @@ class Shell(QObject):
         if IS_WINDOWS and wp:
             ok = wp.set_windows_power_profile(profile)
             if ok:
-                self.powerProfileChanged.emit(wp.get_windows_power_profile())
+                prof = wp.get_windows_power_profile()
+                self._cached_power_profile = prof
+                self.powerProfileChanged.emit(prof)
             return ok
         if profile not in ("power-saver", "balanced", "performance"):
             return False
@@ -2335,30 +2512,19 @@ class Shell(QObject):
 
     @Slot(result="QVariantMap")
     def getInitialAudioInfo(self):
-        vol_pct = 50
-        is_muted = False
-        if IS_WINDOWS and self._win_audio:
-            vol_pct, is_muted = self._win_audio.get_volume_info()
-            return {"volume": vol_pct, "muted": is_muted}
-        try:
-            out = subprocess.check_output(["wpctl", "get-volume", "@DEFAULT_AUDIO_SINK@"], timeout=1).decode().strip()
-            is_muted = "[MUTED]" in out
-            for part in out.split():
-                try:
-                    vol_pct = int(float(part) * 100)
-                    break
-                except ValueError:
-                    pass
-        except Exception:
-            pass
+        """Return cached audio state in <0.01ms so openMenu() never stalls on COM/wpctl."""
+        vol_pct, is_muted = self._cached_audio
+        self._refresh_async_status()
         return {"volume": vol_pct, "muted": is_muted}
 
     @Slot(int)
     def setSystemVolume(self, volume):
+        v = max(0, min(100, int(volume)))
+        self._cached_audio = (v, False if v > 0 else self._cached_audio[1])
         if IS_WINDOWS and self._win_audio:
-            self._win_audio.set_volume(volume)
+            threading.Thread(target=self._win_audio.set_volume, args=(v,), daemon=True).start()
             return
-        vol = max(0, min(100, volume)) / 100.0
+        vol = v / 100.0
         try:
             subprocess.Popen(["wpctl", "set-volume", "@DEFAULT_AUDIO_SINK@", f"{vol:.2f}"])
         except Exception:
@@ -2366,8 +2532,9 @@ class Shell(QObject):
 
     @Slot()
     def toggleSystemMute(self):
+        self._cached_audio = (self._cached_audio[0], not self._cached_audio[1])
         if IS_WINDOWS and self._win_audio:
-            self._win_audio.toggle_mute()
+            threading.Thread(target=self._win_audio.toggle_mute, daemon=True).start()
             return
         try:
             subprocess.Popen(["wpctl", "set-mute", "@DEFAULT_AUDIO_SINK@", "toggle"])
@@ -2419,7 +2586,15 @@ class Shell(QObject):
             except Exception:
                 pass
             QIcon.setThemeName(self._themes_data["themes"][key].get("iconTheme", "candy-icons"))
+            self.clearIconCaches()
             self.themeChanged.emit()
+
+    def clearIconCaches(self):
+        for prov in getattr(self, "_icon_providers", []):
+            try:
+                prov.clear_cache()
+            except Exception:
+                pass
 
     @Slot(result="QVariantMap")
     def getAppAudioInfo(self):
@@ -2973,71 +3148,100 @@ def _fallback_icon_image(sz: QSize) -> QImage:
 
 
 class AppIconProvider(QQuickImageProvider):
-    """QML'e `image://appicon/<desktop-id>` üzerinden uygulama ikonu verir."""
+    """QML'e `image://appicon/<desktop-id>` üzerinden uygulama ikonu verir (LRU önbellekli)."""
 
-    def __init__(self, shell, candy_resolver=None):
+    def __init__(self, shell, candy_resolver=None, max_cache=256):
         super().__init__(QQuickImageProvider.Image)
+        from collections import OrderedDict
         self._shell = shell
         self._candy = candy_resolver
         self._file_icon_provider = QFileIconProvider()
+        self._cache = OrderedDict()
+        self._max_cache = int(max_cache)
+        self._cache_lock = threading.Lock()
+
+    def clear_cache(self):
+        with self._cache_lock:
+            self._cache.clear()
 
     def requestImage(self, id, size, requestedSize):
         from urllib.parse import unquote
         clean_id = unquote(id.split("?")[0] if "?" in id else id)
         sz = requestedSize if requestedSize.isValid() and requestedSize.width() > 0 else QSize(48, 48)
+        cache_key = (clean_id, sz.width(), sz.height())
+        with self._cache_lock:
+            cached = self._cache.get(cache_key)
+            if cached is not None:
+                self._cache.move_to_end(cache_key)
+                size.setWidth(cached.width())
+                size.setHeight(cached.height())
+                return cached
 
         target_path = clean_id
         app_label = ""
         if not os.path.exists(target_path):
-            for app in self._shell._load_apps():
-                if app["id"] == clean_id:
-                    target_path = app.get("desktop") or app.get("icon") or clean_id
-                    app_label = app.get("label", "")
-                    break
+            app = self._shell._lookup_app_by_id(clean_id)
+            if app:
+                target_path = app.get("desktop") or app.get("icon") or clean_id
+                app_label = app.get("label", "")
 
+        img = None
         if IS_WINDOWS and target_path and os.path.exists(target_path):
             try:
                 from PySide6.QtCore import QFileInfo
                 fi_icon = self._file_icon_provider.icon(QFileInfo(target_path))
                 if not fi_icon.isNull():
                     pm = fi_icon.pixmap(sz)
-                    img = pm.toImage()
-                    if not img.isNull():
-                        size.setWidth(img.width())
-                        size.setHeight(img.height())
-                        return img
+                    cand_img = pm.toImage()
+                    if not cand_img.isNull():
+                        img = cand_img
             except Exception:
                 pass
 
-        # Fallback: try active icon theme first, then candy-icons
-        active_theme = self._shell.currentTheme().get("iconTheme", "candy-icons") if self._shell else "candy-icons"
-        icon = QIcon()
-        if self._candy:
-            for cand in (clean_id.replace("uwp-", ""), app_label.lower().replace(" ", "-"), "application-x-executable"):
-                svg = self._candy.resolve(cand, theme_name=active_theme)
-                if svg:
-                    icon = QIcon(svg)
-                    if not icon.isNull():
-                        break
-        if icon.isNull():
-            icon = QIcon.fromTheme(clean_id)
-        if icon.isNull():
-            icon = QIcon.fromTheme("application-x-executable")
-        pm = icon.pixmap(sz)
-        img = pm.toImage() if not pm.isNull() else _fallback_icon_image(sz)
+        if img is None:
+            # Fallback: try active icon theme first, then candy-icons
+            active_theme = self._shell.currentTheme().get("iconTheme", "candy-icons") if self._shell else "candy-icons"
+            icon = QIcon()
+            if self._candy:
+                for cand in (clean_id.replace("uwp-", ""), app_label.lower().replace(" ", "-"), "application-x-executable"):
+                    svg = self._candy.resolve(cand, theme_name=active_theme)
+                    if svg:
+                        icon = QIcon(svg)
+                        if not icon.isNull():
+                            break
+            if icon.isNull():
+                icon = QIcon.fromTheme(clean_id)
+            if icon.isNull():
+                icon = QIcon.fromTheme("application-x-executable")
+            pm = icon.pixmap(sz)
+            img = pm.toImage() if not pm.isNull() else _fallback_icon_image(sz)
+
+        with self._cache_lock:
+            self._cache[cache_key] = img
+            self._cache.move_to_end(cache_key)
+            while len(self._cache) > self._max_cache:
+                self._cache.popitem(last=False)
         size.setWidth(img.width())
         size.setHeight(img.height())
         return img
 
 
 class ThemeIconProvider(QQuickImageProvider):
-    """QML'e `image://themeicon/<freedesktop-ikon-adi>` üzerinden aktif temanın ikonunu verir."""
+    """QML'e `image://themeicon/<freedesktop-ikon-adi>` üzerinden aktif temanın ikonunu verir (LRU önbellekli)."""
 
-    def __init__(self, candy_resolver=None, shell=None):
+    def __init__(self, candy_resolver=None, shell=None, max_cache=256):
         super().__init__(QQuickImageProvider.Image)
+        from collections import OrderedDict
         self._candy = candy_resolver
         self._shell = shell
         self._file_icon_provider = QFileIconProvider() if IS_WINDOWS else None
+        self._cache = OrderedDict()
+        self._max_cache = int(max_cache)
+        self._cache_lock = threading.Lock()
+
+    def clear_cache(self):
+        with self._cache_lock:
+            self._cache.clear()
 
     def _active_icon_theme(self):
         if self._shell is not None:
@@ -3050,6 +3254,18 @@ class ThemeIconProvider(QQuickImageProvider):
     def requestImage(self, id, size, requestedSize):
         from urllib.parse import unquote
         clean_id = unquote(id.split("?")[0] if "?" in id else id)
+        w = max(requestedSize.width() if requestedSize.isValid() and requestedSize.width() > 0 else 48, 64)
+        h = max(requestedSize.height() if requestedSize.isValid() and requestedSize.height() > 0 else 48, 64)
+        active_theme = self._active_icon_theme()
+        cache_key = (active_theme, clean_id, w, h)
+        with self._cache_lock:
+            cached = self._cache.get(cache_key)
+            if cached is not None:
+                self._cache.move_to_end(cache_key)
+                size.setWidth(cached.width())
+                size.setHeight(cached.height())
+                return cached
+
         icon = QIcon()
         if IS_WINDOWS and clean_id and os.path.exists(clean_id):
             if clean_id.lower().endswith((".exe", ".lnk", ".ico")):
@@ -3063,7 +3279,6 @@ class ThemeIconProvider(QQuickImageProvider):
         elif os.path.exists(clean_id) or os.path.isabs(clean_id):
             icon = QIcon(clean_id)
 
-        active_theme = self._active_icon_theme()
         if icon.isNull() and self._candy:
             svg = self._candy.resolve(clean_id, theme_name=active_theme)
             if svg:
@@ -3078,10 +3293,13 @@ class ThemeIconProvider(QQuickImageProvider):
                 icon = QIcon(svg)
         if icon.isNull():
             icon = QIcon.fromTheme("application-x-executable")
-        w = max(requestedSize.width() if requestedSize.isValid() and requestedSize.width() > 0 else 48, 64)
-        h = max(requestedSize.height() if requestedSize.isValid() and requestedSize.height() > 0 else 48, 64)
         pm = icon.pixmap(QSize(w, h))
         img = pm.toImage() if not pm.isNull() else _fallback_icon_image(QSize(w, h))
+        with self._cache_lock:
+            self._cache[cache_key] = img
+            self._cache.move_to_end(cache_key)
+            while len(self._cache) > self._max_cache:
+                self._cache.popitem(last=False)
         size.setWidth(img.width())
         size.setHeight(img.height())
         return img
@@ -3157,6 +3375,7 @@ def main():
                             elif cmd_line == "reload":
                                 shell._apps_cache = None
                                 shell._win_uwp_cache = None
+                                shell.clearIconCaches()
                                 shell.reloadRequested.emit()
                             elif cmd_line == "quit":
                                 QApplication.quit()
@@ -3185,14 +3404,15 @@ def main():
         tray_icon_path = candy_resolver.resolve("applications-all", theme_name=shell.currentTheme().get("iconTheme")) if candy_resolver else ""
         tray_icon = QIcon(tray_icon_path) if tray_icon_path else QIcon.fromTheme("applications-all")
         tray = QSystemTrayIcon(tray_icon, app)
-        tray.setToolTip("RavenSpot — Press Alt+Space or Win+Space")
+        tray.setToolTip("RavenSpot — Win: Open • Alt+Space: Windows Start Menu")
         tray_menu = QMenu()
-        act_open = QAction("Open RavenSpot (Alt+Space)", tray_menu)
+        act_open = QAction("Open RavenSpot (Win)", tray_menu)
         act_open.triggered.connect(shell.toggleMenu)
         act_reload = QAction("Reload Menu & Apps", tray_menu)
         def _do_reload():
             shell._apps_cache = None
             shell._win_uwp_cache = None
+            shell.clearIconCaches()
             shell.reloadRequested.emit()
         act_reload.triggered.connect(_do_reload)
         act_quit = QAction("Quit RavenSpot", tray_menu)
@@ -3213,8 +3433,11 @@ def main():
         for p in ("/usr/lib/qt6/qml", "/usr/lib64/qt6/qml", "/usr/local/lib/qt6/qml"):
             if os.path.isdir(p) and p not in engine.importPathList():
                 engine.addImportPath(p)
-    engine.addImageProvider("appicon", AppIconProvider(shell, candy_resolver))
-    engine.addImageProvider("themeicon", ThemeIconProvider(candy_resolver, shell))
+    app_icon_prov = AppIconProvider(shell, candy_resolver)
+    theme_icon_prov = ThemeIconProvider(candy_resolver, shell)
+    shell._icon_providers = [app_icon_prov, theme_icon_prov]
+    engine.addImageProvider("appicon", app_icon_prov)
+    engine.addImageProvider("themeicon", theme_icon_prov)
     ctx = engine.rootContext()
     ctx.setContextProperty("Shell", shell)
 
