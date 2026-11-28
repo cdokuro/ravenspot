@@ -364,14 +364,29 @@ class Win32HotkeyThread(QThread):
                 try:
                     kb = ctypes.cast(lParam, ctypes.POINTER(KBDLLHOOKSTRUCT)).contents
                     is_inj = bool(kb.flags & LLKHF_INJECTED) or (kb.dwExtraInfo == SYNTH_TAG)
+                    vk = int(kb.vkCode)
                     if wParam in (WM_KEYDOWN, WM_SYSKEYDOWN):
-                        win_state.on_key_event(int(kb.vkCode), True, is_inj, time.monotonic())
+                        first_win_press = (
+                            not is_inj
+                            and vk in (SoloWinKeyState.VK_LWIN, SoloWinKeyState.VK_RWIN)
+                            and win_state._win_down_vk == 0
+                        )
+                        win_state.on_key_event(vk, True, is_inj, time.monotonic())
+                        if first_win_press and wp and hasattr(wp, "inject_win_chord_mask"):
+                            # Inject mask right after Win-down (SendInput from inside the hook is queued
+                            # AFTER the current event). Explorer then sees Win+<mask> as a chord and
+                            # never opens the Start Menu on release. Injecting at key-up was too late.
+                            wp.inject_win_chord_mask()
                     elif wParam in (WM_KEYUP, WM_SYSKEYUP):
-                        if win_state.on_key_event(int(kb.vkCode), False, is_inj, time.monotonic()):
-                            # Mask solo Win release so Windows Start Menu stays closed, then open RavenSpot
-                            if wp and hasattr(wp, "inject_win_chord_mask"):
-                                wp.inject_win_chord_mask()
+                        if win_state.on_key_event(vk, False, is_inj, time.monotonic()):
+                            # Swallow the real Win key-up and replay it ourselves AFTER a mask key,
+                            # so Explorer sees Win+<mask> (a chord) and never opens the Start Menu.
+                            swallowed = False
+                            if wp and hasattr(wp, "release_win_masked"):
+                                swallowed = bool(wp.release_win_masked(vk))
                             self.hotkeyTriggered.emit()
+                            if swallowed:
+                                return 1
                 except Exception:
                     pass
             return user32.CallNextHookEx(hook_handle, nCode, wParam, lParam)

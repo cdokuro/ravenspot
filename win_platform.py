@@ -209,6 +209,18 @@ def inject_win_chord_mask():
     return _send_vk_events([(VK_MASK, 0), (VK_MASK, KEYEVENTF_KEYUP)])
 
 
+def release_win_masked(win_vk=0x5B):
+    """Replay a swallowed Win key-up preceded by a mask key (mask down, mask up, Win up)."""
+    KEYEVENTF_KEYUP = 0x0002
+    KEYEVENTF_EXTENDEDKEY = 0x0001
+    VK_MASK = 0xE8
+    return _send_vk_events([
+        (VK_MASK, 0),
+        (VK_MASK, KEYEVENTF_KEYUP),
+        (int(win_vk), KEYEVENTF_KEYUP | KEYEVENTF_EXTENDEDKEY),
+    ])
+
+
 def trigger_windows_start_menu():
     """Open Windows' classic Start Menu cleanly (invoked when user presses Alt+Space)."""
     if not IS_WINDOWS:
