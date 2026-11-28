@@ -65,6 +65,6 @@ echo [3/3] Derleme basariyla tamamlandi!
 echo ===================================================
 echo Exe konumu: dist\RavenSpot.exe
 echo RavenSpot'u baslatmak icin dist\RavenSpot.exe calistirabilirsiniz.
-echo Kisayol: Alt+Space veya Win+Space
+echo Kisayol: Win tusu (tek basina) RavenSpot, Alt+Space Baslat menusu
 echo ===================================================
 pause

@@ -1231,6 +1231,254 @@ def list_windows_recent_files(query="", limit=30):
 
 
 # ── 8. UWP / Start Apps Indexing ─────────────────────────────────────────────
+# ── Native shell icons (same source Explorer uses) ───────────────────────────
+# Works for .exe/.lnk/.url files AND Store apps ("shell:AppsFolder\<AppID>"), returns
+# high-res icons with alpha, and resolves .url IconFile= (Steam/Epic game icons).
+if IS_WINDOWS:
+    class _GUID(ctypes.Structure):
+        _fields_ = [("Data1", ctypes.c_uint32), ("Data2", ctypes.c_uint16),
+                    ("Data3", ctypes.c_uint16), ("Data4", ctypes.c_ubyte * 8)]
+
+    class _SIZE(ctypes.Structure):
+        _fields_ = [("cx", ctypes.c_long), ("cy", ctypes.c_long)]
+
+    class _BITMAP(ctypes.Structure):
+        _fields_ = [("bmType", ctypes.c_long), ("bmWidth", ctypes.c_long), ("bmHeight", ctypes.c_long),
+                    ("bmWidthBytes", ctypes.c_long), ("bmPlanes", ctypes.c_ushort),
+                    ("bmBitsPixel", ctypes.c_ushort), ("bmBits", ctypes.c_void_p)]
+
+    class _BITMAPINFOHEADER(ctypes.Structure):
+        _fields_ = [("biSize", ctypes.c_uint32), ("biWidth", ctypes.c_long), ("biHeight", ctypes.c_long),
+                    ("biPlanes", ctypes.c_ushort), ("biBitCount", ctypes.c_ushort),
+                    ("biCompression", ctypes.c_uint32), ("biSizeImage", ctypes.c_uint32),
+                    ("biXPelsPerMeter", ctypes.c_long), ("biYPelsPerMeter", ctypes.c_long),
+                    ("biClrUsed", ctypes.c_uint32), ("biClrImportant", ctypes.c_uint32)]
+
+    def _make_guid(s):
+        import uuid
+        u = uuid.UUID(s)
+        g = _GUID()
+        g.Data1, g.Data2, g.Data3 = u.fields[0], u.fields[1], u.fields[2]
+        for i, b in enumerate(u.bytes[8:]):
+            g.Data4[i] = b
+        return g
+
+    _IID_IShellItemImageFactory = _make_guid("bcc18b79-ba16-442f-80c4-8a59c30c463b")
+    _GetImageProto = ctypes.WINFUNCTYPE(ctypes.c_long, ctypes.c_void_p, _SIZE, ctypes.c_int,
+                                        ctypes.POINTER(ctypes.c_void_p))
+    _ReleaseProto = ctypes.WINFUNCTYPE(ctypes.c_ulong, ctypes.c_void_p)
+
+
+def shell_icon_rgba(parsing_name, px=64):
+    """Return (width, height, BGRA premultiplied bytes) for a file path or shell parsing name, or None."""
+    if not IS_WINDOWS or not parsing_name:
+        return None
+    sh32 = ctypes.windll.shell32
+    gdi = ctypes.windll.gdi32
+    ole = ctypes.windll.ole32
+    try:
+        ole.CoInitializeEx(None, 0x2)  # STA; S_FALSE / RPC_E_CHANGED_MODE are fine
+    except Exception:
+        pass
+    sh32.SHCreateItemFromParsingName.argtypes = [ctypes.c_wchar_p, ctypes.c_void_p,
+                                                 ctypes.POINTER(_GUID), ctypes.POINTER(ctypes.c_void_p)]
+    sh32.SHCreateItemFromParsingName.restype = ctypes.c_long
+    factory = ctypes.c_void_p()
+    hr = sh32.SHCreateItemFromParsingName(parsing_name, None, ctypes.byref(_IID_IShellItemImageFactory),
+                                          ctypes.byref(factory))
+    if hr != 0 or not factory:
+        return None
+    hbmp = ctypes.c_void_p()
+    try:
+        vtbl = ctypes.cast(factory, ctypes.POINTER(ctypes.POINTER(ctypes.c_void_p))).contents
+        get_image = _GetImageProto(vtbl[3])
+        SIIGBF_BIGGERSIZEOK, SIIGBF_ICONONLY = 0x1, 0x4
+        hr = get_image(factory, _SIZE(int(px), int(px)), SIIGBF_ICONONLY | SIIGBF_BIGGERSIZEOK, ctypes.byref(hbmp))
+        if hr != 0 or not hbmp:
+            return None
+        bm = _BITMAP()
+        gdi.GetObjectW.argtypes = [ctypes.c_void_p, ctypes.c_int, ctypes.c_void_p]
+        if not gdi.GetObjectW(hbmp, ctypes.sizeof(bm), ctypes.byref(bm)) or bm.bmWidth <= 0:
+            return None
+        w, h = int(bm.bmWidth), abs(int(bm.bmHeight))
+        bih = _BITMAPINFOHEADER()
+        bih.biSize = ctypes.sizeof(_BITMAPINFOHEADER)
+        bih.biWidth, bih.biHeight = w, -h  # top-down
+        bih.biPlanes, bih.biBitCount, bih.biCompression = 1, 32, 0
+        buf = ctypes.create_string_buffer(w * h * 4)
+        user32 = ctypes.windll.user32
+        user32.GetDC.restype = ctypes.c_void_p
+        user32.ReleaseDC.argtypes = [ctypes.c_void_p, ctypes.c_void_p]
+        gdi.GetDIBits.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_uint, ctypes.c_uint,
+                                  ctypes.c_void_p, ctypes.c_void_p, ctypes.c_uint]
+        hdc = user32.GetDC(None)
+        try:
+            lines = gdi.GetDIBits(hdc, hbmp, 0, h, buf, ctypes.byref(bih), 0)
+        finally:
+            user32.ReleaseDC(None, hdc)
+        if lines != h:
+            return None
+        data = buf.raw
+        # Some icons come back without any alpha; make them opaque instead of invisible.
+        if not any(data[i] for i in range(3, len(data), 4)):
+            ba = bytearray(data)
+            ba[3::4] = b"\xff" * (len(ba) // 4)
+            data = bytes(ba)
+        return w, h, data
+    except Exception:
+        return None
+    finally:
+        if hbmp:
+            try:
+                gdi.DeleteObject.argtypes = [ctypes.c_void_p]
+                gdi.DeleteObject(hbmp)
+            except Exception:
+                pass
+        try:
+            vtbl = ctypes.cast(factory, ctypes.POINTER(ctypes.POINTER(ctypes.c_void_p))).contents
+            _ReleaseProto(vtbl[2])(factory)
+        except Exception:
+            pass
+
+
+# ── App categories (Apps menu headings) ──────────────────────────────────────
+# Ordered: the first category whose pattern matches wins. Matched against the app name
+# first, then against its Start Menu folder + target exe + Store AppID. Turkish names
+# are folded (fold_text) so "Medya Oynatıcı" and "Hesap Makinesi" classify too.
+_CATEGORY_RULES = [
+    ("games", r"\b(steam|epic games|xbox|game ?bar|solitaire|riot|valorant|league of legends|battle\.?net|"
+              r"ubisoft|uplay|ea app|origin|gog galaxy|minecraft|roblox|counter-strike|deadlock|dota|"
+              r"raven watch|oyun\w*|games?|gaming)\b"),
+    ("development", r"\b(git|github|python|idle|node\.?js|npm|powershell|windows terminal|terminal|"
+                    r"command prompt|cmd|wsl|ubuntu|visual studio|vs ?code|code|cursor|antigravity|claude|"
+                    r"opencode|electron|gcc|mingw|msys2?|dev ?home|docker|postman|jetbrains|intellij|pycharm|"
+                    r"webstorm|rider|clion|android studio|unity|unreal|godot|power automate|sql|dbeaver|"
+                    r"notepad\+\+|sublime|vim|neovim|emacs)\b"),
+    ("internet", r"\b(chrome|edge|firefox|zen|brave|opera|vivaldi|tor browser|thunderbird|outlook|mail|"
+                 r"posta|teams|discord|whatsapp|telegram|signal|slack|zoom|skype|tailscale|vpn|"
+                 r"anydesk|teamviewer|haber|news|qbittorrent|torrent|filezilla|browser|tarayıcı)\b"),
+    ("multimedia", r"\b(vlc|media player|medya|music|müzik|spotify|video|film\w*|clipchamp|ses kaydedici|"
+                   r"sound recorder|camera|kamera|obs|audacity|soundcraft|filmcraft|effectcraft|anicraft|"
+                   r"davinci|kdenlive|premiere|after effects|handbrake|foobar|aimp|winamp|plex|netflix|"
+                   r"podcast|radio|radyo)\b"),
+    ("graphics", r"\b(paint|photo\w*|foto\w*|snipping|ekran alıntısı|screen sketch|gimp|krita|inkscape|"
+                 r"figma|blender|photoshop|illustrator|lightroom|affinity|cad\w*|solidcraft|materialcraft|"
+                 r"lightcraft|figcraft|artcraft|photocraft|3d|sketch|draw\w*|çizim)\b"),
+    ("office", r"\b(word|excel|powerpoint|onenote|office|pdf\w*|acrobat|libreoffice|openoffice|notion|"
+               r"obsidian|evernote|to ?do|sticky notes|yapışkan notlar|notes|deckcraft|wordcraft|"
+               r"gridcraft|calendar|takvim)\b"),
+    ("system", r"\b(administrative tools|windows tools|windows araçları|control panel|denetim masası|task manager|görev yöneticisi|registry|kayıt defteri|"
+               r"services|event viewer|computer management|component services|disk cleanup|dfrgui|"
+               r"defragment\w*|iscsi|odbc|performance monitor|print management|recoverydrive|recovery|"
+               r"resource monitor|security configuration|system configuration|system information|"
+               r"task scheduler|firewall|memory diagnostics|windows security|windows güvenliği|"
+               r"güvenlik|yedekleme|backup|ayarlar|settings|run|file explorer|dosya gezgini|"
+               r"realtek|gigabyte|amd|adrenalin|nvidia|intel|driver|bios|rgb|dynamic light|"
+               r"control center|feedback|geri bildirim|get help|yardım alın|quick assist|hızlı yardım|"
+               r"get started|başlarken|tıklayarak yap|click to do)\b"),
+    ("utilities", r"\b(calculator|hesap makinesi|clock|alarms|saat|notepad|not defteri|winrar|7-zip|"
+                  r"7zip|everything|altdrag|clipboard\w*|magnify|büyüteç|narrator|ekran okuyucu|"
+                  r"on-screen keyboard|voice ?access|live ?captions|steps recorder|remote desktop|"
+                  r"phone link|telefon bağlantısı|character map|ravenspot|microsoft store|powertoys|"
+                  r"craft anything)\b"),
+]
+_CATEGORY_RES = [(c, re.compile(p)) for c, p in _CATEGORY_RULES]
+
+# Start Menu entries that are documentation / web links / maintenance helpers, not apps
+_NOISE_RE = re.compile(
+    r"\b(release notes|website|web site|faqs?|manuals?|module docs|documentation|kılavuz\w*|"
+    r"yardımı|support center|reset .*preferences|install additional tools|license|changelog|"
+    r"what's new|read ?me)\b")
+
+
+def classify_app(label, path="", target="", app_id=""):
+    """Category id for the Apps menu: games, development, internet, multimedia, graphics,
+    office, system, utilities, or other."""
+    name = fold_text(label or "")
+    for cat, rx in _CATEGORY_RES:
+        if rx.search(name):
+            return cat
+    folder = ""
+    if path and not path.lower().startswith("shell:"):
+        folder = os.path.basename(os.path.dirname(path))
+    context = fold_text(" ".join((folder, os.path.splitext(os.path.basename(target or ""))[0],
+                                  (app_id or "").replace(".", " ").replace("_", " "))))
+    if "steamapps" in (target or "").lower() or "epic games" in (target or "").lower():
+        return "games"
+    for cat, rx in _CATEGORY_RES:
+        if rx.search(context):
+            return cat
+    return "other"
+
+
+def is_noise_shortcut(label, path=""):
+    """True for Start Menu shortcuts that are not apps (docs, websites, folder links)."""
+    if _NOISE_RE.search(fold_text(label or "")):
+        return True
+    ext = os.path.splitext(path or "")[1].lower()
+    if ext == ".url":
+        tgt = _url_shortcut_target(path).lower()
+        return tgt.startswith(("http://", "https://"))
+    if ext == ".lnk":
+        tgt = resolve_lnk_target(path) or ""
+        return bool(tgt) and os.path.isdir(tgt)
+    return False
+
+
+# ── Desktop shortcuts (apps that only put a shortcut on the desktop) ─────────
+_GAME_URL_SCHEMES = ("steam://", "com.epicgames.launcher://", "uplay://", "origin://", "origin2://",
+                     "goggalaxy://", "battlenet://", "eadesktop://", "riotclient://")
+
+
+def desktop_dirs():
+    """User (incl. OneDrive-redirected) and Public desktop folders."""
+    dirs = []
+    if not IS_WINDOWS:
+        return dirs
+    try:
+        import winreg
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER,
+                            r"Software\Microsoft\Windows\CurrentVersion\Explorer\User Shell Folders") as k:
+            dirs.append(os.path.expandvars(winreg.QueryValueEx(k, "Desktop")[0]))
+    except Exception:
+        pass
+    dirs.append(os.path.join(os.path.expanduser("~"), "Desktop"))
+    dirs.append(os.path.join(os.environ.get("PUBLIC", r"C:\Users\Public"), "Desktop"))
+    out, seen = [], set()
+    for d in dirs:
+        n = os.path.normcase(os.path.abspath(d)) if d else ""
+        if n and n not in seen and os.path.isdir(d):
+            seen.add(n)
+            out.append(d)
+    return out
+
+
+def _url_shortcut_target(path):
+    try:
+        with open(path, "r", encoding="utf-8", errors="ignore") as f:
+            for line in f:
+                if line.lower().startswith("url="):
+                    return line[4:].strip()
+    except Exception:
+        pass
+    return ""
+
+
+def is_desktop_app_shortcut(path):
+    """Keep desktop .lnk files that launch a program and .url files that launch a game;
+    skip shortcuts to documents, folders and web pages."""
+    ext = os.path.splitext(path)[1].lower()
+    if ext == ".url":
+        return _url_shortcut_target(path).lower().startswith(_GAME_URL_SCHEMES)
+    if ext == ".lnk":
+        tgt = (resolve_lnk_target(path) or "").lower()
+        if not tgt:
+            # MSI "advertised" shortcuts (VLC, Epic, Office...) have no plain target path
+            return True
+        return tgt.endswith((".exe", ".bat", ".cmd", ".msc"))
+    return False
+
+
 def scan_windows_uwp_apps():
     """Query Start Apps via PowerShell Get-StartApps to include Store/UWP apps (Calculator, Photos, etc.)."""
     if not IS_WINDOWS:
@@ -1263,21 +1511,7 @@ def scan_windows_uwp_apps():
                 continue
             slug = re.sub(r"[^\w\s-]", "", nl).strip().replace(" ", "-")
             aliases = [w for w in re.split(r"[\s_-]+", nl) if len(w) > 1]
-            cat = "other"
-            if any(k in nl for k in ("xbox", "game", "solitaire", "oyun")):
-                cat = "games"
-            elif any(k in nl for k in ("edge", "mail", "outlook", "teams", "whatsapp", "telegram", "store")):
-                cat = "internet"
-            elif any(k in nl for k in ("terminal", "powershell", "wsl", "code", "dev")):
-                cat = "development"
-            elif any(k in nl for k in ("photo", "paint", "snip", "camera", "ekran", "foto")):
-                cat = "graphics"
-            elif any(k in nl for k in ("media", "music", "spotify", "sound", "clipchamp", "video", "netflix")):
-                cat = "multimedia"
-            elif any(k in nl for k in ("calc", "notepad", "not defteri", "clock", "saat", "weather", "hava")):
-                cat = "utilities"
-            elif any(k in nl for k in ("settings", "ayar", "security", "güvenlik", "defender", "store")):
-                cat = "system"
+            cat = classify_app(name, "", "", appid)
             apps.append({
                 "id": f"uwp-{slug or appid[:20]}",
                 "label": name,
@@ -1318,7 +1552,7 @@ class WinAppIndexWatcher:
             (os.path.expandvars(r"%ProgramData%\Microsoft\Windows\Start Menu\Programs"), True, False),
             (os.path.expandvars(r"%APPDATA%\Microsoft\Windows\Start Menu\Programs"), True, False),
             (os.path.expandvars(r"%LOCALAPPDATA%\Packages"), False, True),
-        ):
+        ) + tuple((d, False, False) for d in desktop_dirs()):
             if raw and os.path.isdir(raw):
                 specs.append((raw, subtree, is_uwp))
         return specs

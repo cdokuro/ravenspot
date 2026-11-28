@@ -82,6 +82,6 @@
 
   // ─── Help ──────────────────────────────────────────────────────
   "help.check_updates": { "icon": "󰚰", "iconName": "system-software-update", "label": "Check for RavenSpot Updates", "description": "Check GitHub (cdokuro/ravenspot) for new releases", "aliases": ["update", "güncelle", "güncelleme", "yeni sürüm", "version", "sürüm"], "action": "ravenspot:check-updates" },
-  "help.shortcuts": { "icon": "󰌌", "iconName": "preferences-desktop-keyboard", "label": "Keyboard Shortcuts", "description": "Alt+Space: Toggle · >: Shell · *: Files · :emoji · clip · kill", "action": "ravenspot:shortcuts-help" },
+  "help.shortcuts": { "icon": "󰌌", "iconName": "preferences-desktop-keyboard", "label": "Keyboard Shortcuts", "description": "Win: Toggle · Alt+Space: Start Menu · >: Shell · *: Files · :emoji · clip · kill", "action": "ravenspot:shortcuts-help" },
   "help.ravenspot": { "icon": "󰘦", "iconName": "help-about", "label": "RavenSpot GitHub", "action": "https://github.com/cdokuro/ravenspot" }
 }

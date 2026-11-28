@@ -494,14 +494,19 @@ class Win32HotkeyThread(QThread):
         self.wait(1500)
 
 # XDG application dirs (uygulama provider'ı için)
-def scan_windows_directory(base_dir):
-    """Windows Başlat Menüsü (.lnk / .url) kısayollarını tara."""
+def scan_windows_directory(base_dir, recursive=True, accept=None):
+    """Windows Başlat Menüsü (.lnk / .url) kısayollarını tara.
+
+    recursive=False sadece klasörün kendisine bakar (masaüstü); accept(path) -> bool
+    kısayolu filtreler (ör. masaüstündeki belge/klasör kısayollarını eler)."""
     apps = []
     if not os.path.isdir(base_dir):
         return apps
 
     ignore_keywords = {"uninstall", "kaldır", "setup", "help", "readme", "documentation"}
     for root, dirs, files in os.walk(base_dir):
+        if not recursive:
+            dirs[:] = []
         for f in sorted(files):
             ext = os.path.splitext(f)[1].lower()
             if ext in (".lnk", ".url"):
@@ -509,8 +514,37 @@ def scan_windows_directory(base_dir):
                 if any(ign in label.lower() for ign in ignore_keywords):
                     continue
                 full_path = os.path.join(root, f)
+                if accept is not None:
+                    try:
+                        if not accept(full_path):
+                            continue
+                    except Exception:
+                        continue
+                if wp and hasattr(wp, "is_noise_shortcut"):
+                    try:
+                        if wp.is_noise_shortcut(label, full_path):
+                            continue
+                    except Exception:
+                        pass
                 slug = re.sub(r"[^\w\s-]", "", label.lower()).strip().replace(" ", "-")
                 aliases = [w.lower() for w in re.split(r"[\s_-]+", label) if len(w) > 1]
+
+                if wp and hasattr(wp, "classify_app"):
+                    target = ""
+                    if ext == ".lnk":
+                        try:
+                            target = wp.resolve_lnk_target(full_path) or ""
+                        except Exception:
+                            target = ""
+                    apps.append({
+                        "id": slug or label,
+                        "label": label,
+                        "icon": full_path,
+                        "aliases": aliases,
+                        "desktop": full_path,
+                        "category": wp.classify_app(label, full_path, target),
+                    })
+                    continue
 
                 cat = "utilities"
                 lower_path = full_path.lower()
@@ -643,6 +677,12 @@ class Shell(QObject):
 
     def _on_apps_fs_changed(self, include_uwp=False):
         """Arka plan iş parçacığında uygulama listesini yeniler; gerçekten değiştiyse QML'i günceller."""
+        lock = self.__dict__.setdefault("_app_scan_lock", threading.Lock())
+        if not lock.acquire(blocking=False):
+            # A rescan is already running; ask it to run once more so this change is not lost
+            self._app_rescan_again = True
+            self._app_rescan_again_uwp = getattr(self, "_app_rescan_again_uwp", False) or bool(include_uwp)
+            return
         try:
             new_apps = self._scan_apps(force_uwp=bool(include_uwp))
             with self._apps_lock:
@@ -651,11 +691,38 @@ class Shell(QObject):
                 new_sig = [(a.get("id"), a.get("label"), a.get("desktop")) for a in new_apps]
                 if old_sig == new_sig:
                     return
+                old_labels = {a.get("label") for a in old}
+                new_labels = {a.get("label") for a in new_apps}
                 self._apps_cache = new_apps
                 self._apps_by_id = {a.get("id", ""): a for a in new_apps if a.get("id")}
+            added = sorted(l for l in new_labels - old_labels if l)
+            removed = sorted(l for l in old_labels - new_labels if l)
+            if old:
+                log(f"apps changed (uwp={bool(include_uwp)}): +{added[:10]} -{removed[:10]}")
             self.appsChanged.emit()
-        except Exception:
-            pass
+        except Exception as e:
+            log(f"app rescan failed: {e!r}")
+        finally:
+            lock.release()
+            if getattr(self, "_app_rescan_again", False):
+                again_uwp = getattr(self, "_app_rescan_again_uwp", False)
+                self._app_rescan_again = False
+                self._app_rescan_again_uwp = False
+                self._on_apps_fs_changed(again_uwp)
+
+    def _rescan_apps_on_open(self):
+        """Safety net for installs the folder watcher cannot see (e.g. Store apps, whose
+        Packages folder only appears on first launch): rescan in the background when the
+        menu opens, throttled. Start Menu/desktop at most every 15 s, Store apps every 60 s."""
+        now = time.monotonic()
+        if now - getattr(self, "_last_open_rescan", 0.0) < 15.0:
+            return
+        self._last_open_rescan = now
+        with_uwp = now - getattr(self, "_last_open_uwp_rescan", 0.0) >= 60.0
+        if with_uwp:
+            self._last_open_uwp_rescan = now
+        threading.Thread(target=self._on_apps_fs_changed, args=(with_uwp,),
+                         name="RavenSpotAppRescan", daemon=True).start()
 
     def _on_runner_finished(self, exit_code, crashed):
         if self._win is not None and not self._win.isVisible():
@@ -794,6 +861,8 @@ class Shell(QObject):
             hk.menu_hwnd = hwnd_now
         if visible:
             self._trim_timer.stop()
+            if IS_WINDOWS and self._apps_cache is not None:
+                self._rescan_apps_on_open()
             if IS_WINDOWS and wp and self._win is not None:
                 try:
                     hwnd = int(self._win.winId())
@@ -1053,6 +1122,14 @@ class Shell(QObject):
                     if k not in seen:
                         seen.add(k)
                         apps.append(app)
+            # Programs that only put a shortcut on the desktop (Start Menu wins on duplicates)
+            if wp and hasattr(wp, "desktop_dirs"):
+                for d in wp.desktop_dirs():
+                    for app in scan_windows_directory(d, recursive=False, accept=wp.is_desktop_app_shortcut):
+                        k = app["label"].lower()
+                        if k not in seen:
+                            seen.add(k)
+                            apps.append(app)
             if wp:
                 if force_uwp or self._win_uwp_cache is None:
                     self._win_uwp_cache = wp.scan_windows_uwp_apps()
@@ -3317,6 +3394,41 @@ class AppIconProvider(QQuickImageProvider):
         with self._cache_lock:
             self._cache.clear()
 
+    _DISK_CACHE_DIR = os.path.join(os.environ.get("LOCALAPPDATA") or os.path.expanduser("~"), "ravenspot", "iconcache")
+
+    def _native_icon(self, target, px):
+        """Shell icon for a path or shell:AppsFolder id, with a PNG disk cache keyed by path+mtime."""
+        import hashlib
+        px = max(16, min(256, int(px)))
+        try:
+            stamp = int(os.path.getmtime(target)) if os.path.exists(target) else 0
+        except Exception:
+            stamp = 0
+        key = hashlib.sha1(f"{target.lower()}|{stamp}|{px}".encode("utf-8")).hexdigest()
+        cache_file = os.path.join(self._DISK_CACHE_DIR, key + ".png")
+        if os.path.isfile(cache_file):
+            img = QImage(cache_file)
+            if not img.isNull():
+                return img
+        try:
+            res = wp.shell_icon_rgba(target, px)
+        except Exception:
+            res = None
+        if not res:
+            return None
+        w, h, data = res
+        img = QImage(data, w, h, w * 4, QImage.Format_ARGB32_Premultiplied).copy()
+        if img.isNull():
+            return None
+        if w != px or h != px:
+            img = img.scaled(px, px, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+        try:
+            os.makedirs(self._DISK_CACHE_DIR, exist_ok=True)
+            img.save(cache_file, "PNG")
+        except Exception:
+            pass
+        return img
+
     def requestImage(self, id, size, requestedSize):
         from urllib.parse import unquote
         clean_id = unquote(id.split("?")[0] if "?" in id else id)
@@ -3339,7 +3451,13 @@ class AppIconProvider(QQuickImageProvider):
                 app_label = app.get("label", "")
 
         img = None
-        if IS_WINDOWS and target_path and os.path.exists(target_path):
+        # 1) Native shell icon (Explorer's own): real Store app icons and .url game icons,
+        #    high-res with alpha. Cached on disk so later starts do not re-extract.
+        if IS_WINDOWS and wp and hasattr(wp, "shell_icon_rgba") and target_path and (
+                os.path.exists(target_path) or target_path.lower().startswith("shell:appsfolder\\")):
+            img = self._native_icon(target_path, max(sz.width(), sz.height()))
+
+        if img is None and IS_WINDOWS and target_path and os.path.exists(target_path):
             try:
                 from PySide6.QtCore import QFileInfo
                 fi_icon = self._file_icon_provider.icon(QFileInfo(target_path))
@@ -3458,7 +3576,49 @@ class ThemeIconProvider(QQuickImageProvider):
         return img
 
 
+LOG_PATH = ""
+
+
+def _setup_logging():
+    """Windows: pythonw / --noconsole exe has no stdout, so every print and traceback was lost.
+    Send them to %LOCALAPPDATA%\\ravenspot\\ravenspot.log (rotated at 1 MB)."""
+    global LOG_PATH
+    if not IS_WINDOWS or os.environ.get("RAVENSPOT_TESTING") == "1":
+        return
+    try:
+        log_dir = os.path.join(os.environ.get("LOCALAPPDATA") or os.path.expanduser("~"), "ravenspot")
+        os.makedirs(log_dir, exist_ok=True)
+        path = os.path.join(log_dir, "ravenspot.log")
+        if os.path.isfile(path) and os.path.getsize(path) > 1024 * 1024:
+            os.replace(path, path + ".1")
+        f = open(path, "a", encoding="utf-8", errors="replace", buffering=1)
+        LOG_PATH = path
+        if sys.stdout is None or getattr(sys, "frozen", False) or os.path.basename(sys.executable).lower() == "pythonw.exe":
+            sys.stdout = f
+            sys.stderr = f
+        import traceback
+
+        def _hook(exc_type, exc, tb):
+            print("[ravenspot] UNCAUGHT:\n" + "".join(traceback.format_exception(exc_type, exc, tb)), file=f, flush=True)
+
+        def _thread_hook(args):
+            _hook(args.exc_type, args.exc_value, args.exc_traceback)
+
+        sys.excepthook = _hook
+        threading.excepthook = _thread_hook
+        elevated = bool(wp.is_process_elevated()) if (wp and hasattr(wp, "is_process_elevated")) else False
+        print(f"\n[ravenspot] ---- start v{__version__} pid={os.getpid()} elevated={elevated} "
+              f"{time.strftime('%Y-%m-%d %H:%M:%S')} ----", file=f, flush=True)
+    except Exception:
+        pass
+
+
+def log(msg):
+    print(f"[ravenspot {time.strftime('%H:%M:%S')}] {msg}", flush=True)
+
+
 def main():
+    _setup_logging()
     start_hidden = START_HIDDEN
 
     # Single-instance guard on Windows via named mutex (prevents duplicate daemons/trays)
