@@ -3574,9 +3574,44 @@ def main():
         act_update.triggered.connect(lambda: shell.checkAppUpdate(True))
         act_quit = QAction("Quit RavenSpot", tray_menu)
         act_quit.triggered.connect(app.quit)
+
+        # Temperature sensors need RavenSpot elevated + the PawnIO driver (LibreHardwareMonitor)
+        act_temps = QAction("", tray_menu)
+
+        def _refresh_temps_action():
+            elevated = wp.is_process_elevated() if wp else False
+            pawnio = wp.is_pawnio_installed() if wp else False
+            act_temps.setEnabled(True)
+            if not elevated:
+                act_temps.setText("Enable Temperature Sensors (Admin)…")
+            elif not pawnio:
+                act_temps.setText("Install PawnIO Driver (for temperatures)…")
+            else:
+                act_temps.setText("✓ Temperature Sensors Enabled")
+                act_temps.setEnabled(False)
+
+        def _on_temps_action():
+            if not wp:
+                return
+            if not wp.is_process_elevated():
+                ok, err = wp.enable_elevated_autostart(os.path.abspath(__file__))
+                if ok:
+                    shell.notify("RavenSpot", "Restarting as administrator to read temperatures…")
+                    QTimer.singleShot(300, app.quit)
+                else:
+                    shell.notify("RavenSpot", f"Could not enable admin start: {err}")
+            elif not wp.is_pawnio_installed():
+                shell.notify("RavenSpot", "Install the PawnIO driver, then restart RavenSpot to see temperatures.")
+                shell.openPath(wp.PAWNIO_URL)
+
+        act_temps.triggered.connect(_on_temps_action)
+        tray_menu.aboutToShow.connect(_refresh_temps_action)
+        _refresh_temps_action()
+
         tray_menu.addAction(act_open)
         tray_menu.addAction(act_reload)
         tray_menu.addAction(act_update)
+        tray_menu.addAction(act_temps)
         tray_menu.addSeparator()
         tray_menu.addAction(act_quit)
         tray.setContextMenu(tray_menu)

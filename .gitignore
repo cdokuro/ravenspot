@@ -17,3 +17,6 @@ ravenspot
 .superpowers/
 tests/cpp/cmdtests
 *.moc
+
+# Fetched at build time by tools/fetch_lhm.ps1
+lhm/

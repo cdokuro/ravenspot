@@ -312,6 +312,87 @@ def reboot_to_bios():
         return False, str(e)
 
 
+# ── Elevated autostart (needed for CPU/GPU temperature sensors) ──────────────
+# LibreHardwareMonitor can read GPU load as a normal user, but temperatures need the
+# process to be elevated AND the PawnIO kernel driver to be installed.
+ELEVATED_TASK_NAME = "RavenSpot"
+PAWNIO_URL = "https://pawnio.eu/"
+
+
+def is_process_elevated() -> bool:
+    if not IS_WINDOWS:
+        return False
+    try:
+        return bool(ctypes.windll.shell32.IsUserAnAdmin())
+    except Exception:
+        return False
+
+
+def is_pawnio_installed() -> bool:
+    """True when the PawnIO driver service is registered (LibreHardwareMonitor >= 0.9.5 uses it)."""
+    if not IS_WINDOWS:
+        return False
+    try:
+        import winreg
+        with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"SYSTEM\CurrentControlSet\Services\PawnIO"):
+            return True
+    except Exception:
+        return False
+
+
+def ravenspot_launch_command(script_path=""):
+    """(program, arguments) that start RavenSpot hidden as a background daemon."""
+    if getattr(sys, "frozen", False):
+        return sys.executable, "--daemon"
+    exe = sys.executable
+    pyw = os.path.join(os.path.dirname(exe), "pythonw.exe")
+    if os.path.isfile(pyw):
+        exe = pyw
+    script = os.path.abspath(script_path or sys.argv[0])
+    return exe, f'"{script}" --daemon'
+
+
+def enable_elevated_autostart(script_path=""):
+    """Register a logon task that runs RavenSpot elevated, then restart into it.
+
+    Shows one UAC prompt. The elevated helper waits for this process to exit (so the
+    single-instance mutex is free) before starting the task. Returns (ok, error);
+    on ok the caller should quit right away.
+    """
+    if not IS_WINDOWS:
+        return False, "Not Windows"
+    import base64
+
+    def q(s):
+        return "'" + str(s).replace("'", "''") + "'"
+
+    program, args = ravenspot_launch_command(script_path)
+    domain = os.environ.get("USERDOMAIN", "")
+    user = os.environ.get("USERNAME", "")
+    user_id = f"{domain}\\{user}" if domain else user
+    script = "\n".join([
+        "$ErrorActionPreference = 'Stop'",
+        f"$a = New-ScheduledTaskAction -Execute {q(program)} -Argument {q(args)}",
+        f"$t = New-ScheduledTaskTrigger -AtLogOn -User {q(user_id)}",
+        f"$p = New-ScheduledTaskPrincipal -UserId {q(user_id)} -LogonType Interactive -RunLevel Highest",
+        "$s = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries "
+        "-ExecutionTimeLimit ([TimeSpan]::Zero) -MultipleInstances IgnoreNew",
+        f"Register-ScheduledTask -TaskName {q(ELEVATED_TASK_NAME)} -Action $a -Trigger $t "
+        "-Principal $p -Settings $s -Force | Out-Null",
+        f"Wait-Process -Id {os.getpid()} -Timeout 15 -ErrorAction SilentlyContinue",
+        f"Start-ScheduledTask -TaskName {q(ELEVATED_TASK_NAME)}",
+    ])
+    b64 = base64.b64encode(script.encode("utf-16-le")).decode("ascii")
+    params = f"-NoProfile -NonInteractive -ExecutionPolicy Bypass -WindowStyle Hidden -EncodedCommand {b64}"
+    try:
+        ret = ctypes.windll.shell32.ShellExecuteW(None, "runas", "powershell.exe", params, None, 0)
+        if int(ret or 0) > 32:
+            return True, ""
+        return False, "UAC elevation cancelled or denied."
+    except Exception as e:
+        return False, str(e)
+
+
 def _attach_kill_on_close_job(pid: int):
     """Attach a child process PID to a Win32 Job Object with KILL_ON_JOB_CLOSE so it never orphans."""
     if not IS_WINDOWS or not pid:

@@ -18,6 +18,15 @@ pip install --upgrade pip
 pip install -r requirements.txt pyinstaller
 
 echo.
+echo [1b/3] LibreHardwareMonitor (CPU/GPU sicaklik ve GPU kullanimi) indiriliyor...
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0tools\fetch_lhm.ps1"
+if errorlevel 1 (
+    echo [HATA] LibreHardwareMonitor indirilemedi!
+    pause
+    exit /b 1
+)
+
+echo.
 echo [2/3] PyInstaller ile RavenSpot.exe derleniyor...
 pyinstaller --noconsole --onefile --name "RavenSpot" ^
     --hidden-import=win_platform ^
@@ -40,6 +49,7 @@ pyinstaller --noconsole --onefile --name "RavenSpot" ^
     --add-data "assets;assets" ^
     --add-data "sounds;sounds" ^
     --add-data "icons;icons" ^
+    --add-data "lhm;lhm" ^
     --clean ^
     bridge.py
 
