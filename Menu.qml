@@ -2005,6 +2005,20 @@ Window {
         border.width: root.edna ? 0 : 2
         visible: false
     }
+    // Kartın dışındaki şeffaf yüzey (Windows'ta input mask yok, tıklamayı yutuyordu):
+    // buraya tıklamak açık bağlam menüsünü, yoksa RavenSpot'u kapatır.
+    MouseArea {
+        id: outsideCardArea
+        anchors.fill: parent
+        z: -1
+        enabled: root.opened
+        acceptedButtons: Qt.LeftButton | Qt.RightButton | Qt.MiddleButton
+        onPressed: function(mouse) {
+            if (contextPopup.opened) contextPopup.close()
+            else closeMenu()
+        }
+    }
+
     MultiEffect {
         anchors.fill: glowSource
         source: glowSource

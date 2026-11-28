@@ -288,9 +288,12 @@ class Win32HotkeyThread(QThread):
     """Windows global hotkey listener: solo Win tap -> RavenSpot, Alt+Space -> Windows Start Menu."""
     hotkeyTriggered = Signal()
     hotkeyWarning = Signal(str)
+    outsideClick = Signal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
+        # HWND of the open RavenSpot window (0 while hidden); set from the GUI thread.
+        self.menu_hwnd = 0
         self._running = False
         self._thread_id = None
         self._ready = threading.Event()
@@ -398,6 +401,46 @@ class Win32HotkeyThread(QThread):
         except Exception:
             hook_handle = None
 
+        # Low-level mouse hook: any button press outside the open RavenSpot window hides it,
+        # even when Windows refused to give the window focus (so no deactivate event comes).
+        WH_MOUSE_LL = 14
+        MOUSE_DOWN_MSGS = (0x0201, 0x0204, 0x0207, 0x020B)  # L/R/M/X button down
+
+        class MSLLHOOKSTRUCT(ctypes.Structure):
+            _fields_ = [
+                ("pt", wintypes.POINT),
+                ("mouseData", wintypes.DWORD),
+                ("flags", wintypes.DWORD),
+                ("time", wintypes.DWORD),
+                ("dwExtraInfo", ctypes.c_size_t),
+            ]
+
+        user32.GetWindowRect.argtypes = [wintypes.HWND, ctypes.POINTER(wintypes.RECT)]
+        user32.GetWindowRect.restype = wintypes.BOOL
+        mouse_handle = None
+
+        def _ll_mouse_proc(nCode, wParam, lParam):
+            if nCode >= 0 and lParam and wParam in MOUSE_DOWN_MSGS:
+                hwnd = self.menu_hwnd
+                if hwnd:
+                    try:
+                        ms = ctypes.cast(lParam, ctypes.POINTER(MSLLHOOKSTRUCT)).contents
+                        rc = wintypes.RECT()
+                        if user32.GetWindowRect(hwnd, ctypes.byref(rc)):
+                            x, y = ms.pt.x, ms.pt.y
+                            if not (rc.left <= x < rc.right and rc.top <= y < rc.bottom):
+                                self.menu_hwnd = 0  # one hide per open
+                                self.outsideClick.emit()
+                    except Exception:
+                        pass
+            return user32.CallNextHookEx(mouse_handle, nCode, wParam, lParam)
+
+        mouse_cb = HOOKPROC(_ll_mouse_proc)
+        try:
+            mouse_handle = user32.SetWindowsHookExW(WH_MOUSE_LL, mouse_cb, None, 0)
+        except Exception:
+            mouse_handle = None
+
         # id 1: Alt + Space -> open Windows classic Start Menu (swapped with Win key)
         ok_alt_space = False
         try:
@@ -425,6 +468,11 @@ class Win32HotkeyThread(QThread):
             try:
                 if hook_handle:
                     user32.UnhookWindowsHookEx(hook_handle)
+            except Exception:
+                pass
+            try:
+                if mouse_handle:
+                    user32.UnhookWindowsHookEx(mouse_handle)
             except Exception:
                 pass
             try:
@@ -735,6 +783,15 @@ class Shell(QObject):
 
     @Slot(bool)
     def onMenuVisibilityChanged(self, visible):
+        hk = getattr(self, "_hotkey_thread", None)
+        if hk is not None:
+            hwnd_now = 0
+            if visible and self._win is not None:
+                try:
+                    hwnd_now = int(self._win.winId())
+                except Exception:
+                    hwnd_now = 0
+            hk.menu_hwnd = hwnd_now
         if visible:
             self._trim_timer.stop()
             if IS_WINDOWS and wp and self._win is not None:
@@ -3491,6 +3548,8 @@ def main():
         # Connect to QObject slot (queued cross-thread delivery to main GUI thread!)
         hotkey_thread.hotkeyTriggered.connect(shell.toggleMenu)
         hotkey_thread.hotkeyWarning.connect(lambda m: shell.notify("RavenSpot Hotkey", m))
+        hotkey_thread.outsideClick.connect(shell.hideMenu)
+        shell._hotkey_thread = hotkey_thread
         hotkey_thread.start()
         app.aboutToQuit.connect(hotkey_thread.stop)
 
