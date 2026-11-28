@@ -30,6 +30,10 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt pyinstaller
 
+      - name: Fetch LibreHardwareMonitor (CPU/GPU temps, GPU load)
+        shell: pwsh
+        run: ./tools/fetch_lhm.ps1
+
       - name: Flatten symlinks for Windows non-admin compatibility
         shell: python
         run: |
@@ -94,6 +98,7 @@ jobs:
             --add-data "assets;assets" ^
             --add-data "sounds;sounds" ^
             --add-data "icons;icons" ^
+            --add-data "lhm;lhm" ^
             --clean ^
             bridge.py
 
